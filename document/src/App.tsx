@@ -36,7 +36,7 @@ function EditorPageContent({ activeDocId, setActiveDocId }: { activeDocId: strin
 export default function App() {
   const { toast } = useToast();
   const { t, lang } = useI18n();
-  const { refreshUser } = useAuth();
+  const { updateUser } = useAuth();
 
   // Sync language preference to DB
   useEffect(() => {
@@ -77,9 +77,9 @@ export default function App() {
     toast(t("toast.logoutSuccess"), "success");
   };
 
-  const handleLogin = async () => {
+  const handleLogin = (user: { id: string; name: string; email: string; avatar: string | null }) => {
+    updateUser(user);
     setIsLoggedIn(true);
-    await refreshUser();
     setCurrentPage("documents");
   };
 

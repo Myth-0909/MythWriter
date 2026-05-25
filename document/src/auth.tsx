@@ -49,7 +49,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const updateUser = useCallback((data: Partial<UserInfo>) => {
-    setUser((prev) => (prev ? { ...prev, ...data } : null));
+    setUser((prev) => ({ ...prev, ...data } as UserInfo));
   }, []);
 
   useEffect(() => {

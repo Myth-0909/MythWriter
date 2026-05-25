@@ -13,7 +13,7 @@ import { api, setToken } from "@/api";
 type Mode = "login" | "register";
 
 interface LoginPageProps {
-  onLogin?: () => void;
+  onLogin?: (user: { id: string; name: string; email: string; avatar: string | null }) => void;
 }
 
 export function LoginPage({ onLogin }: LoginPageProps) {
@@ -67,12 +67,12 @@ export function LoginPage({ onLogin }: LoginPageProps) {
         const res = await api.login({ email, password });
         setToken(res.token);
         toast(`欢迎回来，${res.user.name}`, "success");
-        onLogin?.();
+        onLogin?.(res.user);
       } else {
         const res = await api.register({ name, email, password });
         setToken(res.token);
         toast(`注册成功，欢迎你，${res.user.name}`, "success");
-        onLogin?.();
+        onLogin?.(res.user);
       }
     } catch (error: any) {
       const errMsg = error.message || "操作失败";
