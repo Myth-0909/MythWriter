@@ -61,6 +61,7 @@ export function Editor({ documentId }: EditorProps) {
 
   const [title, setTitle] = useState("");
   const [charCount, setCharCount] = useState(0);
+  const charCountRef = useRef(0);
   const [saveStatus, setSaveStatus] = useState<"" | "saving" | "saved">("");
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [showFontSizePicker, setShowFontSizePicker] = useState(false);
@@ -86,6 +87,11 @@ export function Editor({ documentId }: EditorProps) {
     },
     onSelectionUpdate: ({ editor: ed }) => {
       const { from, to } = ed.state.selection;
+      // For select-all (AllSelection), use the exact same value as total count
+      if (from === 0 && to === ed.state.doc.content.size) {
+        setSelectionChars(charCountRef.current);
+        return;
+      }
       const text = ed.state.doc.textBetween(from, to, '\n\n', '\n');
       setSelectionChars(text.length);
     },
@@ -106,8 +112,9 @@ export function Editor({ documentId }: EditorProps) {
 
   const updateCounts = useCallback((ed: typeof editor) => {
     if (!ed) return;
-    const text = ed.state.doc.textBetween(0, ed.state.doc.content.size, '\n\n', '\n');
-    setCharCount(text.length);
+    const len = ed.state.doc.textBetween(0, ed.state.doc.content.size, '\n\n', '\n').length;
+    charCountRef.current = len;
+    setCharCount(len);
   }, []);
 
   const autoSave = useCallback(
