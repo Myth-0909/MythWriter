@@ -106,6 +106,8 @@ export function Editor({ documentId }: EditorProps) {
   useEffect(() => {
     if (!editor || !doc) return;
     editor.commands.setContent(doc.content);
+    editor.commands.setTextSelection(0);
+    setSelectionChars(0);
     setTitle(doc.title);
     updateCounts(editor);
   }, [documentId]);
