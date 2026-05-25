@@ -86,7 +86,7 @@ export function Editor({ documentId }: EditorProps) {
     },
     onSelectionUpdate: ({ editor: ed }) => {
       const { from, to } = ed.state.selection;
-      const text = ed.state.doc.textBetween(from, to, ' ', ' ');
+      const text = ed.state.doc.textBetween(from, to, '\n\n', '\n');
       setSelectionChars(text.length);
     },
     editorProps: {
@@ -106,7 +106,8 @@ export function Editor({ documentId }: EditorProps) {
 
   const updateCounts = useCallback((ed: typeof editor) => {
     if (!ed) return;
-    setCharCount(ed.getText()?.length || 0);
+    const text = ed.state.doc.textBetween(0, ed.state.doc.content.size, '\n\n', '\n');
+    setCharCount(text.length);
   }, []);
 
   const autoSave = useCallback(
