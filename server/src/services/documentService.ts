@@ -62,3 +62,43 @@ export async function updateDocument(docId: string, userId: string, data: {
     },
   });
 }
+
+export async function toggleFavorite(docId: string, userId: string): Promise<Document | null> {
+  const doc = await checkOwnership(docId, userId);
+  if (!doc) return null;
+  return prisma.document.update({
+    where: { id: docId },
+    data: { isFavorite: !doc.isFavorite },
+  });
+}
+
+export async function moveToTrash(docId: string, userId: string): Promise<Document | null> {
+  const doc = await checkOwnership(docId, userId);
+  if (!doc) return null;
+  return prisma.document.update({
+    where: { id: docId },
+    data: { isDeleted: true, deletedAt: new Date() },
+  });
+}
+
+export async function restoreFromTrash(docId: string, userId: string): Promise<Document | null> {
+  const doc = await checkOwnership(docId, userId);
+  if (!doc) return null;
+  return prisma.document.update({
+    where: { id: docId },
+    data: { isDeleted: false, deletedAt: null },
+  });
+}
+
+export async function permanentlyDelete(docId: string, userId: string): Promise<boolean> {
+  const doc = await checkOwnership(docId, userId);
+  if (!doc) return false;
+  await prisma.document.delete({ where: { id: docId } });
+  return true;
+}
+
+export async function emptyTrash(userId: string) {
+  await prisma.document.deleteMany({
+    where: { userId, isDeleted: true },
+  });
+}

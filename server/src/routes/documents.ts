@@ -1,7 +1,10 @@
 import { Router, Response } from "express";
-import prisma from "../lib/prisma";
 import { AuthRequest, authMiddleware } from "../middleware/auth";
-import { createDocument, getDocument, listDocuments, listFavorites, listTrash, updateDocument } from "../services/documentService";
+import {
+  createDocument, getDocument, listDocuments, listFavorites, listTrash,
+  updateDocument, toggleFavorite, moveToTrash, restoreFromTrash,
+  permanentlyDelete, emptyTrash,
+} from "../services/documentService";
 
 const router = Router();
 
@@ -85,20 +88,11 @@ router.put("/:id", async (req: AuthRequest, res: Response) => {
 // PATCH /api/documents/:id/favorite - Toggle favorite
 router.patch("/:id/favorite", async (req: AuthRequest, res: Response) => {
   try {
-    const existing = await prisma.document.findUnique({
-      where: { id: req.params.id },
-    });
-
-    if (!existing || existing.userId !== req.user!.userId) {
+    const document = await toggleFavorite(String(req.params.id), req.user!.userId);
+    if (!document) {
       res.status(404).json({ error: "文档不存在" });
       return;
     }
-
-    const document = await prisma.document.update({
-      where: { id: req.params.id },
-      data: { isFavorite: !existing.isFavorite },
-    });
-
     res.json({ document });
   } catch (error) {
     console.error("Toggle favorite error:", error);
@@ -109,20 +103,11 @@ router.patch("/:id/favorite", async (req: AuthRequest, res: Response) => {
 // PATCH /api/documents/:id/trash - Move to trash
 router.patch("/:id/trash", async (req: AuthRequest, res: Response) => {
   try {
-    const existing = await prisma.document.findUnique({
-      where: { id: req.params.id },
-    });
-
-    if (!existing || existing.userId !== req.user!.userId) {
+    const document = await moveToTrash(String(req.params.id), req.user!.userId);
+    if (!document) {
       res.status(404).json({ error: "文档不存在" });
       return;
     }
-
-    const document = await prisma.document.update({
-      where: { id: req.params.id },
-      data: { isDeleted: true, deletedAt: new Date() },
-    });
-
     res.json({ document });
   } catch (error) {
     console.error("Move to trash error:", error);
@@ -133,20 +118,11 @@ router.patch("/:id/trash", async (req: AuthRequest, res: Response) => {
 // PATCH /api/documents/:id/restore - Restore from trash
 router.patch("/:id/restore", async (req: AuthRequest, res: Response) => {
   try {
-    const existing = await prisma.document.findUnique({
-      where: { id: req.params.id },
-    });
-
-    if (!existing || existing.userId !== req.user!.userId) {
+    const document = await restoreFromTrash(String(req.params.id), req.user!.userId);
+    if (!document) {
       res.status(404).json({ error: "文档不存在" });
       return;
     }
-
-    const document = await prisma.document.update({
-      where: { id: req.params.id },
-      data: { isDeleted: false, deletedAt: null },
-    });
-
     res.json({ document });
   } catch (error) {
     console.error("Restore error:", error);
@@ -157,17 +133,11 @@ router.patch("/:id/restore", async (req: AuthRequest, res: Response) => {
 // DELETE /api/documents/:id - Permanently delete
 router.delete("/:id", async (req: AuthRequest, res: Response) => {
   try {
-    const existing = await prisma.document.findUnique({
-      where: { id: req.params.id },
-    });
-
-    if (!existing || existing.userId !== req.user!.userId) {
+    const deleted = await permanentlyDelete(String(req.params.id), req.user!.userId);
+    if (!deleted) {
       res.status(404).json({ error: "文档不存在" });
       return;
     }
-
-    await prisma.document.delete({ where: { id: req.params.id } });
-
     res.json({ success: true });
   } catch (error) {
     console.error("Delete document error:", error);
@@ -178,13 +148,7 @@ router.delete("/:id", async (req: AuthRequest, res: Response) => {
 // DELETE /api/documents/trash/empty - Empty trash
 router.delete("/trash/empty", async (req: AuthRequest, res: Response) => {
   try {
-    await prisma.document.deleteMany({
-      where: {
-        userId: req.user!.userId,
-        isDeleted: true,
-      },
-    });
-
+    await emptyTrash(req.user!.userId);
     res.json({ success: true });
   } catch (error) {
     console.error("Empty trash error:", error);
