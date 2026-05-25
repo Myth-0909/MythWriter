@@ -49,7 +49,6 @@ const translations = {
   // Editor
   "editor.untitled": { zh: "未命名文档", en: "Untitled Document" },
   "editor.placeholder": { zh: "开始写作...", en: "Start writing..." },
-  "editor.words": { zh: "字", en: "words" },
   "editor.characters": { zh: "字符", en: "characters" },
   "editor.selected": { zh: "已选中", en: "Selected" },
   "editor.avgChars": { zh: "平均字/词", en: "avg. chars/word" },

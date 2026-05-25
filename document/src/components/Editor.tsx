@@ -60,7 +60,6 @@ export function Editor({ documentId }: EditorProps) {
   const doc = documentId ? getDocument(documentId) : undefined;
 
   const [title, setTitle] = useState("");
-  const [wordCount, setWordCount] = useState(0);
   const [charCount, setCharCount] = useState(0);
   const [saveStatus, setSaveStatus] = useState<"" | "saving" | "saved">("");
   const [showColorPicker, setShowColorPicker] = useState(false);
@@ -87,7 +86,7 @@ export function Editor({ documentId }: EditorProps) {
     },
     onSelectionUpdate: ({ editor: ed }) => {
       const { from, to } = ed.state.selection;
-      const text = ed.state.doc.textBetween(from, to);
+      const text = ed.state.doc.textBetween(from, to, ' ', ' ');
       setSelectionChars(text.length);
     },
     editorProps: {
@@ -107,10 +106,7 @@ export function Editor({ documentId }: EditorProps) {
 
   const updateCounts = useCallback((ed: typeof editor) => {
     if (!ed) return;
-    const text = ed.getText() || "";
-    const words = text.trim() ? text.trim().split(/\s+/).length : 0;
-    setWordCount(words);
-    setCharCount(text.length);
+    setCharCount(ed.getText()?.length || 0);
   }, []);
 
   const autoSave = useCallback(
@@ -359,13 +355,7 @@ export function Editor({ documentId }: EditorProps) {
             </span>
           )}
         </div>
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2 text-xs text-surface-500">
-            <span className="flex h-2 w-2 rounded-full bg-green-400" />
-            <span>{wordCount} {t("editor.words")}</span>
-          </div>
-          <span className="text-xs text-surface-400">{charCount} {t("editor.characters")}</span>
-        </div>
+        <span className="text-xs text-surface-400">{charCount} {t("editor.characters")}</span>
       </div>
     </div>
   );
