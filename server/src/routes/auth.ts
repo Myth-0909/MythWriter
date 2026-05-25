@@ -3,7 +3,7 @@ import crypto from "crypto";
 import bcrypt from "bcryptjs";
 import prisma from "../lib/prisma";
 import { generateToken, authMiddleware, AuthRequest } from "../middleware/auth";
-import { verifyPassword } from "../services/authService";
+import { registerUser, verifyPassword } from "../services/authService";
 
 const router = Router();
 
@@ -22,32 +22,15 @@ router.post("/register", async (req: Request, res: Response) => {
       return;
     }
 
-    const existing = await prisma.user.findUnique({ where: { email } });
-    if (existing) {
-      res.status(409).json({ error: "该邮箱已被注册" });
+    const result = await registerUser(name, email, password);
+    if ("error" in result) {
+      res.status(result.status).json({ error: result.error });
       return;
     }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
-    const user = await prisma.user.create({
-      data: {
-        name,
-        email,
-        password: hashedPassword,
-      },
-    });
+    const token = generateToken({ userId: result.user.id, email: result.user.email });
 
-    const token = generateToken({ userId: user.id, email: user.email });
-
-    res.status(201).json({
-      token,
-      user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        avatar: user.avatar,
-      },
-    });
+    res.status(201).json({ token, user: result.user });
   } catch (error) {
     console.error("Register error:", error);
     res.status(500).json({ error: "注册失败，请稍后重试" });
