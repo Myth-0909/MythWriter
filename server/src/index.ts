@@ -9,6 +9,7 @@ import statsRoutes from "./routes/stats";
 import aiRoutes from "./routes/ai";
 import sessionRoutes from "./routes/session";
 import { connectRedis } from "./lib/redis";
+import prisma from "./lib/prisma";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -34,7 +35,16 @@ app.get("/api/health", (_req, res) => {
 });
 
 async function start() {
+  // Warm database connection before accepting requests
+  try {
+    await prisma.$connect();
+    console.log("[DB] Connection pool ready");
+  } catch (err: any) {
+    console.warn("[DB] Warm-up failed:", err.message);
+  }
+
   await connectRedis();
+
   app.listen(PORT, () => {
     console.log(`MythWriter API server running on http://localhost:${PORT}`);
     console.log(`Health check: http://localhost:${PORT}/api/health`);
