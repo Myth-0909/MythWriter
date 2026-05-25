@@ -16,6 +16,7 @@ interface DocumentStore {
   permanentlyDelete: (id: string) => Promise<void>;
   emptyTrash: () => Promise<void>;
   refreshDocuments: () => Promise<void>;
+  refreshTrash: () => Promise<void>;
 }
 
 const DocumentStoreContext = createContext<DocumentStore>({
@@ -32,6 +33,7 @@ const DocumentStoreContext = createContext<DocumentStore>({
   permanentlyDelete: async () => {},
   emptyTrash: async () => {},
   refreshDocuments: async () => {},
+  refreshTrash: async () => {},
 });
 
 export function useDocuments() {
@@ -55,13 +57,29 @@ export function DocumentStoreProvider({ children }: { children: ReactNode }) {
     if (!isLoggedIn()) return;
     setLoading(true);
     try {
-      const [docsRes, trashRes] = await Promise.all([
-        api.listDocuments(),
-        api.listTrash(),
-      ]);
-      setDocuments([...docsRes.documents, ...trashRes.documents]);
+      const docsRes = await api.listDocuments();
+      setDocuments((prev) => {
+        const trashDocs = prev.filter((d) => d.isDeleted);
+        return [...docsRes.documents, ...trashDocs];
+      });
     } catch (error) {
       console.error("Failed to fetch documents:", error);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const refreshTrash = useCallback(async () => {
+    if (!isLoggedIn()) return;
+    setLoading(true);
+    try {
+      const trashRes = await api.listTrash();
+      setDocuments((prev) => {
+        const activeDocs = prev.filter((d) => !d.isDeleted);
+        return [...activeDocs, ...trashRes.documents];
+      });
+    } catch (error) {
+      console.error("Failed to fetch trash:", error);
     } finally {
       setLoading(false);
     }
@@ -169,6 +187,7 @@ export function DocumentStoreProvider({ children }: { children: ReactNode }) {
         permanentlyDelete,
         emptyTrash,
         refreshDocuments,
+        refreshTrash,
       }}
     >
       {children}

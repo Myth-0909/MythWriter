@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { ConfirmModal } from "@/components/ConfirmModal";
 import { Scrollbar } from "@/components/ui/scrollbar";
@@ -11,10 +11,14 @@ import { Trash2, RotateCcw, AlertTriangle } from "lucide-react";
 export function TrashPage() {
   const { t } = useI18n();
   const { toast } = useToast();
-  const { trash, loading, restoreFromTrash, permanentlyDelete, emptyTrash } = useDocuments();
+  const { trash, loading, refreshTrash, restoreFromTrash, permanentlyDelete, emptyTrash } = useDocuments();
   const [actionLoading, setActionLoading] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [emptyTrashConfirm, setEmptyTrashConfirm] = useState(false);
+
+  useEffect(() => {
+    refreshTrash();
+  }, []);
 
   const handleRestore = async (id: string, title: string) => {
     setActionLoading(true);
