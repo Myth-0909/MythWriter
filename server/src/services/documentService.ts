@@ -1,4 +1,11 @@
+import type { Document } from "@prisma/client";
 import prisma from "../lib/prisma";
+
+async function checkOwnership(docId: string, userId: string): Promise<Document | null> {
+  const doc = await prisma.document.findUnique({ where: { id: docId } });
+  if (!doc || doc.userId !== userId) return null;
+  return doc;
+}
 
 export async function listDocuments(userId: string) {
   return prisma.document.findMany({
@@ -18,5 +25,40 @@ export async function listTrash(userId: string) {
   return prisma.document.findMany({
     where: { userId, isDeleted: true },
     orderBy: { deletedAt: "desc" },
+  });
+}
+
+export async function getDocument(docId: string, userId: string): Promise<Document | null> {
+  return checkOwnership(docId, userId);
+}
+
+export async function createDocument(userId: string, data: {
+  title?: string; content?: string; preview?: string; category?: string;
+}) {
+  return prisma.document.create({
+    data: {
+      title: data.title || "无标题文档",
+      content: data.content || "",
+      preview: data.preview || "",
+      category: data.category || "general",
+      userId,
+    },
+  });
+}
+
+export async function updateDocument(docId: string, userId: string, data: {
+  title?: string; content?: string; preview?: string; category?: string;
+}): Promise<Document | null> {
+  const doc = await checkOwnership(docId, userId);
+  if (!doc) return null;
+
+  return prisma.document.update({
+    where: { id: docId },
+    data: {
+      ...(data.title !== undefined && { title: data.title }),
+      ...(data.content !== undefined && { content: data.content }),
+      ...(data.preview !== undefined && { preview: data.preview }),
+      ...(data.category !== undefined && { category: data.category }),
+    },
   });
 }

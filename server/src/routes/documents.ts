@@ -1,7 +1,7 @@
 import { Router, Response } from "express";
 import prisma from "../lib/prisma";
 import { AuthRequest, authMiddleware } from "../middleware/auth";
-import { listDocuments, listFavorites, listTrash } from "../services/documentService";
+import { createDocument, getDocument, listDocuments, listFavorites, listTrash, updateDocument } from "../services/documentService";
 
 const router = Router();
 
@@ -44,15 +44,11 @@ router.get("/trash", async (req: AuthRequest, res: Response) => {
 // GET /api/documents/:id - Get a single document
 router.get("/:id", async (req: AuthRequest, res: Response) => {
   try {
-    const document = await prisma.document.findUnique({
-      where: { id: req.params.id },
-    });
-
-    if (!document || document.userId !== req.user!.userId) {
+    const document = await getDocument(String(req.params.id), req.user!.userId);
+    if (!document) {
       res.status(404).json({ error: "文档不存在" });
       return;
     }
-
     res.json({ document });
   } catch (error) {
     console.error("Get document error:", error);
@@ -63,18 +59,7 @@ router.get("/:id", async (req: AuthRequest, res: Response) => {
 // POST /api/documents - Create a new document
 router.post("/", async (req: AuthRequest, res: Response) => {
   try {
-    const { title, content, preview, category } = req.body;
-
-    const document = await prisma.document.create({
-      data: {
-        title: title || "无标题文档",
-        content: content || "",
-        preview: preview || "",
-        category: category || "general",
-        userId: req.user!.userId,
-      },
-    });
-
+    const document = await createDocument(req.user!.userId, req.body);
     res.status(201).json({ document });
   } catch (error) {
     console.error("Create document error:", error);
@@ -85,27 +70,11 @@ router.post("/", async (req: AuthRequest, res: Response) => {
 // PUT /api/documents/:id - Update a document
 router.put("/:id", async (req: AuthRequest, res: Response) => {
   try {
-    const { title, content, preview, category } = req.body;
-
-    const existing = await prisma.document.findUnique({
-      where: { id: req.params.id },
-    });
-
-    if (!existing || existing.userId !== req.user!.userId) {
+    const document = await updateDocument(String(req.params.id), req.user!.userId, req.body);
+    if (!document) {
       res.status(404).json({ error: "文档不存在" });
       return;
     }
-
-    const document = await prisma.document.update({
-      where: { id: req.params.id },
-      data: {
-        ...(title !== undefined && { title }),
-        ...(content !== undefined && { content }),
-        ...(preview !== undefined && { preview }),
-        ...(category !== undefined && { category }),
-      },
-    });
-
     res.json({ document });
   } catch (error) {
     console.error("Update document error:", error);
