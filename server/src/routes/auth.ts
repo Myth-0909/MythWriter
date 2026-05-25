@@ -1,9 +1,6 @@
 import { Router, Request, Response } from "express";
-import crypto from "crypto";
-import bcrypt from "bcryptjs";
-import prisma from "../lib/prisma";
 import { generateToken, authMiddleware, AuthRequest } from "../middleware/auth";
-import { loginUser, registerUser, verifyPassword } from "../services/authService";
+import { generateResetCode, loginUser, registerUser, resetPassword, verifyPassword } from "../services/authService";
 
 const router = Router();
 
@@ -72,28 +69,15 @@ router.post("/forgot-password", async (req: Request, res: Response) => {
       return;
     }
 
-    const user = await prisma.user.findUnique({ where: { email } });
-    if (!user) {
-      res.status(404).json({ error: "该邮箱尚未注册", code: "NOT_REGISTERED" });
+    const result = await generateResetCode(email);
+    if ("error" in result) {
+      res.status(result.status).json({ error: result.error, code: result.code });
       return;
     }
 
-    // Generate 6-digit code, expires in 10 minutes
-    const code = crypto.randomInt(100000, 999999).toString();
-    const expires = new Date(Date.now() + 10 * 60 * 1000);
-
-    await prisma.user.update({
-      where: { id: user.id },
-      data: {
-        resetToken: code,
-        resetTokenExpires: expires,
-      },
-    });
-
-    // In production, send code via email. For development, return it in response.
     res.json({
       message: "重置验证码已生成",
-      code, // TODO: 生产环境通过邮件发送，此处仅开发调试用
+      code: result.code,
       expiresIn: "10分钟",
     });
   } catch (error) {
@@ -117,37 +101,11 @@ router.post("/reset-password", async (req: Request, res: Response) => {
       return;
     }
 
-    const user = await prisma.user.findUnique({ where: { email } });
-    if (!user) {
-      res.status(404).json({ error: "该邮箱尚未注册" });
+    const result = await resetPassword(email, code, newPassword);
+    if ("error" in result) {
+      res.status(result.status).json({ error: result.error });
       return;
     }
-
-    if (!user.resetToken || !user.resetTokenExpires) {
-      res.status(400).json({ error: "请先获取验证码" });
-      return;
-    }
-
-    if (new Date() > user.resetTokenExpires) {
-      res.status(400).json({ error: "验证码已过期，请重新获取" });
-      return;
-    }
-
-    if (user.resetToken !== code) {
-      res.status(400).json({ error: "验证码错误" });
-      return;
-    }
-
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
-
-    await prisma.user.update({
-      where: { id: user.id },
-      data: {
-        password: hashedPassword,
-        resetToken: null,
-        resetTokenExpires: null,
-      },
-    });
 
     res.json({ message: "密码重置成功，请重新登录" });
   } catch (error) {
