@@ -163,4 +163,9 @@ export const api = {
     request<{ verified: boolean }>(
       "/auth/verify-password", { method: "POST", body: JSON.stringify({ password }) }
     ),
+
+  logout: () =>
+    request<{ success: boolean; message: string }>(
+      "/session/logout", { method: "POST" }
+    ),
 };

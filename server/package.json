@@ -9,7 +9,10 @@
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate dev",
-    "db:studio": "prisma studio"
+    "db:studio": "prisma studio",
+    "db:generate-sqlite": "prisma generate --schema=prisma/schema-sqlite.prisma",
+    "db:push-sqlite": "prisma db push --schema=prisma/schema-sqlite.prisma",
+    "setup-sqlite": "tsx scripts/setup-sqlite.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.5.0",
@@ -17,12 +20,14 @@
     "cors": "^2.8.5",
     "dotenv": "^16.5.0",
     "express": "^4.21.0",
+    "ioredis": "^5.10.1",
     "jsonwebtoken": "^9.0.2"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.0",
+    "@types/ioredis": "^4.28.10",
     "@types/jsonwebtoken": "^9.0.7",
     "@types/node": "^22.13.0",
     "prisma": "^6.5.0",

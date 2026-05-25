@@ -1,12 +1,14 @@
 import { Router, Request, Response } from "express";
 import prisma from "../lib/prisma";
-import { AuthRequest, authMiddleware } from "../middleware/auth";
+import { AuthRequest, authMiddleware, authMiddlewareWithBlacklist } from "../middleware/auth";
+import { aiChatLimiter } from "../middleware/rateLimiter";
 
 const router = Router();
 const DEEPSEEK_URL = "https://api.deepseek.com/v1/chat/completions";
 
-// All AI routes require auth
-router.use(authMiddleware);
+// All AI routes require auth (with blacklist check) + rate limit
+router.use(authMiddlewareWithBlacklist);
+router.use(aiChatLimiter);
 
 async function getUserApiKey(req: AuthRequest): Promise<string | null> {
   const user = await prisma.user.findUnique({

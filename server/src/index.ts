@@ -7,6 +7,8 @@ import documentRoutes from "./routes/documents";
 import userRoutes from "./routes/users";
 import statsRoutes from "./routes/stats";
 import aiRoutes from "./routes/ai";
+import sessionRoutes from "./routes/session";
+import { connectRedis } from "./lib/redis";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -24,13 +26,19 @@ app.use("/api/documents", documentRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/stats", statsRoutes);
 app.use("/api/ai", aiRoutes);
+app.use("/api/session", sessionRoutes);
 
 // Health check
 app.get("/api/health", (_req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
 
-app.listen(PORT, () => {
-  console.log(`MythWriter API server running on http://localhost:${PORT}`);
-  console.log(`Health check: http://localhost:${PORT}/api/health`);
-});
+async function start() {
+  await connectRedis();
+  app.listen(PORT, () => {
+    console.log(`MythWriter API server running on http://localhost:${PORT}`);
+    console.log(`Health check: http://localhost:${PORT}/api/health`);
+  });
+}
+
+start();
