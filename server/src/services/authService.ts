@@ -1,10 +1,7 @@
 import bcrypt from "bcryptjs";
 import prisma from "../lib/prisma";
 
-export async function registerUser(name: string, email: string, password: string): Promise<
-  | { user: { id: string; name: string; email: string; avatar: string | null } }
-  | { error: string; status: number }
-> {
+export async function registerUser(name: string, email: string, password: string): Promise<UserResult | ErrorResult> {
   const existing = await prisma.user.findUnique({ where: { email } });
   if (existing) {
     return { error: "该邮箱已被注册", status: 409 };
@@ -22,6 +19,25 @@ export async function registerUser(name: string, email: string, password: string
       email: user.email,
       avatar: user.avatar,
     },
+  };
+}
+
+type UserResult = { user: { id: string; name: string; email: string; avatar: string | null } };
+type ErrorResult = { error: string; code?: string; status: number };
+
+export async function loginUser(email: string, password: string): Promise<UserResult | ErrorResult> {
+  const user = await prisma.user.findUnique({ where: { email } });
+  if (!user) {
+    return { error: "该邮箱尚未注册", code: "NOT_REGISTERED", status: 404 };
+  }
+
+  const valid = await bcrypt.compare(password, user.password);
+  if (!valid) {
+    return { error: "密码错误，请重试", code: "WRONG_PASSWORD", status: 401 };
+  }
+
+  return {
+    user: { id: user.id, name: user.name, email: user.email, avatar: user.avatar },
   };
 }
 
