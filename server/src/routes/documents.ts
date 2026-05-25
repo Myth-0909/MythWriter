@@ -1,6 +1,7 @@
 import { Router, Response } from "express";
 import prisma from "../lib/prisma";
 import { AuthRequest, authMiddleware } from "../middleware/auth";
+import { listDocuments, listFavorites, listTrash } from "../services/documentService";
 
 const router = Router();
 
@@ -10,14 +11,7 @@ router.use(authMiddleware);
 // GET /api/documents - List user's active documents
 router.get("/", async (req: AuthRequest, res: Response) => {
   try {
-    const documents = await prisma.document.findMany({
-      where: {
-        userId: req.user!.userId,
-        isDeleted: false,
-      },
-      orderBy: { updatedAt: "desc" },
-    });
-
+    const documents = await listDocuments(req.user!.userId);
     res.json({ documents });
   } catch (error) {
     console.error("List documents error:", error);
@@ -28,15 +22,7 @@ router.get("/", async (req: AuthRequest, res: Response) => {
 // GET /api/documents/favorites - List user's favorite documents
 router.get("/favorites", async (req: AuthRequest, res: Response) => {
   try {
-    const documents = await prisma.document.findMany({
-      where: {
-        userId: req.user!.userId,
-        isDeleted: false,
-        isFavorite: true,
-      },
-      orderBy: { updatedAt: "desc" },
-    });
-
+    const documents = await listFavorites(req.user!.userId);
     res.json({ documents });
   } catch (error) {
     console.error("List favorites error:", error);
@@ -47,14 +33,7 @@ router.get("/favorites", async (req: AuthRequest, res: Response) => {
 // GET /api/documents/trash - List user's trashed documents
 router.get("/trash", async (req: AuthRequest, res: Response) => {
   try {
-    const documents = await prisma.document.findMany({
-      where: {
-        userId: req.user!.userId,
-        isDeleted: true,
-      },
-      orderBy: { deletedAt: "desc" },
-    });
-
+    const documents = await listTrash(req.user!.userId);
     res.json({ documents });
   } catch (error) {
     console.error("List trash error:", error);
