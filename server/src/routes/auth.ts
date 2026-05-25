@@ -3,6 +3,7 @@ import crypto from "crypto";
 import bcrypt from "bcryptjs";
 import prisma from "../lib/prisma";
 import { generateToken, authMiddleware, AuthRequest } from "../middleware/auth";
+import { verifyPassword } from "../services/authService";
 
 const router = Router();
 
@@ -195,16 +196,7 @@ router.post("/verify-password", authMiddleware, async (req: AuthRequest, res: Re
       return;
     }
 
-    const user = await prisma.user.findUnique({
-      where: { id: req.user!.userId },
-      select: { password: true },
-    });
-    if (!user) {
-      res.status(404).json({ error: "用户不存在" });
-      return;
-    }
-
-    const valid = await bcrypt.compare(password, user.password);
+    const valid = await verifyPassword(req.user!.userId, password);
     if (!valid) {
       res.status(401).json({ error: "密码错误" });
       return;
