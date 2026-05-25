@@ -105,8 +105,7 @@ export function Editor({ documentId }: EditorProps) {
   // Load document content when switching
   useEffect(() => {
     if (!editor || !doc) return;
-    editor.commands.setContent(doc.content);
-    editor.commands.setTextSelection(0);
+    editor.chain().setContent(doc.content).setTextSelection(0).run();
     setSelectionChars(0);
     setTitle(doc.title);
     updateCounts(editor);
