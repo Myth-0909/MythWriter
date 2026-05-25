@@ -4,6 +4,7 @@ import path from "path";
 import bcrypt from "bcryptjs";
 import prisma from "../lib/prisma";
 import { AuthRequest, authMiddleware } from "../middleware/auth";
+import { t } from "../lib/i18n";
 
 const router = Router();
 const UPLOADS_DIR = path.join(__dirname, "../../uploads");
@@ -163,9 +164,6 @@ async function getUserLang(req: AuthRequest): Promise<string> {
     select: { lang: true },
   });
   return user?.lang || "zh";
-}
-function t(lang: string, zh: string, en: string): string {
-  return lang === "en" ? en : zh;
 }
 
 // GET /api/users/me/apikey - Get API key (masked)

@@ -2,6 +2,7 @@ import { Router, Request, Response } from "express";
 import prisma from "../lib/prisma";
 import { AuthRequest, authMiddleware, authMiddlewareWithBlacklist } from "../middleware/auth";
 import { aiChatLimiter } from "../middleware/rateLimiter";
+import { t } from "../lib/i18n";
 
 const router = Router();
 const DEEPSEEK_URL = "https://api.deepseek.com/v1/chat/completions";
@@ -16,10 +17,6 @@ async function getUserApiKey(req: AuthRequest): Promise<string | null> {
     select: { apiKey: true },
   });
   return user?.apiKey || null;
-}
-
-function t(userLang: string, zh: string, en: string): string {
-  return userLang === "en" ? en : zh;
 }
 
 type Personality = "normal" | "cute" | "catgirl" | "serious" | "silly";
