@@ -42,7 +42,7 @@ export default function App() {
   useEffect(() => {
     api.updateProfile({ lang }).catch(() => {});
   }, [lang]);
-  const { getDocument } = useDocuments();
+  const { getDocument, refreshDocuments } = useDocuments();
   const [currentPage, setCurrentPage] = useState<Page>("documents");
   const [isLoggedIn, setIsLoggedIn] = useState(() => checkLoggedIn());
   const [activeNav, setActiveNav] = useState<NavId>("documents");
@@ -81,6 +81,7 @@ export default function App() {
     updateUser(user);
     setIsLoggedIn(true);
     setCurrentPage("documents");
+    refreshDocuments();
   };
 
   const handleExport = (format: string) => {

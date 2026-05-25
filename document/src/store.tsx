@@ -40,7 +40,7 @@ export function useDocuments() {
 
 export function DocumentStoreProvider({ children }: { children: ReactNode }) {
   const [documents, setDocuments] = useState<Document[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   const activeDocs = documents.filter((d) => !d.isDeleted);
   const favorites = activeDocs.filter((d) => d.isFavorite);
@@ -53,6 +53,7 @@ export function DocumentStoreProvider({ children }: { children: ReactNode }) {
 
   const refreshDocuments = useCallback(async () => {
     if (!isLoggedIn()) return;
+    setLoading(true);
     try {
       const [docsRes, trashRes] = await Promise.all([
         api.listDocuments(),
@@ -61,14 +62,17 @@ export function DocumentStoreProvider({ children }: { children: ReactNode }) {
       setDocuments([...docsRes.documents, ...trashRes.documents]);
     } catch (error) {
       console.error("Failed to fetch documents:", error);
+    } finally {
+      setLoading(false);
     }
   }, []);
 
-  // Initial fetch
+  // Initial fetch (page refresh with existing token)
   useEffect(() => {
     if (isLoggedIn()) {
-      setLoading(true);
-      refreshDocuments().finally(() => setLoading(false));
+      refreshDocuments();
+    } else {
+      setLoading(false);
     }
   }, [refreshDocuments]);
 
