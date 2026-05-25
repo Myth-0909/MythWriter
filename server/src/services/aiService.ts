@@ -132,3 +132,57 @@ const DELETE_KEYWORDS = ["删除", "删掉", "移除", "清空", "delete", "remo
 export function detectDeleteCommand(content: string): boolean {
   return DELETE_KEYWORDS.some((kw) => content.includes(kw));
 }
+
+// --- Database operations ---
+import prisma from "../lib/prisma";
+
+export async function getUserApiKey(userId: string): Promise<{ apiKey: string | null; lang: string }> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { apiKey: true, lang: true },
+  });
+  return { apiKey: user?.apiKey || null, lang: user?.lang || "zh" };
+}
+
+export async function listConversations(userId: string) {
+  return prisma.conversation.findMany({
+    where: { userId },
+    orderBy: { updatedAt: "desc" },
+    take: 10,
+  });
+}
+
+export async function saveConversation(userId: string, messages: any[], personality: string) {
+  const firstUserMsg = (messages as any[]).find((m: any) => m.role === "user");
+  return prisma.conversation.create({
+    data: {
+      userId,
+      messages,
+      personality: personality || "normal",
+    },
+  });
+}
+
+export async function deleteConversations(userId: string) {
+  await prisma.conversation.deleteMany({ where: { userId } });
+}
+
+export async function logActivity(userId: string, action: string, detail: string | null) {
+  await prisma.activityLog.create({
+    data: { userId, action, detail },
+  });
+}
+
+export async function saveFeedback(userId: string, data: {
+  messageContent: string; feedbackType: string; rating?: number; reason?: string;
+}) {
+  return prisma.chatFeedback.create({
+    data: {
+      userId,
+      messageContent: data.messageContent,
+      feedbackType: data.feedbackType,
+      rating: data.feedbackType === "like" ? data.rating || null : null,
+      reason: data.feedbackType === "dislike" ? data.reason || null : null,
+    },
+  });
+}

@@ -1,9 +1,13 @@
 import { Router, Request, Response } from "express";
-import prisma from "../lib/prisma";
 import { AuthRequest, authMiddleware, authMiddlewareWithBlacklist } from "../middleware/auth";
 import { aiChatLimiter } from "../middleware/rateLimiter";
 import { t } from "../lib/i18n";
-import { buildSystemPrompt, detectDeleteCommand, detectInjection, parseAction, safePersonality } from "../services/aiService";
+import {
+  buildSystemPrompt, detectDeleteCommand, detectInjection,
+  parseAction, safePersonality, getUserApiKey,
+  listConversations, saveConversation, deleteConversations,
+  logActivity, saveFeedback,
+} from "../services/aiService";
 import type { Personality } from "../services/aiService";
 
 const router = Router();
@@ -12,14 +16,6 @@ const DEEPSEEK_URL = "https://api.deepseek.com/v1/chat/completions";
 // All AI routes require auth (with blacklist check) + rate limit
 router.use(authMiddlewareWithBlacklist);
 router.use(aiChatLimiter);
-
-async function getUserApiKey(req: AuthRequest): Promise<string | null> {
-  const user = await prisma.user.findUnique({
-    where: { id: req.user!.userId },
-    select: { apiKey: true },
-  });
-  return user?.apiKey || null;
-}
 
 // Greeting
 router.post("/greeting", async (req: Request, res: Response) => {
@@ -74,16 +70,11 @@ router.post("/chat", async (req: Request, res: Response) => {
     }
 
     const authReq = req as AuthRequest;
-    const user = await prisma.user.findUnique({
-      where: { id: authReq.user!.userId },
-      select: { apiKey: true, lang: true },
-    });
-    if (!user?.apiKey) {
-      const lang = user?.lang || "zh";
-      res.status(400).json({ error: t(lang, "请先在设置中配置 API Key", "Please configure API Key in Settings") });
+    const { apiKey, lang: userLang } = await getUserApiKey(authReq.user!.userId);
+    if (!apiKey) {
+      res.status(400).json({ error: t(userLang, "请先在设置中配置 API Key", "Please configure API Key in Settings") });
       return;
     }
-    const apiKey = user.apiKey;
 
     const pers = safePersonality(personality);
     const systemPrompt = buildSystemPrompt(pers, memoryContext || "");
@@ -187,22 +178,16 @@ router.post("/chat", async (req: Request, res: Response) => {
 
 // --- Conversation CRUD ---
 
-// Get user's conversations
 router.get("/conversations", async (req: Request, res: Response) => {
   try {
     const authReq = req as AuthRequest;
-    const conversations = await prisma.conversation.findMany({
-      where: { userId: authReq.user!.userId },
-      orderBy: { updatedAt: "desc" },
-      take: 10,
-    });
+    const conversations = await listConversations(authReq.user!.userId);
     res.json({ conversations });
   } catch (error) {
     res.status(500).json({ error: "Internal server error" });
   }
 });
 
-// Save conversation
 router.post("/conversations", async (req: Request, res: Response) => {
   try {
     const authReq = req as AuthRequest;
@@ -211,18 +196,7 @@ router.post("/conversations", async (req: Request, res: Response) => {
       res.status(400).json({ error: "messages is required" });
       return;
     }
-
-    // Use first user message as title
-    const firstUserMsg = (messages as any[]).find((m: any) => m.role === "user");
-    const title = firstUserMsg?.content?.slice(0, 50) || "New conversation";
-
-    const conversation = await prisma.conversation.create({
-      data: {
-        userId: authReq.user!.userId,
-        messages: messages,
-        personality: personality || "normal",
-      },
-    });
+    const conversation = await saveConversation(authReq.user!.userId, messages, personality);
     res.json({ conversation });
   } catch (error) {
     console.error("Save conversation error:", error);
@@ -230,20 +204,17 @@ router.post("/conversations", async (req: Request, res: Response) => {
   }
 });
 
-// Delete user's conversations
 router.delete("/conversations", async (req: Request, res: Response) => {
   try {
     const authReq = req as AuthRequest;
-    await prisma.conversation.deleteMany({
-      where: { userId: authReq.user!.userId },
-    });
+    await deleteConversations(authReq.user!.userId);
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: "Internal server error" });
   }
 });
 
-// --- Activity Log (authenticated) ---
+// --- Activity Log ---
 router.post("/log", async (req: Request, res: Response) => {
   try {
     const authReq = req as AuthRequest;
@@ -252,20 +223,14 @@ router.post("/log", async (req: Request, res: Response) => {
       res.status(400).json({ error: "action is required" });
       return;
     }
-    await prisma.activityLog.create({
-      data: {
-        userId: authReq.user!.userId,
-        action,
-        detail: detail || null,
-      },
-    });
+    await logActivity(authReq.user!.userId, action, detail);
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: "Internal server error" });
   }
 });
 
-// --- Feedback (authenticated) ---
+// --- Feedback ---
 router.post("/feedback", async (req: Request, res: Response) => {
   try {
     const authReq = req as AuthRequest;
@@ -274,15 +239,7 @@ router.post("/feedback", async (req: Request, res: Response) => {
       res.status(400).json({ error: "messageContent and feedbackType are required" });
       return;
     }
-    const feedback = await prisma.chatFeedback.create({
-      data: {
-        userId: authReq.user!.userId,
-        messageContent,
-        feedbackType,
-        rating: feedbackType === "like" ? rating || null : null,
-        reason: feedbackType === "dislike" ? reason || null : null,
-      },
-    });
+    const feedback = await saveFeedback(authReq.user!.userId, req.body);
     res.json({ feedback });
   } catch (error) {
     res.status(500).json({ error: "Internal server error" });
