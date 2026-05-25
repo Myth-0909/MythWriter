@@ -27,7 +27,7 @@ function EditorPageContent({ activeDocId, setActiveDocId }: { activeDocId: strin
     <>
       <DocumentList activeId={activeDocId} onSelect={setActiveDocId} />
       <div className="flex-1">
-        <Editor documentId={activeDocId} />
+        <Editor documentId={activeDocId} key={activeDocId} />
       </div>
     </>
   );
