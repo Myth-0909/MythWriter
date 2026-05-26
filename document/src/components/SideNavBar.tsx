@@ -91,14 +91,14 @@ export function SideNavBar({ activeNav, onNavChange, collapsed = false }: SideNa
           {collapsed ? (
             <button
               onClick={() => setLogoPreviewOpen(true)}
-              className="flex w-full justify-center rounded-lg p-1 transition-colors hover:bg-surface-100 dark:hover:bg-surface-800"
+              className="flex w-full justify-center rounded-lg p-0"
             >
               <BrandLogo size="md" />
             </button>
           ) : (
             <button
               onClick={() => setLogoPreviewOpen(true)}
-              className="flex items-center gap-2 rounded-lg p-1 text-left transition-colors hover:bg-surface-100 dark:hover:bg-surface-800"
+              className="flex items-center gap-2 rounded-lg p-0 text-left"
             >
               <BrandLogo size="sm" />
               <ShinyText
