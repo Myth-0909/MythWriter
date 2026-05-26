@@ -74,26 +74,18 @@ router.put("/me/apikey", async (req: AuthRequest, res: Response) => {
   try {
     const { apiKey, baseUrl, model } = req.body;
     const current = await getApiKey(req.user!.userId);
-    if ((!apiKey || !apiKey.trim()) && !current.hasKey) {
-      res.status(400).json({ error: t("zh", "API Key不能为空", "API Key is required") });
-      return;
-    }
-    if (!baseUrl || !baseUrl.trim()) {
-      res.status(400).json({ error: t("zh", "Base URL不能为空", "Base URL is required") });
-      return;
-    }
-    if (!/^https?:\/\//i.test(baseUrl.trim())) {
+    const nextBaseUrl = typeof baseUrl === "string" && baseUrl.trim() ? baseUrl.trim() : current.baseUrl;
+    const nextModel = typeof model === "string" && model.trim() ? model.trim() : current.model;
+
+    if (!/^https?:\/\//i.test(nextBaseUrl)) {
       res.status(400).json({ error: t("zh", "Base URL必须以http://或https://开头", "Base URL must start with http:// or https://") });
       return;
     }
-    if (!model || !model.trim()) {
-      res.status(400).json({ error: t("zh", "模型名称不能为空", "Model is required") });
-      return;
-    }
+
     await saveApiKey(req.user!.userId, {
-      ...(apiKey?.trim() && { apiKey }),
-      baseUrl,
-      model,
+      ...((!current.hasKey || apiKey !== undefined) && { apiKey: apiKey || "" }),
+      baseUrl: nextBaseUrl,
+      model: nextModel,
     });
     res.json({ success: true });
   } catch (error) {

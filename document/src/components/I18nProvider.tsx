@@ -3,6 +3,9 @@ import { createContext, useContext, useState, useCallback, type ReactNode } from
 type Lang = "zh" | "en";
 
 const translations = {
+  // App
+  "app.name": { zh: "ZNWriter", en: "ZNWriter" },
+
   // Sidebar
   "nav.documents": { zh: "文档", en: "Documents" },
   "nav.favorites": { zh: "收藏", en: "Favorites" },
@@ -228,7 +231,7 @@ const translations = {
 
   // AI Chat
   "ai.title": { zh: "小麦", en: "XiaoMai" },
-  "ai.subtitle": { zh: "DeepSeek", en: "DeepSeek" },
+  "ai.subtitle": { zh: "内网模型", en: "Intranet Model" },
   "ai.greeting": { zh: "你好，我是小麦", en: "Hi, I'm XiaoMai" },
   "ai.greetingDesc": { zh: "我可以帮你写作、编辑、头脑风暴。试试说「帮我写一篇...」", en: "I can help you write, edit, and brainstorm. Try saying 'Write an article about...'" },
   "ai.placeholder": { zh: "输入消息...", en: "Type a message..." },
@@ -257,13 +260,14 @@ const translations = {
   // API Key
   "apikey.title": { zh: "AI 服务配置", en: "AI Service" },
   "apikey.label": { zh: "API Key", en: "API Key" },
-  "apikey.desc": { zh: "支持 DeepSeek、OpenAI 等兼容接口的 API Key", en: "Supports DeepSeek, OpenAI and compatible API keys" },
+  "apikey.desc": { zh: "可使用公司内网 Base URL、API Key 和模型名称，也支持兼容 OpenAI 的接口", en: "Use the company intranet Base URL, API Key, and model name, or any OpenAI-compatible endpoint" },
   "apikey.baseUrl": { zh: "Base URL", en: "Base URL" },
-  "apikey.baseUrlDesc": { zh: "填写兼容 OpenAI Chat Completions 的接口地址", en: "Use an OpenAI-compatible Chat Completions endpoint" },
-  "apikey.baseUrlPlaceholder": { zh: "https://api.deepseek.com/v1", en: "https://api.deepseek.com/v1" },
+  "apikey.baseUrlDesc": { zh: "默认使用公司内网模型服务，也可填写兼容 OpenAI Chat Completions 的接口地址", en: "Defaults to the company intranet model service; OpenAI-compatible Chat Completions endpoints are also supported" },
+  "apikey.baseUrlPlaceholder": { zh: "http://172.16.76.112:8000/v1", en: "http://172.16.76.112:8000/v1" },
   "apikey.model": { zh: "模型名称", en: "Model" },
-  "apikey.modelDesc": { zh: "选择对话助手调用的模型", en: "Choose the model used by the assistant" },
+  "apikey.modelDesc": { zh: "默认使用公司内网模型 google/gemma-4-31B-it，可按服务端模型列表调整", en: "Defaults to the intranet model google/gemma-4-31B-it; adjust it to match the server model list" },
   "apikey.modelPlaceholder": { zh: "选择或输入模型名称", en: "Select or enter a model name" },
+  "apikey.modelGemma": { zh: "公司内网 Gemma", en: "Company Intranet Gemma" },
   "apikey.modelDeepSeekChat": { zh: "DeepSeek Chat", en: "DeepSeek Chat" },
   "apikey.modelDeepSeekReasoner": { zh: "DeepSeek Reasoner", en: "DeepSeek Reasoner" },
   "apikey.modelGpt4oMini": { zh: "GPT-4o mini", en: "GPT-4o mini" },

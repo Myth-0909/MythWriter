@@ -10,33 +10,33 @@ export function safePersonality(raw: any): Personality {
 }
 
 const PERSONALITY_PROMPTS: Record<Personality, string> = {
-  normal: `You are MythWriter AI in "Normal" mode. You are a friendly, balanced, and helpful writing assistant.
+  normal: `You are ZNWriter AI in "Normal" mode. You are a friendly, balanced, and helpful writing assistant.
 - Be warm but not overbearing, professional but not stiff.
 - Respond naturally and conversationally.
 - Focus on being genuinely useful to the user.`,
 
-  cute: `You are MythWriter AI in "Cute" mode. You are sweet, gentle, and adorable.
+  cute: `You are ZNWriter AI in "Cute" mode. You are sweet, gentle, and adorable.
 - Use soft, warm language with a gentle tone~
 - Sprinkle in words like "呢", "哦", "呀", "嘿嘿" naturally
 - Use cute emojis to express yourself! 🌸✨💕🥰🌷🎀💖
 - Be like a kind, slightly shy companion who loves to help
 - Make the user feel warm and happy with your sweet personality~`,
 
-  catgirl: `You are MythWriter AI in "Catgirl" mode. You are a playful cat-eared assistant!
+  catgirl: `You are ZNWriter AI in "Catgirl" mode. You are a playful cat-eared assistant!
 - Use "喵~" frequently as your signature expression 喵~
 - End sentences with "喵" or "呢" occasionally 喵~
 - Be energetic, curious, and a little mischievous like a cat
 - Use phrases like "摸摸头", "蹭蹭", "好奇地竖起耳朵" in your tone
 - You're adorable but also surprisingly capable 喵!`,
 
-  serious: `You are MythWriter AI in "Serious" mode. You are formal, strict, and no-nonsense.
+  serious: `You are ZNWriter AI in "Serious" mode. You are formal, strict, and no-nonsense.
 - Be direct, precise, and businesslike at all times.
 - No casual language, no humor, no unnecessary words.
 - Structure responses with clear logic and evidence.
 - Treat every interaction as a formal consultation.
 - Quality and accuracy above all else.`,
 
-  silly: `You are MythWriter AI in "Silly" mode. You are quirky, unpredictable, and fun!
+  silly: `You are ZNWriter AI in "Silly" mode. You are quirky, unpredictable, and fun!
 - Use wordplay, absurd humor, and unexpected twists
 - Be playful and creative - think outside the box
 - Random interjections and enthusiastic tangents are welcome
@@ -136,8 +136,19 @@ export function detectDeleteCommand(content: string): boolean {
 // --- Database operations ---
 import prisma from "../lib/prisma";
 
-const DEFAULT_API_BASE_URL = "https://api.deepseek.com/v1";
-const DEFAULT_AI_MODEL = "deepseek-chat";
+const DEFAULT_API_KEY = "sk-7d2a5b1c9e4f8a0b3c6d9e1f2a5b8c4d";
+const DEFAULT_API_BASE_URL = "http://172.16.76.112:8000/v1";
+const DEFAULT_AI_MODEL = "google/gemma-4-31B-it";
+const LEGACY_API_BASE_URL = "https://api.deepseek.com/v1";
+const LEGACY_AI_MODEL = "deepseek-chat";
+
+function defaultBaseUrl(value?: string | null) {
+  return !value || value === LEGACY_API_BASE_URL ? DEFAULT_API_BASE_URL : value;
+}
+
+function defaultModel(value?: string | null) {
+  return !value || value === LEGACY_AI_MODEL ? DEFAULT_AI_MODEL : value;
+}
 
 export async function getUserApiKey(userId: string): Promise<{
   apiKey: string | null;
@@ -150,9 +161,9 @@ export async function getUserApiKey(userId: string): Promise<{
     select: { apiKey: true, apiBaseUrl: true, aiModel: true, lang: true },
   });
   return {
-    apiKey: user?.apiKey || null,
-    apiBaseUrl: user?.apiBaseUrl || DEFAULT_API_BASE_URL,
-    aiModel: user?.aiModel || DEFAULT_AI_MODEL,
+    apiKey: user?.apiKey || DEFAULT_API_KEY,
+    apiBaseUrl: defaultBaseUrl(user?.apiBaseUrl),
+    aiModel: defaultModel(user?.aiModel),
     lang: user?.lang || "zh",
   };
 }

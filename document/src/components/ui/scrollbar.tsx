@@ -9,7 +9,7 @@ interface ScrollbarProps extends OverlayScrollbarsComponentProps {
 
 export function Scrollbar({ className, children, options, ...props }: ScrollbarProps) {
   const { theme } = useTheme();
-  const themeName = theme === "dark" ? "os-theme-mythwriter-dark" : "os-theme-mythwriter-light";
+  const themeName = theme === "dark" ? "os-theme-znwriter-dark" : "os-theme-znwriter-light";
 
   const callerScrollbars = (options && typeof options === "object" && "scrollbars" in options)
     ? (options as any).scrollbars : {};

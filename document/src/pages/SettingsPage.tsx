@@ -10,6 +10,7 @@ import { api } from "@/api";
 import { Sun, Moon, Monitor, Languages, User, Camera, Info, Loader2, Key, Eye, EyeOff, Pencil, X } from "lucide-react";
 
 const MODEL_OPTIONS = [
+  { value: "google/gemma-4-31B-it", labelKey: "apikey.modelGemma" },
   { value: "deepseek-chat", labelKey: "apikey.modelDeepSeekChat" },
   { value: "deepseek-reasoner", labelKey: "apikey.modelDeepSeekReasoner" },
   { value: "gpt-4o-mini", labelKey: "apikey.modelGpt4oMini" },
@@ -29,8 +30,8 @@ export function SettingsPage() {
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [apiKey, setApiKey] = useState("");
-  const [baseUrl, setBaseUrl] = useState("https://api.deepseek.com/v1");
-  const [model, setModel] = useState("deepseek-chat");
+  const [baseUrl, setBaseUrl] = useState("http://172.16.76.112:8000/v1");
+  const [model, setModel] = useState("google/gemma-4-31B-it");
   const [maskedKey, setMaskedKey] = useState("");
   const [showKey, setShowKey] = useState(false);
   const [savingKey, setSavingKey] = useState(false);
@@ -500,7 +501,7 @@ export function SettingsPage() {
               </h3>
             </div>
             <div className="flex items-center justify-between py-2">
-              <span className="text-sm text-surface-700 dark:text-surface-300">MythWriter</span>
+              <span className="text-sm text-surface-700 dark:text-surface-300">{t("app.name")}</span>
               <span className="text-sm text-surface-500">{t("settings.version")} 1.0.0</span>
             </div>
           </section>

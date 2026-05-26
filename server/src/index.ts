@@ -46,7 +46,7 @@ async function start() {
   await connectRedis();
 
   app.listen(PORT, () => {
-    console.log(`MythWriter API server running on http://localhost:${PORT}`);
+    console.log(`ZNWriter API server running on http://localhost:${PORT}`);
     console.log(`Health check: http://localhost:${PORT}/api/health`);
   });
 }

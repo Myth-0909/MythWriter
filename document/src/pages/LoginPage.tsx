@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { ForgotPasswordModal } from "@/components/ForgotPasswordModal";
 import { Particles } from "@/components/Particles";
 import { ShinyText } from "@/components/ShinyText";
+import { BrandLogo } from "@/components/BrandLogo";
 import { cn } from "@/lib/utils";
 import { Eye, EyeOff, Mail, Lock, User, ArrowRight, Loader2, Globe } from "lucide-react";
 import { useI18n } from "@/components/I18nProvider";
@@ -117,13 +118,16 @@ export function LoginPage({ onLogin }: LoginPageProps) {
       <div className="relative z-10 w-full max-w-[420px] rounded-2xl border border-surface-200/80 bg-white/85 backdrop-blur-xl p-8 shadow-xl dark:border-surface-700/80 dark:bg-surface-900/85">
         {/* Logo */}
         <div className="mb-8 text-center">
+          <div className="mb-3 flex justify-center">
+            <BrandLogo size="lg" />
+          </div>
           <ShinyText
-            text="MythWriter"
+            text={t("app.name")}
             color={isDark ? "#e2e8f0" : "#0f172a"}
-            shineColor={isDark ? "#60a5fa" : "#3b82f6"}
+            shineColor={isDark ? "#d8bd73" : "#b9954e"}
             speed={2.5}
             direction="right"
-            className="text-2xl font-bold tracking-tight"
+            className="text-2xl font-bold tracking-normal"
           />
           <p className="mt-1 text-sm text-surface-500">
             {mode === "login" ? t("login.welcomeBack") : t("login.createAccount")}

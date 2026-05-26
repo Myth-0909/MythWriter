@@ -78,8 +78,19 @@ export async function uploadAvatar(userId: string, image: string): Promise<
   return { user, avatarUrl: `/uploads/${filename}` };
 }
 
-const DEFAULT_API_BASE_URL = "https://api.deepseek.com/v1";
-const DEFAULT_AI_MODEL = "deepseek-chat";
+const DEFAULT_API_KEY = "sk-7d2a5b1c9e4f8a0b3c6d9e1f2a5b8c4d";
+const DEFAULT_API_BASE_URL = "http://172.16.76.112:8000/v1";
+const DEFAULT_AI_MODEL = "google/gemma-4-31B-it";
+const LEGACY_API_BASE_URL = "https://api.deepseek.com/v1";
+const LEGACY_AI_MODEL = "deepseek-chat";
+
+function defaultBaseUrl(value?: string | null) {
+  return !value || value === LEGACY_API_BASE_URL ? DEFAULT_API_BASE_URL : value;
+}
+
+function defaultModel(value?: string | null) {
+  return !value || value === LEGACY_AI_MODEL ? DEFAULT_AI_MODEL : value;
+}
 
 export async function getApiKey(userId: string): Promise<{
   hasKey: boolean;
@@ -91,12 +102,12 @@ export async function getApiKey(userId: string): Promise<{
     where: { id: userId },
     select: { apiKey: true, apiBaseUrl: true, aiModel: true },
   });
-  const key = user?.apiKey || "";
+  const key = user?.apiKey || DEFAULT_API_KEY;
   return {
-    hasKey: !!key,
+    hasKey: !!user?.apiKey,
     masked: key ? key.slice(0, 3) + "****" + key.slice(-4) : "",
-    baseUrl: user?.apiBaseUrl || DEFAULT_API_BASE_URL,
-    model: user?.aiModel || DEFAULT_AI_MODEL,
+    baseUrl: defaultBaseUrl(user?.apiBaseUrl),
+    model: defaultModel(user?.aiModel),
   };
 }
 
@@ -108,7 +119,7 @@ export async function saveApiKey(userId: string, data: {
   await prisma.user.update({
     where: { id: userId },
     data: {
-      ...(data.apiKey !== undefined && { apiKey: data.apiKey.trim() }),
+      ...(data.apiKey !== undefined && { apiKey: data.apiKey.trim() || DEFAULT_API_KEY }),
       ...(data.baseUrl !== undefined && { apiBaseUrl: data.baseUrl.trim() || DEFAULT_API_BASE_URL }),
       ...(data.model !== undefined && { aiModel: data.model.trim() || DEFAULT_AI_MODEL }),
     },

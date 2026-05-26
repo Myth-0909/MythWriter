@@ -10,6 +10,7 @@ import { ShinyText } from "@/components/ShinyText";
 import { Tooltip } from "@/components/ui/tooltip";
 import { useTheme } from "@/components/ThemeProvider";
 import { useI18n } from "@/components/I18nProvider";
+import { BrandLogo } from "@/components/BrandLogo";
 
 type NavId = "documents" | "favorites" | "trash" | "settings";
 
@@ -72,6 +73,7 @@ function NavButton({ item, isActive, collapsed, onClick }: {
 
 export function SideNavBar({ activeNav, onNavChange, collapsed = false }: SideNavBarProps) {
   const { theme } = useTheme();
+  const { t } = useI18n();
 
   return (
     <aside
@@ -84,18 +86,18 @@ export function SideNavBar({ activeNav, onNavChange, collapsed = false }: SideNa
       <div className={cn("pt-6 pb-4", collapsed ? "px-3" : "px-6")}>
         {collapsed ? (
           <div className="flex justify-center">
-            <img src="/Logo.png" alt="MythWriter" className="h-8 w-8 rounded-md object-contain" />
+            <BrandLogo size="md" />
           </div>
         ) : (
           <div className="flex items-center gap-2">
-            <img src="/Logo.png" alt="MythWriter" className="h-7 w-7 rounded-md object-contain" />
+            <BrandLogo size="sm" />
             <ShinyText
-              text="MythWriter"
+              text={t("app.name")}
               color={theme === "dark" ? "#f1f5f9" : "#0f172a"}
-              shineColor={theme === "dark" ? "#60a5fa" : "#3b82f6"}
+              shineColor={theme === "dark" ? "#d8bd73" : "#b9954e"}
               speed={3}
               direction="right"
-              className="text-lg font-bold tracking-tight"
+              className="text-lg font-bold tracking-normal"
             />
           </div>
         )}
