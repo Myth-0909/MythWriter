@@ -40,7 +40,7 @@ router.get("/weekly", async (req: AuthRequest, res: Response) => {
     const wordsPerDay: Record<string, number> = {};
     days.forEach((d) => (wordsPerDay[d] = 0));
 
-    documents.forEach((doc) => {
+    documents.forEach((doc: { content: string | null; updatedAt: Date }) => {
       // Use UTC date string for consistent grouping
       const day = doc.updatedAt.getUTCFullYear() + "-" +
         String(doc.updatedAt.getUTCMonth() + 1).padStart(2, "0") + "-" +

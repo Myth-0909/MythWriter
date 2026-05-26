@@ -136,12 +136,25 @@ export function detectDeleteCommand(content: string): boolean {
 // --- Database operations ---
 import prisma from "../lib/prisma";
 
-export async function getUserApiKey(userId: string): Promise<{ apiKey: string | null; lang: string }> {
+const DEFAULT_API_BASE_URL = "https://api.deepseek.com/v1";
+const DEFAULT_AI_MODEL = "deepseek-chat";
+
+export async function getUserApiKey(userId: string): Promise<{
+  apiKey: string | null;
+  apiBaseUrl: string;
+  aiModel: string;
+  lang: string;
+}> {
   const user = await prisma.user.findUnique({
     where: { id: userId },
-    select: { apiKey: true, lang: true },
+    select: { apiKey: true, apiBaseUrl: true, aiModel: true, lang: true },
   });
-  return { apiKey: user?.apiKey || null, lang: user?.lang || "zh" };
+  return {
+    apiKey: user?.apiKey || null,
+    apiBaseUrl: user?.apiBaseUrl || DEFAULT_API_BASE_URL,
+    aiModel: user?.aiModel || DEFAULT_AI_MODEL,
+    lang: user?.lang || "zh",
+  };
 }
 
 export async function listConversations(userId: string) {

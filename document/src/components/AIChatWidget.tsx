@@ -38,6 +38,11 @@ interface Message {
   content: string;
 }
 
+interface Position {
+  x: number;
+  y: number;
+}
+
 function loadMemory(): Message[] {
   try { return JSON.parse(localStorage.getItem(MEMORY_KEY) || "[]"); } catch { return []; }
 }
@@ -175,7 +180,7 @@ export function AIChatWidget() {
   }, [messages, saving]);
 
   // Drag - restore saved position or default bottom-right
-  const [pos, setPos] = useState(() => {
+  const [pos, setPos] = useState<Position>(() => {
     try {
       const saved = localStorage.getItem("chat-btn-pos");
       if (saved) return JSON.parse(saved);

@@ -11,7 +11,12 @@ import {
 import type { Personality } from "../services/aiService";
 
 const router = Router();
-const DEEPSEEK_URL = "https://api.deepseek.com/v1/chat/completions";
+
+function buildChatCompletionsUrl(baseUrl: string): string {
+  const trimmed = baseUrl.trim().replace(/\/+$/, "");
+  if (trimmed.endsWith("/chat/completions")) return trimmed;
+  return `${trimmed}/chat/completions`;
+}
 
 // All AI routes require auth (with blacklist check) + rate limit
 router.use(authMiddlewareWithBlacklist);
@@ -70,7 +75,7 @@ router.post("/chat", async (req: Request, res: Response) => {
     }
 
     const authReq = req as AuthRequest;
-    const { apiKey, lang: userLang } = await getUserApiKey(authReq.user!.userId);
+    const { apiKey, apiBaseUrl, aiModel, lang: userLang } = await getUserApiKey(authReq.user!.userId);
     if (!apiKey) {
       res.status(400).json({ error: t(userLang, "请先在设置中配置 API Key", "Please configure API Key in Settings") });
       return;
@@ -80,14 +85,14 @@ router.post("/chat", async (req: Request, res: Response) => {
     const systemPrompt = buildSystemPrompt(pers, memoryContext || "");
 
     // Use streaming
-    const response = await fetch(DEEPSEEK_URL, {
+    const response = await fetch(buildChatCompletionsUrl(apiBaseUrl), {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: "deepseek-chat",
+        model: aiModel,
         messages: [
           { role: "system", content: systemPrompt },
           ...messages,
@@ -100,8 +105,8 @@ router.post("/chat", async (req: Request, res: Response) => {
 
     if (!response.ok) {
       const errText = await response.text();
-      console.error("DeepSeek API error:", response.status, errText);
-      res.status(502).json({ error: "AI service unavailable" });
+      console.error("AI API error:", response.status, errText);
+      res.status(502).json({ error: t(userLang, "AI 服务不可用", "AI service unavailable") });
       return;
     }
 

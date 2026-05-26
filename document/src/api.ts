@@ -150,13 +150,13 @@ export const api = {
     ),
 
   getApiKey: () =>
-    request<{ hasKey: boolean; masked: string }>(
+    request<{ hasKey: boolean; masked: string; baseUrl: string; model: string }>(
       "/users/me/apikey"
     ),
 
-  saveApiKey: (apiKey: string) =>
+  saveApiKey: (data: { apiKey?: string; baseUrl: string; model: string }) =>
     request<{ success: boolean }>(
-      "/users/me/apikey", { method: "PUT", body: JSON.stringify({ apiKey }) }
+      "/users/me/apikey", { method: "PUT", body: JSON.stringify(data) }
     ),
 
   verifyPassword: (password: string) =>

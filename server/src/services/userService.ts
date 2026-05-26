@@ -78,21 +78,39 @@ export async function uploadAvatar(userId: string, image: string): Promise<
   return { user, avatarUrl: `/uploads/${filename}` };
 }
 
-export async function getApiKey(userId: string): Promise<{ hasKey: boolean; masked: string }> {
+const DEFAULT_API_BASE_URL = "https://api.deepseek.com/v1";
+const DEFAULT_AI_MODEL = "deepseek-chat";
+
+export async function getApiKey(userId: string): Promise<{
+  hasKey: boolean;
+  masked: string;
+  baseUrl: string;
+  model: string;
+}> {
   const user = await prisma.user.findUnique({
-    where: { id: userId }, select: { apiKey: true },
+    where: { id: userId },
+    select: { apiKey: true, apiBaseUrl: true, aiModel: true },
   });
   const key = user?.apiKey || "";
   return {
     hasKey: !!key,
     masked: key ? key.slice(0, 3) + "****" + key.slice(-4) : "",
+    baseUrl: user?.apiBaseUrl || DEFAULT_API_BASE_URL,
+    model: user?.aiModel || DEFAULT_AI_MODEL,
   };
 }
 
-export async function saveApiKey(userId: string, apiKey: string) {
+export async function saveApiKey(userId: string, data: {
+  apiKey?: string;
+  baseUrl?: string;
+  model?: string;
+}) {
   await prisma.user.update({
     where: { id: userId },
-    data: { apiKey: apiKey.trim() },
+    data: {
+      ...(data.apiKey !== undefined && { apiKey: data.apiKey.trim() }),
+      ...(data.baseUrl !== undefined && { apiBaseUrl: data.baseUrl.trim() || DEFAULT_API_BASE_URL }),
+      ...(data.model !== undefined && { aiModel: data.model.trim() || DEFAULT_AI_MODEL }),
+    },
   });
 }
-

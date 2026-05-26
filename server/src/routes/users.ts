@@ -72,12 +72,29 @@ router.get("/me/apikey", async (req: AuthRequest, res: Response) => {
 // PUT /api/users/me/apikey - Save API key
 router.put("/me/apikey", async (req: AuthRequest, res: Response) => {
   try {
-    const { apiKey } = req.body;
-    if (!apiKey || !apiKey.trim()) {
+    const { apiKey, baseUrl, model } = req.body;
+    const current = await getApiKey(req.user!.userId);
+    if ((!apiKey || !apiKey.trim()) && !current.hasKey) {
       res.status(400).json({ error: t("zh", "API Key不能为空", "API Key is required") });
       return;
     }
-    await saveApiKey(req.user!.userId, apiKey);
+    if (!baseUrl || !baseUrl.trim()) {
+      res.status(400).json({ error: t("zh", "Base URL不能为空", "Base URL is required") });
+      return;
+    }
+    if (!/^https?:\/\//i.test(baseUrl.trim())) {
+      res.status(400).json({ error: t("zh", "Base URL必须以http://或https://开头", "Base URL must start with http:// or https://") });
+      return;
+    }
+    if (!model || !model.trim()) {
+      res.status(400).json({ error: t("zh", "模型名称不能为空", "Model is required") });
+      return;
+    }
+    await saveApiKey(req.user!.userId, {
+      ...(apiKey?.trim() && { apiKey }),
+      baseUrl,
+      model,
+    });
     res.json({ success: true });
   } catch (error) {
     res.status(500).json({ error: t("zh", "保存API Key失败", "Failed to save API Key") });
