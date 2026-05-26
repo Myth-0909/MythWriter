@@ -11,11 +11,6 @@ import { Sun, Moon, Monitor, Languages, User, Camera, Info, Loader2, Key, Eye, E
 
 const MODEL_OPTIONS = [
   { value: "google/gemma-4-31B-it", labelKey: "apikey.modelGemma" },
-  { value: "deepseek-chat", labelKey: "apikey.modelDeepSeekChat" },
-  { value: "deepseek-reasoner", labelKey: "apikey.modelDeepSeekReasoner" },
-  { value: "gpt-4o-mini", labelKey: "apikey.modelGpt4oMini" },
-  { value: "gpt-4.1-mini", labelKey: "apikey.modelGpt41Mini" },
-  { value: "qwen-plus", labelKey: "apikey.modelQwenPlus" },
 ] as const;
 
 export function SettingsPage() {

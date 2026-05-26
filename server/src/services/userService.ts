@@ -102,12 +102,26 @@ export async function getApiKey(userId: string): Promise<{
     where: { id: userId },
     select: { apiKey: true, apiBaseUrl: true, aiModel: true },
   });
+  const baseUrl = defaultBaseUrl(user?.apiBaseUrl);
+  const model = defaultModel(user?.aiModel);
+
+  if (user && (user.apiBaseUrl !== baseUrl || user.aiModel !== model || !user.apiKey)) {
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        ...(!user.apiKey && { apiKey: DEFAULT_API_KEY }),
+        apiBaseUrl: baseUrl,
+        aiModel: model,
+      },
+    });
+  }
+
   const key = user?.apiKey || DEFAULT_API_KEY;
   return {
     hasKey: !!user?.apiKey,
     masked: key ? key.slice(0, 3) + "****" + key.slice(-4) : "",
-    baseUrl: defaultBaseUrl(user?.apiBaseUrl),
-    model: defaultModel(user?.aiModel),
+    baseUrl,
+    model,
   };
 }
 
