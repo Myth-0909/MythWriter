@@ -159,6 +159,11 @@ export const api = {
       "/users/me/apikey", { method: "PUT", body: JSON.stringify(data) }
     ),
 
+  fetchModels: (data: { baseUrl: string; apiKey?: string }) =>
+    request<{ models: string[] }>(
+      "/users/me/models", { method: "POST", body: JSON.stringify(data) }
+    ),
+
   verifyPassword: (password: string) =>
     request<{ verified: boolean }>(
       "/auth/verify-password", { method: "POST", body: JSON.stringify({ password }) }

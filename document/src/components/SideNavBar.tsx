@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { cn } from "@/lib/utils";
 import {
   FileText,
@@ -11,6 +12,7 @@ import { Tooltip } from "@/components/ui/tooltip";
 import { useTheme } from "@/components/ThemeProvider";
 import { useI18n } from "@/components/I18nProvider";
 import { BrandLogo } from "@/components/BrandLogo";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 
 type NavId = "documents" | "favorites" | "trash" | "settings";
 
@@ -74,53 +76,74 @@ function NavButton({ item, isActive, collapsed, onClick }: {
 export function SideNavBar({ activeNav, onNavChange, collapsed = false }: SideNavBarProps) {
   const { theme } = useTheme();
   const { t } = useI18n();
+  const [logoPreviewOpen, setLogoPreviewOpen] = useState(false);
 
   return (
-    <aside
-      className={cn(
-        "flex h-full shrink-0 flex-col border-r border-surface-200 bg-surface-50 transition-all duration-300 dark:border-surface-800 dark:bg-surface-950",
-        collapsed ? "w-[64px]" : "w-[240px]"
-      )}
-    >
-      {/* Logo Area */}
-      <div className={cn("pt-6 pb-4", collapsed ? "px-3" : "px-6")}>
-        {collapsed ? (
-          <div className="flex justify-center">
-            <BrandLogo size="md" />
-          </div>
-        ) : (
-          <div className="flex items-center gap-2">
-            <BrandLogo size="sm" />
-            <ShinyText
-              text={t("app.name")}
-              color={theme === "dark" ? "#f1f5f9" : "#0f172a"}
-              shineColor={theme === "dark" ? "#d8bd73" : "#b9954e"}
-              speed={3}
-              direction="right"
-              className="text-lg font-bold tracking-normal"
-            />
-          </div>
+    <>
+      <aside
+        className={cn(
+          "flex h-full shrink-0 flex-col border-r border-surface-200 bg-surface-50 transition-all duration-300 dark:border-surface-800 dark:bg-surface-950",
+          collapsed ? "w-[64px]" : "w-[240px]"
         )}
-      </div>
+      >
+        {/* Logo Area */}
+        <div className={cn("pt-6 pb-4", collapsed ? "px-3" : "px-6")}>
+          {collapsed ? (
+            <button
+              onClick={() => setLogoPreviewOpen(true)}
+              className="flex w-full justify-center rounded-lg p-1 transition-colors hover:bg-surface-100 dark:hover:bg-surface-800"
+            >
+              <BrandLogo size="md" />
+            </button>
+          ) : (
+            <button
+              onClick={() => setLogoPreviewOpen(true)}
+              className="flex items-center gap-2 rounded-lg p-1 text-left transition-colors hover:bg-surface-100 dark:hover:bg-surface-800"
+            >
+              <BrandLogo size="sm" />
+              <ShinyText
+                text={t("app.name")}
+                color={theme === "dark" ? "#f1f5f9" : "#0f172a"}
+                shineColor={theme === "dark" ? "#d8bd73" : "#b9954e"}
+                speed={3}
+                direction="right"
+                className="text-lg font-bold tracking-normal"
+              />
+            </button>
+          )}
+        </div>
 
-      {/* Navigation */}
-      <nav className={cn("flex-1 py-2", collapsed ? "px-2" : "px-3")}>
-        <ul className="flex flex-col gap-1">
-          {navItems.map((item) => {
-            const isActive = item.id === activeNav;
-            return (
-              <li key={item.id}>
-                <NavButton
-                  item={item}
-                  isActive={isActive}
-                  collapsed={collapsed}
-                  onClick={() => onNavChange(item.id)}
-                />
-              </li>
-            );
-          })}
-        </ul>
-      </nav>
-    </aside>
+        {/* Navigation */}
+        <nav className={cn("flex-1 py-2", collapsed ? "px-2" : "px-3")}>
+          <ul className="flex flex-col gap-1">
+            {navItems.map((item) => {
+              const isActive = item.id === activeNav;
+              return (
+                <li key={item.id}>
+                  <NavButton
+                    item={item}
+                    isActive={isActive}
+                    collapsed={collapsed}
+                    onClick={() => onNavChange(item.id)}
+                  />
+                </li>
+              );
+            })}
+          </ul>
+        </nav>
+      </aside>
+
+      <Dialog open={logoPreviewOpen} onOpenChange={setLogoPreviewOpen}>
+        <DialogContent className="max-w-[360px]">
+          <DialogTitle className="sr-only">{t("app.logoPreview")}</DialogTitle>
+          <div className="flex flex-col items-center justify-center gap-5 px-4 py-8">
+            <BrandLogo size="xl" />
+            <div className="text-center text-3xl font-bold tracking-normal text-surface-900 dark:text-surface-100">
+              {t("app.name")}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

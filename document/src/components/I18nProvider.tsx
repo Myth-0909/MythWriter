@@ -5,6 +5,7 @@ type Lang = "zh" | "en";
 const translations = {
   // App
   "app.name": { zh: "ZNWriter", en: "ZNWriter" },
+  "app.logoPreview": { zh: "品牌预览", en: "Brand preview" },
 
   // Sidebar
   "nav.documents": { zh: "文档", en: "Documents" },
@@ -264,10 +265,23 @@ const translations = {
   "apikey.baseUrl": { zh: "Base URL", en: "Base URL" },
   "apikey.baseUrlDesc": { zh: "默认使用公司内网模型服务，也可填写兼容 OpenAI Chat Completions 的接口地址", en: "Defaults to the company intranet model service; OpenAI-compatible Chat Completions endpoints are also supported" },
   "apikey.baseUrlPlaceholder": { zh: "http://172.16.76.112:8000/v1", en: "http://172.16.76.112:8000/v1" },
+  "apikey.provider": { zh: "模型服务商", en: "Model provider" },
+  "apikey.providerIntranet": { zh: "公司内网", en: "Company intranet" },
+  "apikey.providerDeepSeek": { zh: "DeepSeek", en: "DeepSeek" },
+  "apikey.providerOpenAI": { zh: "OpenAI", en: "OpenAI" },
+  "apikey.providerQwen": { zh: "通义千问 Qwen", en: "Qwen" },
+  "apikey.providerKimi": { zh: "Kimi", en: "Kimi" },
+  "apikey.providerCustom": { zh: "自定义 Base URL", en: "Custom Base URL" },
   "apikey.model": { zh: "模型名称", en: "Model" },
   "apikey.modelDesc": { zh: "默认使用公司内网模型 google/gemma-4-31B-it，可按服务端模型列表调整", en: "Defaults to the intranet model google/gemma-4-31B-it; adjust it to match the server model list" },
   "apikey.modelPlaceholder": { zh: "选择或输入模型名称", en: "Select or enter a model name" },
   "apikey.modelGemma": { zh: "公司内网 Gemma", en: "Company Intranet Gemma" },
+  "apikey.fetchModels": { zh: "获取模型", en: "Fetch models" },
+  "apikey.fetchingModels": { zh: "获取中", en: "Fetching" },
+  "apikey.modelsFetched": { zh: "模型列表已更新", en: "Model list updated" },
+  "apikey.noModels": { zh: "未获取到模型列表", en: "No models found" },
+  "apikey.fetchModelsFailed": { zh: "获取模型失败，请检查 Base URL 和 API Key", en: "Failed to fetch models. Check Base URL and API Key." },
+  "apikey.customBaseUrl": { zh: "自定义地址", en: "Custom URL" },
   "apikey.configured": { zh: "已配置", en: "Configured" },
   "apikey.notConfigured": { zh: "未配置，对话助手需要 API Key 才能使用", en: "Not configured. API Key required for AI chat." },
   "apikey.edit": { zh: "编辑", en: "Edit" },

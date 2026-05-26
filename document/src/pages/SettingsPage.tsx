@@ -7,11 +7,25 @@ import { useI18n } from "@/components/I18nProvider";
 import { useToast } from "@/components/Toast";
 import { useAuth } from "@/auth";
 import { api } from "@/api";
-import { Sun, Moon, Monitor, Languages, User, Camera, Info, Loader2, Key, Eye, EyeOff, Pencil, X } from "lucide-react";
+import { Sun, Moon, Monitor, Languages, User, Camera, Info, Loader2, Key, Eye, EyeOff, Pencil, X, RefreshCw } from "lucide-react";
 
-const MODEL_OPTIONS = [
-  { value: "google/gemma-4-31B-it", labelKey: "apikey.modelGemma" },
+const DEFAULT_BASE_URL = "http://172.16.76.112:8000/v1";
+const DEFAULT_MODEL = "google/gemma-4-31B-it";
+
+const BASE_URL_OPTIONS = [
+  { id: "intranet", labelKey: "apikey.providerIntranet", url: DEFAULT_BASE_URL },
+  { id: "deepseek", labelKey: "apikey.providerDeepSeek", url: "https://api.deepseek.com/v1" },
+  { id: "openai", labelKey: "apikey.providerOpenAI", url: "https://api.openai.com/v1" },
+  { id: "qwen", labelKey: "apikey.providerQwen", url: "https://dashscope.aliyuncs.com/compatible-mode/v1" },
+  { id: "kimi", labelKey: "apikey.providerKimi", url: "https://api.moonshot.cn/v1" },
+  { id: "custom", labelKey: "apikey.providerCustom", url: "" },
 ] as const;
+
+type BaseUrlProvider = typeof BASE_URL_OPTIONS[number]["id"];
+
+function getProviderForBaseUrl(baseUrl: string): BaseUrlProvider {
+  return BASE_URL_OPTIONS.find((option) => option.url && option.url === baseUrl)?.id || "custom";
+}
 
 export function SettingsPage() {
   const { theme, themeMode, setThemeMode } = useTheme();
@@ -25,8 +39,11 @@ export function SettingsPage() {
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [apiKey, setApiKey] = useState("");
-  const [baseUrl, setBaseUrl] = useState("http://172.16.76.112:8000/v1");
-  const [model, setModel] = useState("google/gemma-4-31B-it");
+  const [baseUrl, setBaseUrl] = useState(DEFAULT_BASE_URL);
+  const [baseUrlProvider, setBaseUrlProvider] = useState<BaseUrlProvider>("intranet");
+  const [model, setModel] = useState(DEFAULT_MODEL);
+  const [modelOptions, setModelOptions] = useState<string[]>([DEFAULT_MODEL]);
+  const [fetchingModels, setFetchingModels] = useState(false);
   const [maskedKey, setMaskedKey] = useState("");
   const [showKey, setShowKey] = useState(false);
   const [savingKey, setSavingKey] = useState(false);
@@ -42,11 +59,55 @@ export function SettingsPage() {
     api.getApiKey().then((res) => {
       setMaskedKey(res.masked);
       setBaseUrl(res.baseUrl);
+      setBaseUrlProvider(getProviderForBaseUrl(res.baseUrl));
       setModel(res.model);
+      setModelOptions((prev) => Array.from(new Set([res.model, ...prev])));
       // If no key configured, input is editable by default
       if (!res.hasKey) setKeyEditable(true);
     }).catch(() => {});
   }, []);
+
+  const handleFetchModels = async (targetBaseUrl = baseUrl, silent = false) => {
+    if (!targetBaseUrl.trim() || fetchingModels) return;
+
+    setFetchingModels(true);
+    try {
+      const res = await api.fetchModels({
+        baseUrl: targetBaseUrl.trim(),
+        ...(apiKey.trim() && { apiKey: apiKey.trim() }),
+      });
+      setModelOptions(res.models);
+      if (res.models.length > 0) {
+        setModel(res.models[0]);
+        if (!silent) toast(t("apikey.modelsFetched"), "success");
+      } else if (!silent) {
+        toast(t("apikey.noModels"), "info");
+      }
+    } catch {
+      if (!silent) toast(t("apikey.fetchModelsFailed"), "error");
+    } finally {
+      setFetchingModels(false);
+    }
+  };
+
+  const handleProviderChange = (provider: BaseUrlProvider) => {
+    setBaseUrlProvider(provider);
+    const option = BASE_URL_OPTIONS.find((item) => item.id === provider);
+    if (!option || provider === "custom") return;
+
+    setBaseUrl(option.url);
+    void handleFetchModels(option.url, true);
+  };
+
+  useEffect(() => {
+    if (!baseUrl.trim()) return;
+    const timer = window.setTimeout(() => {
+      void handleFetchModels(baseUrl, true);
+    }, 600);
+    return () => window.clearTimeout(timer);
+    // Base URL changes should refresh the model list automatically.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [baseUrl]);
 
   useEffect(() => {
     if (user) {
@@ -391,36 +452,66 @@ export function SettingsPage() {
                 <div className="flex flex-col gap-4">
                   <div>
                     <label className="text-xs font-medium text-surface-500 mb-1 block">
-                      {t("apikey.baseUrl")}
+                      {t("apikey.provider")}
                     </label>
-                    <input
-                      type="url"
-                      value={baseUrl}
-                      onChange={(e) => setBaseUrl(e.target.value)}
-                      placeholder={t("apikey.baseUrlPlaceholder")}
+                    <select
+                      value={baseUrlProvider}
+                      onChange={(e) => handleProviderChange(e.target.value as BaseUrlProvider)}
                       className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-2 text-sm text-surface-900 focus:outline-none focus:ring-2 focus:ring-brand-300 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100"
-                    />
+                    >
+                      {BASE_URL_OPTIONS.map((option) => (
+                        <option key={option.id} value={option.id}>
+                          {t(option.labelKey)}
+                        </option>
+                      ))}
+                    </select>
                     <p className="mt-1 text-xs text-surface-500">{t("apikey.baseUrlDesc")}</p>
                   </div>
+
+                  {baseUrlProvider === "custom" && (
+                    <div>
+                      <label className="text-xs font-medium text-surface-500 mb-1 block">
+                        {t("apikey.customBaseUrl")}
+                      </label>
+                      <input
+                        type="url"
+                        value={baseUrl}
+                        onChange={(e) => setBaseUrl(e.target.value)}
+                        onBlur={() => void handleFetchModels(baseUrl, true)}
+                        placeholder={t("apikey.baseUrlPlaceholder")}
+                        className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-2 text-sm text-surface-900 focus:outline-none focus:ring-2 focus:ring-brand-300 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100"
+                      />
+                    </div>
+                  )}
 
                   <div>
                     <label className="text-xs font-medium text-surface-500 mb-1 block">
                       {t("apikey.model")}
                     </label>
-                    <input
-                      list="ai-model-options"
-                      value={model}
-                      onChange={(e) => setModel(e.target.value)}
-                      placeholder={t("apikey.modelPlaceholder")}
-                      className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-2 text-sm text-surface-900 focus:outline-none focus:ring-2 focus:ring-brand-300 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100"
-                    />
-                    <datalist id="ai-model-options">
-                      {MODEL_OPTIONS.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {t(option.labelKey)}
-                        </option>
-                      ))}
-                    </datalist>
+                    <div className="flex items-center gap-2">
+                      <input
+                        list="ai-model-options"
+                        value={model}
+                        onChange={(e) => setModel(e.target.value)}
+                        placeholder={t("apikey.modelPlaceholder")}
+                        className="min-w-0 flex-1 rounded-lg border border-surface-200 bg-surface-50 px-3 py-2 text-sm text-surface-900 focus:outline-none focus:ring-2 focus:ring-brand-300 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100"
+                      />
+                      <datalist id="ai-model-options">
+                        {modelOptions.map((option) => (
+                          <option key={option} value={option} />
+                        ))}
+                      </datalist>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => void handleFetchModels()}
+                        disabled={!baseUrl.trim() || fetchingModels}
+                        className="shrink-0 gap-1.5"
+                      >
+                        <RefreshCw className={`h-3.5 w-3.5 ${fetchingModels ? "animate-spin" : ""}`} />
+                        {fetchingModels ? t("apikey.fetchingModels") : t("apikey.fetchModels")}
+                      </Button>
+                    </div>
                     <p className="mt-1 text-xs text-surface-500">{t("apikey.modelDesc")}</p>
                   </div>
 

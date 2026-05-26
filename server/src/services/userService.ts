@@ -84,6 +84,12 @@ const DEFAULT_AI_MODEL = "google/gemma-4-31B-it";
 const LEGACY_API_BASE_URL = "https://api.deepseek.com/v1";
 const LEGACY_AI_MODEL = "deepseek-chat";
 
+function buildModelsUrl(baseUrl: string): string {
+  const trimmed = baseUrl.trim().replace(/\/+$/, "");
+  if (trimmed.endsWith("/models")) return trimmed;
+  return `${trimmed}/models`;
+}
+
 function defaultBaseUrl(value?: string | null) {
   return !value || value === LEGACY_API_BASE_URL ? DEFAULT_API_BASE_URL : value;
 }
@@ -118,7 +124,7 @@ export async function getApiKey(userId: string): Promise<{
 
   const key = user?.apiKey || DEFAULT_API_KEY;
   return {
-    hasKey: !!user?.apiKey,
+    hasKey: !!key,
     masked: key ? key.slice(0, 3) + "****" + key.slice(-4) : "",
     baseUrl,
     model,
@@ -138,4 +144,39 @@ export async function saveApiKey(userId: string, data: {
       ...(data.model !== undefined && { aiModel: data.model.trim() || DEFAULT_AI_MODEL }),
     },
   });
+}
+
+export async function getApiKeySecret(userId: string): Promise<string> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { apiKey: true },
+  });
+  return user?.apiKey || DEFAULT_API_KEY;
+}
+
+export async function fetchModels(baseUrl: string, apiKey?: string): Promise<string[]> {
+  const response = await fetch(buildModelsUrl(baseUrl), {
+    method: "GET",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${(apiKey || DEFAULT_API_KEY).trim()}`,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Model endpoint returned ${response.status}`);
+  }
+
+  const payload = await response.json() as {
+    data?: Array<{ id?: string; name?: string; model?: string } | string>;
+    models?: Array<{ id?: string; name?: string; model?: string } | string>;
+  };
+  const items = Array.isArray(payload.data) ? payload.data : Array.isArray(payload.models) ? payload.models : [];
+
+  return items
+    .map((item) => {
+      if (typeof item === "string") return item;
+      return item.id || item.name || item.model || "";
+    })
+    .filter(Boolean);
 }

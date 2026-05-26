@@ -1,7 +1,7 @@
 import { Router, Response } from "express";
 import { AuthRequest, authMiddleware } from "../middleware/auth";
 import { t } from "../lib/i18n";
-import { getProfile, updateProfile, uploadAvatar, getApiKey, saveApiKey } from "../services/userService";
+import { getProfile, updateProfile, uploadAvatar, getApiKey, saveApiKey, fetchModels, getApiKeySecret } from "../services/userService";
 
 const router = Router();
 
@@ -66,6 +66,30 @@ router.get("/me/apikey", async (req: AuthRequest, res: Response) => {
     res.json(result);
   } catch (error) {
     res.status(500).json({ error: t("zh", "获取API Key失败", "Failed to get API Key") });
+  }
+});
+
+// POST /api/users/me/models - Fetch OpenAI-compatible model list by Base URL
+router.post("/me/models", async (req: AuthRequest, res: Response) => {
+  try {
+    const current = await getApiKey(req.user!.userId);
+    const baseUrl = typeof req.body.baseUrl === "string" && req.body.baseUrl.trim()
+      ? req.body.baseUrl.trim()
+      : current.baseUrl;
+    const apiKey = typeof req.body.apiKey === "string" && req.body.apiKey.trim()
+      ? req.body.apiKey.trim()
+      : await getApiKeySecret(req.user!.userId);
+
+    if (!/^https?:\/\//i.test(baseUrl)) {
+      res.status(400).json({ error: t("zh", "Base URL必须以http://或https://开头", "Base URL must start with http:// or https://") });
+      return;
+    }
+
+    const models = await fetchModels(baseUrl, apiKey);
+    res.json({ models });
+  } catch (error) {
+    console.error("Fetch models error:", error);
+    res.status(502).json({ error: t("zh", "获取模型列表失败", "Failed to fetch model list") });
   }
 });
 
