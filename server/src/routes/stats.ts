@@ -10,7 +10,6 @@ router.use(authMiddleware);
 router.get("/weekly", async (req: AuthRequest, res: Response) => {
   try {
     const days: string[] = [];
-    const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
     // Use UTC dates to avoid timezone issues
     const now = new Date();
@@ -56,7 +55,7 @@ router.get("/weekly", async (req: AuthRequest, res: Response) => {
     });
 
     const result = days.map((date, i) => ({
-      day: dayNames[new Date(date + "T00:00:00").getDay()],
+      dayIndex: new Date(date + "T00:00:00Z").getUTCDay(),
       date,
       words: wordsPerDay[date],
     }));

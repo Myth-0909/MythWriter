@@ -87,15 +87,15 @@ export function DocumentCenterPage({ onOpenDoc }: DocumentCenterPageProps) {
     debounceRef.current = setTimeout(() => setDebouncedQuery(value), 200);
   };
 
-  const [chartData, setChartData] = useState<{ days: string[]; words: number[] }>({
-    days: [],
+  const [chartData, setChartData] = useState<{ dayIndices: number[]; words: number[] }>({
+    dayIndices: [],
     words: [],
   });
 
   useEffect(() => {
     api.getWeeklyStats().then((res) => {
       setChartData({
-        days: res.stats.map((s) => s.day),
+        dayIndices: res.stats.map((s) => s.dayIndex),
         words: res.stats.map((s) => s.words),
       });
     }).catch(() => {});
@@ -335,7 +335,7 @@ export function DocumentCenterPage({ onOpenDoc }: DocumentCenterPageProps) {
           ))}
         </div>
 
-        {chartData.days.length > 0 && (
+        {chartData.dayIndices.length > 0 && (
           <div className="mt-10 rounded-xl border border-surface-200 bg-white p-6 dark:border-surface-800 dark:bg-surface-900">
             <div className="mb-4">
               <h3 className="text-sm font-semibold text-surface-900 dark:text-surface-100">
@@ -343,7 +343,7 @@ export function DocumentCenterPage({ onOpenDoc }: DocumentCenterPageProps) {
               </h3>
               <p className="mt-1 text-xs text-surface-500">{t("documents.activity")}</p>
             </div>
-            <WriterFlowChart days={chartData.days} words={chartData.words} />
+            <WriterFlowChart dayIndices={chartData.dayIndices} words={chartData.words} />
           </div>
         )}
       </div>

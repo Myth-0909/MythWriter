@@ -59,6 +59,8 @@ const translations = {
   "documents.upgrade": { zh: "升级到 Pro", en: "Upgrade to Pro" },
   "documents.upgradeDesc": { zh: "解锁无限文档存储、协作编辑和 AI 重写工具。", en: "Unlock unlimited document storage, collaborative editing, and AI rewriting tools." },
   "documents.upgradeNow": { zh: "立即升级", en: "Upgrade Now" },
+  "chart.words": { zh: "字数", en: "Words" },
+  "chart.wordsWritten": { zh: "撰写字数", en: "Words written" },
 
   // Editor
   "editor.untitled": { zh: "未命名文档", en: "Untitled Document" },
@@ -184,6 +186,15 @@ const translations = {
   "documents.selectCategory": { zh: "选择文档类型", en: "Select Category" },
   "documents.switchCategory": { zh: "切换类型", en: "Switch Type" },
   "documents.clickToSwitch": { zh: "点击切换文档类型", en: "Click to switch document type" },
+
+  // Day of week (short)
+  "day.sun": { zh: "周日", en: "Sun" },
+  "day.mon": { zh: "周一", en: "Mon" },
+  "day.tue": { zh: "周二", en: "Tue" },
+  "day.wed": { zh: "周三", en: "Wed" },
+  "day.thu": { zh: "周四", en: "Thu" },
+  "day.fri": { zh: "周五", en: "Fri" },
+  "day.sat": { zh: "周六", en: "Sat" },
 
   // Favorites Page
   "favorites.empty": { zh: "暂无收藏文档", en: "No favorites yet" },

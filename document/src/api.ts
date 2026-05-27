@@ -115,7 +115,7 @@ export const api = {
     ),
 
   getWeeklyStats: () =>
-    request<{ stats: { day: string; date: string; words: number }[] }>("/stats/weekly"),
+    request<{ stats: { dayIndex: number; date: string; words: number }[] }>("/stats/weekly"),
 
   aiGreeting: (data: { userName: string; personality: string }) =>
     request<{ greeting: string }>(

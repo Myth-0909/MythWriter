@@ -5,15 +5,21 @@ import { GridComponent, TooltipComponent } from "echarts/components";
 import { CanvasRenderer } from "echarts/renderers";
 import { useTheme } from "@/components/ThemeProvider";
 import { useI18n } from "@/components/I18nProvider";
+import type { TranslationKey } from "@/components/I18nProvider";
 
 echarts.use([BarChart, GridComponent, TooltipComponent, CanvasRenderer]);
 
 interface WriterFlowChartProps {
-  days: string[];
+  dayIndices: number[];
   words: number[];
 }
 
-export function WriterFlowChart({ days, words }: WriterFlowChartProps) {
+const dayI18nKeys: Record<number, TranslationKey> = {
+  0: "day.sun", 1: "day.mon", 2: "day.tue", 3: "day.wed",
+  4: "day.thu", 5: "day.fri", 6: "day.sat",
+};
+
+export function WriterFlowChart({ dayIndices, words }: WriterFlowChartProps) {
   const chartRef = useRef<HTMLDivElement>(null);
   const instanceRef = useRef<echarts.ECharts | null>(null);
   const { theme } = useTheme();
@@ -29,8 +35,9 @@ export function WriterFlowChart({ days, words }: WriterFlowChartProps) {
 
     const chart = instanceRef.current;
 
-    const yAxisLabel = lang === "zh" ? "字数" : "Words";
-    const tooltipLabel = lang === "zh" ? "撰写字数" : "Words written";
+    const yAxisLabel = t("chart.words");
+    const tooltipLabel = t("chart.wordsWritten");
+    const numberFormatter = new Intl.NumberFormat(lang === "zh" ? "zh-CN" : "en-US");
 
     const option: echarts.EChartsCoreOption = {
       tooltip: {
@@ -43,7 +50,7 @@ export function WriterFlowChart({ days, words }: WriterFlowChartProps) {
         },
         formatter: (params: unknown) => {
           const p = params as { name: string; value: number }[];
-          return `<strong>${p[0].name}</strong><br/>${tooltipLabel}: <strong>${p[0].value.toLocaleString()}</strong>`;
+          return `<strong>${p[0].name}</strong><br/>${tooltipLabel}: <strong>${numberFormatter.format(p[0].value)}</strong>`;
         },
       },
       grid: {
@@ -55,7 +62,7 @@ export function WriterFlowChart({ days, words }: WriterFlowChartProps) {
       },
       xAxis: {
         type: "category",
-        data: days,
+        data: dayIndices.map((idx) => t(dayI18nKeys[idx])),
         axisLine: { lineStyle: { color: isDark ? "#475569" : "#cbd5e1" } },
         axisTick: { show: false },
         axisLabel: {
@@ -116,7 +123,7 @@ export function WriterFlowChart({ days, words }: WriterFlowChartProps) {
     return () => {
       window.removeEventListener("resize", handleResize);
     };
-  }, [days, words, isDark, lang, t]);
+  }, [dayIndices, words, isDark, lang, t]);
 
   // Cleanup on unmount
   useEffect(() => {
