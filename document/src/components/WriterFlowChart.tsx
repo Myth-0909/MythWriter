@@ -4,6 +4,7 @@ import { BarChart } from "echarts/charts";
 import { GridComponent, TooltipComponent } from "echarts/components";
 import { CanvasRenderer } from "echarts/renderers";
 import { useTheme } from "@/components/ThemeProvider";
+import { useI18n } from "@/components/I18nProvider";
 
 echarts.use([BarChart, GridComponent, TooltipComponent, CanvasRenderer]);
 
@@ -16,6 +17,7 @@ export function WriterFlowChart({ days, words }: WriterFlowChartProps) {
   const chartRef = useRef<HTMLDivElement>(null);
   const instanceRef = useRef<echarts.ECharts | null>(null);
   const { theme } = useTheme();
+  const { t, lang } = useI18n();
   const isDark = theme === "dark";
 
   useEffect(() => {
@@ -26,6 +28,9 @@ export function WriterFlowChart({ days, words }: WriterFlowChartProps) {
     }
 
     const chart = instanceRef.current;
+
+    const yAxisLabel = lang === "zh" ? "字数" : "Words";
+    const tooltipLabel = lang === "zh" ? "撰写字数" : "Words written";
 
     const option: echarts.EChartsCoreOption = {
       tooltip: {
@@ -38,14 +43,14 @@ export function WriterFlowChart({ days, words }: WriterFlowChartProps) {
         },
         formatter: (params: unknown) => {
           const p = params as { name: string; value: number }[];
-          return `<strong>${p[0].name}</strong><br/>Words written: <strong>${p[0].value.toLocaleString()}</strong>`;
+          return `<strong>${p[0].name}</strong><br/>${tooltipLabel}: <strong>${p[0].value.toLocaleString()}</strong>`;
         },
       },
       grid: {
         left: "3%",
         right: "4%",
         bottom: "12%",
-        top: "8%",
+        top: "15%",
         containLabel: true,
       },
       xAxis: {
@@ -60,10 +65,10 @@ export function WriterFlowChart({ days, words }: WriterFlowChartProps) {
       },
       yAxis: {
         type: "value",
-        name: "words",
+        name: yAxisLabel,
         nameTextStyle: {
           color: isDark ? "#94a3b8" : "#64748b",
-          fontSize: 10,
+          fontSize: 11,
         },
         splitLine: {
           lineStyle: {
@@ -111,7 +116,7 @@ export function WriterFlowChart({ days, words }: WriterFlowChartProps) {
     return () => {
       window.removeEventListener("resize", handleResize);
     };
-  }, [days, words, isDark]);
+  }, [days, words, isDark, lang, t]);
 
   // Cleanup on unmount
   useEffect(() => {
