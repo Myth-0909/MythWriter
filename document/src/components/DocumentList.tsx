@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Search, Star, Trash2,
-  BookOpen, FileText, Palette, Lightbulb, Target,
+  FileText, Palette, Lightbulb, Target,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -19,8 +19,7 @@ import {
 import { categoryI18nKey, categoryColors, type DocumentCategory } from "@/types";
 
 const iconByCategory: Record<DocumentCategory, LucideIcon> = {
-  sciFi: BookOpen, fantasy: FileText, design: Palette,
-  journal: Lightbulb, planning: Target, research: Search, general: FileText,
+  design: Palette, journal: Lightbulb, planning: Target, research: Search, general: FileText,
 };
 
 interface DocumentListProps {

@@ -13,7 +13,6 @@ import {
   DropdownMenuLabel,
 } from "@/components/ui/dropdown-menu";
 import {
-  BookOpen,
   FileText,
   Palette,
   Lightbulb,
@@ -37,12 +36,10 @@ import { categoryLabels, type DocumentCategory } from "@/types";
 import { formatFullDateTime, formatRelativeModified } from "@/lib/date";
 
 const iconByCategory: Record<DocumentCategory, LucideIcon> = {
-  sciFi: BookOpen, fantasy: FileText, design: Palette,
-  journal: Lightbulb, planning: Target, research: Search, general: FileText,
+  design: Palette, journal: Lightbulb, planning: Target, research: Search, general: FileText,
 };
 
 const colorByCategory: Record<DocumentCategory, string> = {
-  sciFi: "bg-purple-100 text-purple-600", fantasy: "bg-blue-100 text-blue-600",
   design: "bg-amber-100 text-amber-600", journal: "bg-green-100 text-green-600",
   planning: "bg-red-100 text-red-600", research: "bg-cyan-100 text-cyan-600",
   general: "bg-brand-100 text-brand-600",
@@ -203,9 +200,8 @@ export function DocumentCenterPage({ onOpenDoc }: DocumentCenterPageProps) {
   const favDocs = favorites.filter((d) => !debouncedQuery || fuzzyMatch(d.title, debouncedQuery) || fuzzyMatch(d.preview || "", debouncedQuery));
 
   const getCategoryKey = (cat: DocumentCategory) => {
-    const map: Record<DocumentCategory, "card.sciFi" | "card.fantasy" | "card.design" | "card.journal" | "card.planning" | "card.research" | "card.general"> = {
-      sciFi: "card.sciFi", fantasy: "card.fantasy", design: "card.design",
-      journal: "card.journal", planning: "card.planning", research: "card.research", general: "card.general",
+    const map: Record<DocumentCategory, "card.design" | "card.journal" | "card.planning" | "card.research" | "card.general"> = {
+      design: "card.design", journal: "card.journal", planning: "card.planning", research: "card.research", general: "card.general",
     };
     return map[cat];
   };

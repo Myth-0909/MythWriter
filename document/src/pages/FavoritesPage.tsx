@@ -6,19 +6,17 @@ import { useDocuments } from "@/store";
 import { useI18n } from "@/components/I18nProvider";
 import { useToast } from "@/components/Toast";
 import {
-  BookOpen, FileText, Palette, Lightbulb, Target, Search, Star,
+  FileText, Palette, Lightbulb, Target, Search, Star,
   type LucideIcon,
 } from "lucide-react";
 import type { DocumentCategory } from "@/types";
 import { formatFullDateTime, formatRelativeModified } from "@/lib/date";
 
 const iconByCategory: Record<DocumentCategory, LucideIcon> = {
-  sciFi: BookOpen, fantasy: FileText, design: Palette,
-  journal: Lightbulb, planning: Target, research: Search, general: FileText,
+  design: Palette, journal: Lightbulb, planning: Target, research: Search, general: FileText,
 };
 
 const colorByCategory: Record<DocumentCategory, string> = {
-  sciFi: "bg-purple-100 text-purple-600", fantasy: "bg-blue-100 text-blue-600",
   design: "bg-amber-100 text-amber-600", journal: "bg-green-100 text-green-600",
   planning: "bg-red-100 text-red-600", research: "bg-cyan-100 text-cyan-600",
   general: "bg-brand-100 text-brand-600",
@@ -68,7 +66,7 @@ export function FavoritesPage({ onOpenDoc }: FavoritesPageProps) {
                 preview={doc.preview}
                 date={formatRelativeModified(doc.updatedAt, t)}
                 fullDate={formatFullDateTime(doc.updatedAt, lang)}
-                categoryKey={doc.category === "general" ? "card.general" : `card.${doc.category}` as "card.sciFi"}
+                categoryKey={doc.category === "general" ? "card.general" : `card.${doc.category}` as "card.design"}
                 icon={iconByCategory[doc.category]}
                 iconBg={colorByCategory[doc.category]}
                 onClick={() => onOpenDoc?.(doc.id)}

@@ -176,8 +176,6 @@ const translations = {
   "card.edit": { zh: "编辑", en: "Edit" },
   "card.share": { zh: "分享", en: "Share" },
   "card.delete": { zh: "删除", en: "Delete" },
-  "card.sciFi": { zh: "科幻小说", en: "Sci-Fi Novel" },
-  "card.fantasy": { zh: "奇幻", en: "Fantasy" },
   "card.design": { zh: "设计", en: "Design" },
   "card.journal": { zh: "日记", en: "Journal" },
   "card.planning": { zh: "规划", en: "Planning" },

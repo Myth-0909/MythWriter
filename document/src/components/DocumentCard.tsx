@@ -8,7 +8,7 @@ interface DocumentCardProps {
   preview: string;
   date: string;
   fullDate?: string;
-  categoryKey: "card.sciFi" | "card.fantasy" | "card.design" | "card.journal" | "card.planning" | "card.research" | "card.general";
+  categoryKey: "card.design" | "card.journal" | "card.planning" | "card.research" | "card.general";
   icon: LucideIcon;
   iconBg?: string;
   viewMode?: "grid" | "list";

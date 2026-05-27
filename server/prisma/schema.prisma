@@ -52,8 +52,6 @@ model Document {
 }
 
 enum DocumentCategory {
-  sciFi
-  fantasy
   design
   journal
   planning

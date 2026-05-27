@@ -12,11 +12,9 @@ export interface Document {
   userId?: string;
 }
 
-export type DocumentCategory = "sciFi" | "fantasy" | "design" | "journal" | "planning" | "research" | "general";
+export type DocumentCategory = "design" | "journal" | "planning" | "research" | "general";
 
 export const categoryLabels: Record<DocumentCategory, { zh: string; en: string }> = {
-  sciFi: { zh: "科幻小说", en: "Sci-Fi Novel" },
-  fantasy: { zh: "奇幻", en: "Fantasy" },
   design: { zh: "设计", en: "Design" },
   journal: { zh: "日记", en: "Journal" },
   planning: { zh: "规划", en: "Planning" },
@@ -25,8 +23,6 @@ export const categoryLabels: Record<DocumentCategory, { zh: string; en: string }
 };
 
 export const categoryIcons: Record<DocumentCategory, string> = {
-  sciFi: "BookOpen",
-  fantasy: "FileText",
   design: "Palette",
   journal: "Lightbulb",
   planning: "Target",
@@ -35,9 +31,7 @@ export const categoryIcons: Record<DocumentCategory, string> = {
 };
 
 // Maps category to i18n card.* key
-export const categoryI18nKey: Record<DocumentCategory, "card.sciFi" | "card.fantasy" | "card.design" | "card.journal" | "card.planning" | "card.research" | "card.general"> = {
-  sciFi: "card.sciFi",
-  fantasy: "card.fantasy",
+export const categoryI18nKey: Record<DocumentCategory, "card.design" | "card.journal" | "card.planning" | "card.research" | "card.general"> = {
   design: "card.design",
   journal: "card.journal",
   planning: "card.planning",
@@ -46,8 +40,6 @@ export const categoryI18nKey: Record<DocumentCategory, "card.sciFi" | "card.fant
 };
 
 export const categoryColors: Record<DocumentCategory, string> = {
-  sciFi: "bg-purple-100 text-purple-600",
-  fantasy: "bg-blue-100 text-blue-600",
   design: "bg-amber-100 text-amber-600",
   journal: "bg-green-100 text-green-600",
   planning: "bg-red-100 text-red-600",
