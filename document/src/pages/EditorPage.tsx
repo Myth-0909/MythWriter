@@ -8,6 +8,7 @@ import { useDocuments } from "@/store";
 import { useI18n } from "@/components/I18nProvider";
 import { useToast } from "@/components/Toast";
 import type { NavId } from "@/App";
+import { formatFullDateTime } from "@/lib/date";
 
 interface EditorPageProps {
   activeNav?: NavId;
@@ -21,7 +22,7 @@ interface EditorPageProps {
 export function EditorPage({ activeNav = "documents", onNavChange, onLogout, activeDoc = "", sidebarCollapsed = false, onToggleSidebar }: EditorPageProps) {
   const [activeDocId, setActiveDocId] = useState(activeDoc);
   const [shareOpen, setShareOpen] = useState(false);
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const { getDocument } = useDocuments();
   const { toast } = useToast();
 
@@ -49,7 +50,7 @@ export function EditorPage({ activeNav = "documents", onNavChange, onLogout, act
 </head>
 <body>
   <h1>${doc.title}</h1>
-  <div class="meta">${new Date(doc.updatedAt).toLocaleDateString("zh-CN")} · ${doc.category}</div>
+  <div class="meta">${formatFullDateTime(doc.updatedAt, lang)}${t("date.separator")}${doc.category}</div>
   ${doc.content}
 </body>
 </html>`;

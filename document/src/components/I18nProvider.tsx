@@ -37,6 +37,16 @@ const translations = {
   "common.copied": { zh: "已复制", en: "Copied" },
   "common.loading": { zh: "加载中...", en: "Loading..." },
 
+  // Dates
+  "date.separator": { zh: " · ", en: " · " },
+  "date.justNow": { zh: "刚刚修改", en: "just now" },
+  "date.minuteAgo": { zh: "分钟前修改", en: " minute ago" },
+  "date.minutesAgo": { zh: "分钟前修改", en: " minutes ago" },
+  "date.hourAgo": { zh: "小时前修改", en: " hour ago" },
+  "date.hoursAgo": { zh: "小时前修改", en: " hours ago" },
+  "date.dayAgo": { zh: "天前修改", en: " day ago" },
+  "date.daysAgo": { zh: "天前修改", en: " days ago" },
+
   // Documents
   "documents.title": { zh: "文档", en: "Documents" },
   "documents.myDocuments": { zh: "我的文档", en: "My Documents" },
@@ -324,7 +334,7 @@ const translations = {
   "notfound.backHome": { zh: "返回首页", en: "Back to Home" },
 } as const;
 
-type TranslationKey = keyof typeof translations;
+export type TranslationKey = keyof typeof translations;
 
 interface I18nContextType {
   lang: Lang;

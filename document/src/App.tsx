@@ -18,6 +18,7 @@ import { useToast } from "@/components/Toast";
 import { useI18n } from "@/components/I18nProvider";
 import { useAuth } from "@/auth";
 import { isLoggedIn as checkLoggedIn, clearToken, api } from "@/api";
+import { formatFullDateTime } from "@/lib/date";
 import "./App.css";
 
 export type NavId = "documents" | "favorites" | "trash" | "settings";
@@ -196,7 +197,7 @@ export default function App() {
     }
 
     const title = doc.title || "document";
-    const dateStr = new Date(doc.updatedAt).toLocaleDateString("zh-CN");
+    const dateStr = formatFullDateTime(doc.updatedAt, lang);
     let content: string;
     let mime: string;
     let ext: string;
@@ -204,7 +205,7 @@ export default function App() {
     if (format === "txt") {
       const tmp = document.createElement("div");
       tmp.innerHTML = doc.content;
-      content = `# ${title}\n${dateStr} · ${doc.category}\n\n${tmp.textContent || ""}`;
+      content = `# ${title}\n${dateStr}${t("date.separator")}${doc.category}\n\n${tmp.textContent || ""}`;
       mime = "text/plain;charset=utf-8";
       ext = "txt";
     } else if (format === "md") {
@@ -222,7 +223,7 @@ export default function App() {
         .replace(/<code[^>]*>(.*?)<\/code>/gi, "`$1`")
         .replace(/<pre[^>]*>(.*?)<\/pre>/gi, "```\n$1\n```\n")
         .replace(/<[^>]+>/g, "");
-      content = `# ${title}\n${dateStr} · ${doc.category}\n\n${md.trim()}`;
+      content = `# ${title}\n${dateStr}${t("date.separator")}${doc.category}\n\n${md.trim()}`;
       mime = "text/markdown;charset=utf-8";
       ext = "md";
     } else {
@@ -239,7 +240,7 @@ export default function App() {
 </head>
 <body>
   <h1>${title}</h1>
-  <div class="meta">${dateStr} · ${doc.category}</div>
+  <div class="meta">${dateStr}${t("date.separator")}${doc.category}</div>
   ${doc.content}
 </body>
 </html>`;

@@ -7,9 +7,10 @@ import { useDocuments } from "@/store";
 import { useI18n } from "@/components/I18nProvider";
 import { useToast } from "@/components/Toast";
 import { Trash2, RotateCcw, AlertTriangle } from "lucide-react";
+import { formatFullDateTime } from "@/lib/date";
 
 export function TrashPage() {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const { toast } = useToast();
   const { trash, loading, refreshTrash, restoreFromTrash, permanentlyDelete, emptyTrash } = useDocuments();
   const [actionLoading, setActionLoading] = useState(false);
@@ -94,7 +95,7 @@ export function TrashPage() {
                   <h4 className="text-sm font-semibold text-surface-900 truncate dark:text-surface-100">{item.title}</h4>
                   <p className="mt-0.5 text-xs text-surface-500 truncate">{item.preview}</p>
                   <div className="mt-1.5 flex items-center gap-2 text-[11px] text-surface-400">
-                    <span>{item.deletedAt?.slice(0, 10)}</span>
+                    <span>{formatFullDateTime(item.deletedAt, lang)}</span>
                     <span>·</span>
                     <span className="flex items-center gap-1 text-amber-500">
                       <AlertTriangle className="h-3 w-3" />

@@ -33,6 +33,7 @@ import { useDocuments } from "@/store";
 import { useToast } from "@/components/Toast";
 import { api } from "@/api";
 import { categoryLabels, type DocumentCategory } from "@/types";
+import { formatFullDateTime, formatRelativeModified } from "@/lib/date";
 
 const iconByCategory: Record<DocumentCategory, LucideIcon> = {
   sciFi: BookOpen, fantasy: FileText, design: Palette,
@@ -51,7 +52,7 @@ interface DocumentCenterPageProps {
 }
 
 export function DocumentCenterPage({ onOpenDoc }: DocumentCenterPageProps) {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const { toast } = useToast();
   const { documents, favorites, loading, createDocument, moveToTrash } = useDocuments();
   const viewMode: "grid" | "list" = "grid";
@@ -179,9 +180,9 @@ export function DocumentCenterPage({ onOpenDoc }: DocumentCenterPageProps) {
   const favDocs = favorites.filter((d) => !debouncedQuery || fuzzyMatch(d.title, debouncedQuery) || fuzzyMatch(d.preview || "", debouncedQuery));
 
   const getCategoryKey = (cat: DocumentCategory) => {
-    const map: Record<DocumentCategory, "card.sciFi" | "card.fantasy" | "card.design" | "card.journal" | "card.planning" | "card.research"> = {
+    const map: Record<DocumentCategory, "card.sciFi" | "card.fantasy" | "card.design" | "card.journal" | "card.planning" | "card.research" | "card.general"> = {
       sciFi: "card.sciFi", fantasy: "card.fantasy", design: "card.design",
-      journal: "card.journal", planning: "card.planning", research: "card.research", general: "card.journal",
+      journal: "card.journal", planning: "card.planning", research: "card.research", general: "card.general",
     };
     return map[cat];
   };
@@ -262,7 +263,7 @@ export function DocumentCenterPage({ onOpenDoc }: DocumentCenterPageProps) {
                       <div className={`flex h-7 w-7 items-center justify-center rounded-md dropdown-item-icon ${colorClass.split(" ")[0]}`}>
                         <Icon className={`h-3.5 w-3.5 ${colorClass.split(" ")[1]}`} />
                       </div>
-                      <span>{label.zh}</span>
+                      <span>{label[lang]}</span>
                     </DropdownMenuItem>
                   );
                 })}
@@ -283,7 +284,8 @@ export function DocumentCenterPage({ onOpenDoc }: DocumentCenterPageProps) {
                   key={doc.id}
                   title={doc.title}
                   preview={doc.preview}
-                  date={doc.updatedAt.slice(0, 10)}
+                  date={formatRelativeModified(doc.updatedAt, t)}
+                  fullDate={formatFullDateTime(doc.updatedAt, lang)}
                   categoryKey={getCategoryKey(doc.category)}
                   icon={iconByCategory[doc.category]}
                   iconBg={colorByCategory[doc.category]}
@@ -302,7 +304,8 @@ export function DocumentCenterPage({ onOpenDoc }: DocumentCenterPageProps) {
               key={doc.id}
               title={doc.title}
               preview={doc.preview}
-              date={doc.updatedAt.slice(0, 10)}
+              date={formatRelativeModified(doc.updatedAt, t)}
+              fullDate={formatFullDateTime(doc.updatedAt, lang)}
               categoryKey={getCategoryKey(doc.category)}
               icon={iconByCategory[doc.category]}
               iconBg={colorByCategory[doc.category]}

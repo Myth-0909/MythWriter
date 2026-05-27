@@ -10,6 +10,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import type { DocumentCategory } from "@/types";
+import { formatFullDateTime, formatRelativeModified } from "@/lib/date";
 
 const iconByCategory: Record<DocumentCategory, LucideIcon> = {
   sciFi: BookOpen, fantasy: FileText, design: Palette,
@@ -28,7 +29,7 @@ interface FavoritesPageProps {
 }
 
 export function FavoritesPage({ onOpenDoc }: FavoritesPageProps) {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const { toast } = useToast();
   const { favorites, moveToTrash } = useDocuments();
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
@@ -65,8 +66,9 @@ export function FavoritesPage({ onOpenDoc }: FavoritesPageProps) {
                 key={doc.id}
                 title={doc.title}
                 preview={doc.preview}
-                date={doc.updatedAt.slice(0, 10)}
-                categoryKey={doc.category === "general" ? "card.journal" : `card.${doc.category}` as "card.sciFi"}
+                date={formatRelativeModified(doc.updatedAt, t)}
+                fullDate={formatFullDateTime(doc.updatedAt, lang)}
+                categoryKey={doc.category === "general" ? "card.general" : `card.${doc.category}` as "card.sciFi"}
                 icon={iconByCategory[doc.category]}
                 iconBg={colorByCategory[doc.category]}
                 onClick={() => onOpenDoc?.(doc.id)}

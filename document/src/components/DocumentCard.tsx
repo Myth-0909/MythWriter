@@ -7,7 +7,8 @@ interface DocumentCardProps {
   title: string;
   preview: string;
   date: string;
-  categoryKey: "card.sciFi" | "card.fantasy" | "card.design" | "card.journal" | "card.planning" | "card.research";
+  fullDate?: string;
+  categoryKey: "card.sciFi" | "card.fantasy" | "card.design" | "card.journal" | "card.planning" | "card.research" | "card.general";
   icon: LucideIcon;
   iconBg?: string;
   viewMode?: "grid" | "list";
@@ -19,6 +20,7 @@ export function DocumentCard({
   title,
   preview,
   date,
+  fullDate,
   categoryKey,
   icon: Icon,
   iconBg = "bg-brand-100 text-brand-600",
@@ -46,7 +48,10 @@ export function DocumentCard({
           <h4 className="text-sm font-semibold text-surface-900 truncate dark:text-surface-100">{title}</h4>
           <p className="text-xs text-surface-500 truncate">{preview}</p>
         </div>
-        <span className="text-xs text-surface-400 shrink-0">{date}</span>
+        <div className="shrink-0 text-right" title={fullDate || date}>
+          {fullDate && <div className="text-xs text-surface-500 dark:text-surface-400">{fullDate}</div>}
+          <div className="text-[11px] text-surface-400">{date}</div>
+        </div>
         <div className="flex items-center gap-0.5 opacity-0 transition-opacity duration-200 group-hover:opacity-100 shrink-0">
           <Button variant="ghost" size="icon-sm" className="h-6 w-6" title={t("card.edit")}
             onClick={(e) => { e.stopPropagation(); onClick?.(); }}>
@@ -87,7 +92,10 @@ export function DocumentCard({
         {preview}
       </p>
       <div className="flex items-center justify-between">
-        <span className="text-xs text-surface-400">{date}</span>
+        <div title={fullDate || date}>
+          {fullDate && <div className="text-xs text-surface-500 dark:text-surface-400">{fullDate}</div>}
+          <div className="text-[11px] text-surface-400">{date}</div>
+        </div>
         <div className="flex items-center gap-0.5 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
           <Button variant="ghost" size="icon-sm" className="h-6 w-6" title={t("card.edit")}
             onClick={(e) => { e.stopPropagation(); onClick?.(); }}>
