@@ -186,13 +186,13 @@ export function AIChatWidget() {
     setSaving(false);
   }, [messages, saving]);
 
-  // Drag - restore saved position or default bottom-right
+  // Drag - restore saved position or default bottom-left
   const [pos, setPos] = useState<Position>(() => {
     try {
       const saved = localStorage.getItem("chat-btn-pos");
       if (saved) return JSON.parse(saved);
     } catch {}
-    return { x: window.innerWidth - 56 - 16, y: window.innerHeight - 56 - 16 };
+    return { x: 16, y: window.innerHeight - 56 - 16 };
   });
   const [dragging, setDragging] = useState(false);
   const dragStart = useRef({ x: 0, y: 0 });
@@ -207,7 +207,7 @@ export function AIChatWidget() {
     : "?";
 
   useEffect(() => {
-    setPos({ x: window.innerWidth - 80, y: window.innerHeight - 80 });
+    setPos({ x: 16, y: window.innerHeight - 80 });
   }, []);
 
   // Resize handler
@@ -541,7 +541,7 @@ export function AIChatWidget() {
       </button>
 
       {open && keyOk && (
-        <div className="fixed bottom-6 right-6 z-50 flex h-[640px] w-[480px] flex-col rounded-2xl border border-surface-200 bg-white shadow-2xl dark:border-surface-700 dark:bg-surface-900">
+        <div className="fixed bottom-6 left-6 z-50 flex h-[640px] w-[480px] flex-col rounded-2xl border border-surface-200 bg-white shadow-2xl dark:border-surface-700 dark:bg-surface-900">
           {/* Backdrop: click outside to close and abort */}
           <div
             className="fixed inset-0 -z-10"

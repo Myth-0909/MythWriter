@@ -12,15 +12,17 @@ const TooltipContent = React.forwardRef<
   React.ComponentRef<typeof TooltipPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof TooltipPrimitive.Content>
 >(({ className, sideOffset = 4, ...props }, ref) => (
-  <TooltipPrimitive.Content
-    ref={ref}
-    sideOffset={sideOffset}
-    className={cn(
-      "z-50 overflow-hidden rounded-md bg-surface-900 px-3 py-1.5 text-xs text-white animate-in fade-in-0 zoom-in-95",
-      className
-    )}
-    {...props}
-  />
+  <TooltipPrimitive.Portal>
+    <TooltipPrimitive.Content
+      ref={ref}
+      sideOffset={sideOffset}
+      className={cn(
+        "z-50 overflow-hidden rounded-md bg-surface-900 px-3 py-1.5 text-xs text-white animate-in fade-in-0 zoom-in-95",
+        className
+      )}
+      {...props}
+    />
+  </TooltipPrimitive.Portal>
 ));
 TooltipContent.displayName = TooltipPrimitive.Content.displayName;
 
@@ -28,7 +30,7 @@ function Tooltip({
   children,
   content,
   side = "top",
-  delay = 200,
+  delay = 0,
 }: {
   children: React.ReactNode;
   content: React.ReactNode;
@@ -36,12 +38,10 @@ function Tooltip({
   delay?: number;
 }) {
   return (
-    <TooltipProvider delayDuration={delay}>
-      <TooltipRoot>
-        <TooltipTrigger asChild>{children}</TooltipTrigger>
-        <TooltipContent side={side} sideOffset={8}>{content}</TooltipContent>
-      </TooltipRoot>
-    </TooltipProvider>
+    <TooltipRoot delayDuration={delay}>
+      <TooltipTrigger asChild>{children}</TooltipTrigger>
+      <TooltipContent side={side} sideOffset={6}>{content}</TooltipContent>
+    </TooltipRoot>
   );
 }
 

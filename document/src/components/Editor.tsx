@@ -10,6 +10,7 @@ import Highlight from "@tiptap/extension-highlight";
 import Placeholder from "@tiptap/extension-placeholder";
 import TextAlign from "@tiptap/extension-text-align";
 import { Toggle } from "@/components/ui/toggle";
+import { Tooltip, TooltipProvider } from "@/components/ui/tooltip";
 import { Separator } from "@/components/ui/separator";
 import { Scrollbar } from "@/components/ui/scrollbar";
 import {
@@ -178,68 +179,91 @@ export function Editor({ documentId }: EditorProps) {
   return (
     <div className="flex h-full flex-col bg-white dark:bg-surface-950">
       {/* Toolbar */}
-      <div className="flex flex-wrap items-center gap-0.5 border-b border-surface-200 px-4 py-1.5 dark:border-surface-800">
-        {/* Undo / Redo */}
-        <Toggle size="sm" pressed={false} onPressedChange={() => editor.chain().focus().undo().run()} aria-label={t("editor.undo")}>
-          <Undo2 className="h-3.5 w-3.5" />
-        </Toggle>
-        <Toggle size="sm" pressed={false} onPressedChange={() => editor.chain().focus().redo().run()} aria-label={t("editor.redo")}>
-          <Redo2 className="h-3.5 w-3.5" />
-        </Toggle>
+      <TooltipProvider delayDuration={150}>
+        <div className="flex flex-wrap items-center gap-0.5 border-b border-surface-200 px-4 py-1.5 dark:border-surface-800">
+          {/* Undo / Redo */}
+          <Tooltip content={t("editor.undo")}>
+            <Toggle size="sm" pressed={false} onPressedChange={() => editor.chain().focus().undo().run()} aria-label={t("editor.undo")}>
+              <Undo2 className="h-3.5 w-3.5" />
+            </Toggle>
+          </Tooltip>
+          <Tooltip content={t("editor.redo")}>
+            <Toggle size="sm" pressed={false} onPressedChange={() => editor.chain().focus().redo().run()} aria-label={t("editor.redo")}>
+              <Redo2 className="h-3.5 w-3.5" />
+            </Toggle>
+          </Tooltip>
         <Separator orientation="vertical" className="mx-1 h-4" />
 
         {/* Headings */}
         {[1, 2, 3].map((level) => {
           const Icon = level === 1 ? Heading1 : level === 2 ? Heading2 : Heading3;
           return (
-            <Toggle key={level} size="sm"
-              pressed={editor.isActive("heading", { level })}
-              onPressedChange={() => editor.chain().focus().toggleHeading({ level: level as 1 | 2 | 3 }).run()}
-              aria-label={`H${level}`}
-            >
-              <Icon className="h-3.5 w-3.5" />
-            </Toggle>
+            <Tooltip key={level} content={`H${level}`}>
+              <Toggle size="sm"
+                pressed={editor.isActive("heading", { level })}
+                onPressedChange={() => editor.chain().focus().toggleHeading({ level: level as 1 | 2 | 3 }).run()}
+                aria-label={`H${level}`}
+              >
+                <Icon className="h-3.5 w-3.5" />
+              </Toggle>
+            </Tooltip>
           );
         })}
         <Separator orientation="vertical" className="mx-1 h-4" />
 
         {/* Text Formatting */}
-        <Toggle size="sm" pressed={editor.isActive("bold")} onPressedChange={() => editor.chain().focus().toggleBold().run()} aria-label={t("editor.bold")}>
-          <Bold className="h-3.5 w-3.5" />
-        </Toggle>
-        <Toggle size="sm" pressed={editor.isActive("italic")} onPressedChange={() => editor.chain().focus().toggleItalic().run()} aria-label={t("editor.italic")}>
-          <Italic className="h-3.5 w-3.5" />
-        </Toggle>
-        <Toggle size="sm" pressed={editor.isActive("underline")} onPressedChange={() => editor.chain().focus().toggleUnderline().run()} aria-label={t("editor.underline")}>
-          <UnderlineIcon className="h-3.5 w-3.5" />
-        </Toggle>
-        <Toggle size="sm" pressed={editor.isActive("strike")} onPressedChange={() => editor.chain().focus().toggleStrike().run()} aria-label={t("editor.strikethrough")}>
-          <Strikethrough className="h-3.5 w-3.5" />
-        </Toggle>
+        <Tooltip content={t("editor.bold")}>
+          <Toggle size="sm" pressed={editor.isActive("bold")} onPressedChange={() => editor.chain().focus().toggleBold().run()} aria-label={t("editor.bold")}>
+            <Bold className="h-3.5 w-3.5" />
+          </Toggle>
+        </Tooltip>
+        <Tooltip content={t("editor.italic")}>
+          <Toggle size="sm" pressed={editor.isActive("italic")} onPressedChange={() => editor.chain().focus().toggleItalic().run()} aria-label={t("editor.italic")}>
+            <Italic className="h-3.5 w-3.5" />
+          </Toggle>
+        </Tooltip>
+        <Tooltip content={t("editor.underline")}>
+          <Toggle size="sm" pressed={editor.isActive("underline")} onPressedChange={() => editor.chain().focus().toggleUnderline().run()} aria-label={t("editor.underline")}>
+            <UnderlineIcon className="h-3.5 w-3.5" />
+          </Toggle>
+        </Tooltip>
+        <Tooltip content={t("editor.strikethrough")}>
+          <Toggle size="sm" pressed={editor.isActive("strike")} onPressedChange={() => editor.chain().focus().toggleStrike().run()} aria-label={t("editor.strikethrough")}>
+            <Strikethrough className="h-3.5 w-3.5" />
+          </Toggle>
+        </Tooltip>
         <Separator orientation="vertical" className="mx-1 h-4" />
 
         {/* Code */}
-        <Toggle size="sm" pressed={editor.isActive("code")} onPressedChange={() => editor.chain().focus().toggleCode().run()} aria-label={t("editor.code")}>
-          <Code className="h-3.5 w-3.5" />
-        </Toggle>
-        <Toggle size="sm" pressed={editor.isActive("codeBlock")} onPressedChange={() => editor.chain().focus().toggleCodeBlock().run()} aria-label={t("editor.codeBlock")}>
-          <Code2 className="h-3.5 w-3.5" />
-        </Toggle>
+        <Tooltip content={t("editor.code")}>
+          <Toggle size="sm" pressed={editor.isActive("code")} onPressedChange={() => editor.chain().focus().toggleCode().run()} aria-label={t("editor.code")}>
+            <Code className="h-3.5 w-3.5" />
+          </Toggle>
+        </Tooltip>
+        <Tooltip content={t("editor.codeBlock")}>
+          <Toggle size="sm" pressed={editor.isActive("codeBlock")} onPressedChange={() => editor.chain().focus().toggleCodeBlock().run()} aria-label={t("editor.codeBlock")}>
+            <Code2 className="h-3.5 w-3.5" />
+          </Toggle>
+        </Tooltip>
         <Separator orientation="vertical" className="mx-1 h-4" />
 
         {/* Highlight */}
-        <Toggle size="sm" pressed={editor.isActive("highlight")} onPressedChange={() => editor.chain().focus().toggleHighlight().run()} aria-label={t("editor.highlight")}>
-          <Highlighter className="h-3.5 w-3.5" />
-        </Toggle>
+        <Tooltip content={t("editor.highlight")}>
+          <Toggle size="sm" pressed={editor.isActive("highlight")} onPressedChange={() => editor.chain().focus().toggleHighlight().run()} aria-label={t("editor.highlight")}>
+            <Highlighter className="h-3.5 w-3.5" />
+          </Toggle>
+        </Tooltip>
 
         {/* Text Color */}
         <div className="relative">
-          <Toggle size="sm" pressed={showColorPicker}
-            onPressedChange={() => { setShowColorPicker(!showColorPicker); setShowFontSizePicker(false); setShowLineHeightPicker(false); }}
-            aria-label={t("editor.textColor")}
-          >
-            <Palette className="h-3.5 w-3.5" />
-          </Toggle>
+          <Tooltip content={t("editor.textColor")}>
+            <Toggle size="sm" pressed={showColorPicker}
+              onPressedChange={() => { setShowColorPicker(!showColorPicker); setShowFontSizePicker(false); setShowLineHeightPicker(false); }}
+              aria-label={t("editor.textColor")}
+            >
+              <Palette className="h-3.5 w-3.5" />
+            </Toggle>
+          </Tooltip>
           {showColorPicker && (
             <div className="absolute top-full left-0 mt-1 z-50 flex flex-wrap gap-1 rounded-lg border border-surface-200 bg-white p-2 shadow-lg dark:border-surface-700 dark:bg-surface-900">
               {TEXT_COLORS.map((c) => (
@@ -259,41 +283,57 @@ export function Editor({ documentId }: EditorProps) {
         <Separator orientation="vertical" className="mx-1 h-4" />
 
         {/* Align */}
-        <Toggle size="sm" pressed={editor.isActive({ textAlign: "left" })} onPressedChange={() => editor.chain().focus().setTextAlign("left").run()} aria-label={t("editor.alignLeft")}>
-          <AlignLeft className="h-3.5 w-3.5" />
-        </Toggle>
-        <Toggle size="sm" pressed={editor.isActive({ textAlign: "center" })} onPressedChange={() => editor.chain().focus().setTextAlign("center").run()} aria-label={t("editor.alignCenter")}>
-          <AlignCenter className="h-3.5 w-3.5" />
-        </Toggle>
-        <Toggle size="sm" pressed={editor.isActive({ textAlign: "right" })} onPressedChange={() => editor.chain().focus().setTextAlign("right").run()} aria-label={t("editor.alignRight")}>
-          <AlignRight className="h-3.5 w-3.5" />
-        </Toggle>
+        <Tooltip content={t("editor.alignLeft")}>
+          <Toggle size="sm" pressed={editor.isActive({ textAlign: "left" })} onPressedChange={() => editor.chain().focus().setTextAlign("left").run()} aria-label={t("editor.alignLeft")}>
+            <AlignLeft className="h-3.5 w-3.5" />
+          </Toggle>
+        </Tooltip>
+        <Tooltip content={t("editor.alignCenter")}>
+          <Toggle size="sm" pressed={editor.isActive({ textAlign: "center" })} onPressedChange={() => editor.chain().focus().setTextAlign("center").run()} aria-label={t("editor.alignCenter")}>
+            <AlignCenter className="h-3.5 w-3.5" />
+          </Toggle>
+        </Tooltip>
+        <Tooltip content={t("editor.alignRight")}>
+          <Toggle size="sm" pressed={editor.isActive({ textAlign: "right" })} onPressedChange={() => editor.chain().focus().setTextAlign("right").run()} aria-label={t("editor.alignRight")}>
+            <AlignRight className="h-3.5 w-3.5" />
+          </Toggle>
+        </Tooltip>
         <Separator orientation="vertical" className="mx-1 h-4" />
 
         {/* Lists */}
-        <Toggle size="sm" pressed={editor.isActive("bulletList")} onPressedChange={() => editor.chain().focus().toggleBulletList().run()} aria-label={t("editor.bulletList")}>
-          <List className="h-3.5 w-3.5" />
-        </Toggle>
-        <Toggle size="sm" pressed={editor.isActive("orderedList")} onPressedChange={() => editor.chain().focus().toggleOrderedList().run()} aria-label={t("editor.orderedList")}>
-          <ListOrdered className="h-3.5 w-3.5" />
-        </Toggle>
+        <Tooltip content={t("editor.bulletList")}>
+          <Toggle size="sm" pressed={editor.isActive("bulletList")} onPressedChange={() => editor.chain().focus().toggleBulletList().run()} aria-label={t("editor.bulletList")}>
+            <List className="h-3.5 w-3.5" />
+          </Toggle>
+        </Tooltip>
+        <Tooltip content={t("editor.orderedList")}>
+          <Toggle size="sm" pressed={editor.isActive("orderedList")} onPressedChange={() => editor.chain().focus().toggleOrderedList().run()} aria-label={t("editor.orderedList")}>
+            <ListOrdered className="h-3.5 w-3.5" />
+          </Toggle>
+        </Tooltip>
         <Separator orientation="vertical" className="mx-1 h-4" />
 
         {/* Blockquote & HR */}
-        <Toggle size="sm" pressed={editor.isActive("blockquote")} onPressedChange={() => editor.chain().focus().toggleBlockquote().run()} aria-label={t("editor.blockquote")}>
-          <Quote className="h-3.5 w-3.5" />
-        </Toggle>
-        <Toggle size="sm" pressed={false} onPressedChange={() => editor.chain().focus().setHorizontalRule().run()} aria-label={t("editor.horizontalRule")}>
-          <Minus className="h-3.5 w-3.5" />
-        </Toggle>
+        <Tooltip content={t("editor.blockquote")}>
+          <Toggle size="sm" pressed={editor.isActive("blockquote")} onPressedChange={() => editor.chain().focus().toggleBlockquote().run()} aria-label={t("editor.blockquote")}>
+            <Quote className="h-3.5 w-3.5" />
+          </Toggle>
+        </Tooltip>
+        <Tooltip content={t("editor.horizontalRule")}>
+          <Toggle size="sm" pressed={false} onPressedChange={() => editor.chain().focus().setHorizontalRule().run()} aria-label={t("editor.horizontalRule")}>
+            <Minus className="h-3.5 w-3.5" />
+          </Toggle>
+        </Tooltip>
         <Separator orientation="vertical" className="mx-1 h-4" />
 
         {/* Font Size */}
         <div className="relative">
-          <button
-            onClick={() => { setShowFontSizePicker(!showFontSizePicker); setShowColorPicker(false); setShowLineHeightPicker(false); }}
-            className="h-7 px-2 rounded text-xs font-medium border border-surface-200 hover:bg-surface-100 cursor-pointer dark:border-surface-700 dark:hover:bg-surface-800"
-          >{t("editor.fontSize")}</button>
+          <Tooltip content={t("editor.fontSize")}>
+            <button
+              onClick={() => { setShowFontSizePicker(!showFontSizePicker); setShowColorPicker(false); setShowLineHeightPicker(false); }}
+              className="h-7 px-2 rounded text-xs font-medium border border-surface-200 hover:bg-surface-100 cursor-pointer dark:border-surface-700 dark:hover:bg-surface-800"
+            >{t("editor.fontSize")}</button>
+          </Tooltip>
           {showFontSizePicker && (
             <div className="absolute top-full left-0 mt-1 z-50 flex flex-col gap-0.5 rounded-lg border border-surface-200 bg-white p-1 shadow-lg dark:border-surface-700 dark:bg-surface-900 min-w-[100px]">
               {FONT_SIZES.map((fs) => (
@@ -313,10 +353,12 @@ export function Editor({ documentId }: EditorProps) {
 
         {/* Line Height */}
         <div className="relative">
-          <button
-            onClick={() => { setShowLineHeightPicker(!showLineHeightPicker); setShowColorPicker(false); setShowFontSizePicker(false); }}
-            className="h-7 px-2 rounded text-xs font-medium border border-surface-200 hover:bg-surface-100 cursor-pointer dark:border-surface-700 dark:hover:bg-surface-800"
-          >{t("editor.lineHeight")}</button>
+          <Tooltip content={t("editor.lineHeight")}>
+            <button
+              onClick={() => { setShowLineHeightPicker(!showLineHeightPicker); setShowColorPicker(false); setShowFontSizePicker(false); }}
+              className="h-7 px-2 rounded text-xs font-medium border border-surface-200 hover:bg-surface-100 cursor-pointer dark:border-surface-700 dark:hover:bg-surface-800"
+            >{t("editor.lineHeight")}</button>
+          </Tooltip>
           {showLineHeightPicker && (
             <div className="absolute top-full left-0 mt-1 z-50 flex flex-col gap-0.5 rounded-lg border border-surface-200 bg-white p-1 shadow-lg dark:border-surface-700 dark:bg-surface-900 min-w-[80px]">
               {LINE_HEIGHTS.map((lh) => (
@@ -328,7 +370,8 @@ export function Editor({ documentId }: EditorProps) {
             </div>
           )}
         </div>
-      </div>
+        </div>
+      </TooltipProvider>
 
       {/* Editor Area */}
       <Scrollbar className="flex-1">
