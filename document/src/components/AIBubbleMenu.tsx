@@ -1,7 +1,7 @@
 import { useState, useCallback } from "react";
 import { type Editor } from "@tiptap/react";
 import { BubbleMenu } from "@tiptap/react/menus";
-import { Bot, ChevronDown, Sparkles } from "lucide-react";
+import { Bot, ChevronDown, Loader2, Sparkles } from "lucide-react";
 import { useI18n } from "@/components/I18nProvider";
 import { useToast } from "@/components/Toast";
 
@@ -91,9 +91,12 @@ export function AIBubbleMenu({ editor }: AIBubbleMenuProps) {
   const { t, lang } = useI18n();
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
+  const [activeAction, setActiveAction] = useState<ActionType | null>(null);
   const [showMore, setShowMore] = useState(false);
 
   const handleAction = useCallback(async (type: ActionType) => {
+    if (loading) return;
+
     const { from, to } = editor.state.selection;
     if (from === to) return;
 
@@ -110,6 +113,7 @@ export function AIBubbleMenu({ editor }: AIBubbleMenuProps) {
 选中的文字：${selectedText}`;
 
     setLoading(true);
+    setActiveAction(type);
     setShowMore(false);
 
     let accumulated = "";
@@ -138,8 +142,9 @@ export function AIBubbleMenu({ editor }: AIBubbleMenuProps) {
       toast(`${t("ai.menu.failed")}: ${err.message || "unknown"}`, "error");
     } finally {
       setLoading(false);
+      setActiveAction(null);
     }
-  }, [editor, lang, t, toast]);
+  }, [editor, lang, loading, t, toast]);
 
   const primaryActions: ActionType[] = ["rewrite", "expand", "summarize", "translate"];
   const moreActions: ActionType[] = ["continue", "toneFormal", "toneCasual"];
@@ -155,7 +160,20 @@ export function AIBubbleMenu({ editor }: AIBubbleMenuProps) {
         return text.trim().length > 0;
       }}
     >
-      <div className="flex items-center gap-1 rounded-lg border border-surface-200 bg-white px-1.5 py-1 shadow-lg dark:border-surface-700 dark:bg-surface-900">
+      <div
+        className="relative flex items-center gap-1 rounded-lg border border-surface-200 bg-white px-1.5 py-1 shadow-lg dark:border-surface-700 dark:bg-surface-900"
+        aria-busy={loading}
+      >
+        {loading && (
+          <div className="absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-white/90 px-3 backdrop-blur-[2px] dark:bg-surface-900/90">
+            <div className="flex items-center gap-2 text-xs font-medium text-brand-600 dark:text-brand-300">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              <span>
+                {activeAction ? `${t(`ai.menu.${activeAction}`)} · ${t("ai.menu.loading")}` : t("ai.menu.loading")}
+              </span>
+            </div>
+          </div>
+        )}
         <Bot className="mr-1 h-3.5 w-3.5 text-brand-500" />
         {primaryActions.map((action) => (
           <button
