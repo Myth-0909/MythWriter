@@ -32,6 +32,7 @@ import { useI18n } from "@/components/I18nProvider";
 import { useDocuments } from "@/store";
 import { useToast } from "@/components/Toast";
 import { api } from "@/api";
+import { extractPdfText } from "@/lib/pdfText";
 import { categoryLabels, type DocumentCategory } from "@/types";
 import { formatFullDateTime, formatRelativeModified } from "@/lib/date";
 
@@ -46,6 +47,25 @@ const colorByCategory: Record<DocumentCategory, string> = {
   planning: "bg-red-100 text-red-600", research: "bg-cyan-100 text-cyan-600",
   general: "bg-brand-100 text-brand-600",
 };
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function plainTextToHtml(value: string): string {
+  return value
+    .split(/\n{2,}/)
+    .map((paragraph) => {
+      const html = escapeHtml(paragraph.trim()).replace(/\n/g, "<br>");
+      return `<p>${html || "&#8203;"}</p>`;
+    })
+    .join("");
+}
 
 interface DocumentCenterPageProps {
   onOpenDoc?: (id: string) => void;
@@ -115,8 +135,15 @@ export function DocumentCenterPage({ onOpenDoc }: DocumentCenterPageProps) {
     if (!file) return;
 
     const ext = file.name.split(".").pop()?.toLowerCase();
-    if (!ext || !["txt", "md", "docx"].includes(ext)) {
+    if (ext === "doc") {
+      toast(t("toast.importLegacyWordUnsupported"), "error");
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
+
+    if (!ext || !["txt", "md", "docx", "pdf"].includes(ext)) {
       toast(t("toast.importUnsupported"), "error");
+      if (fileInputRef.current) fileInputRef.current.value = "";
       return;
     }
 
@@ -130,23 +157,19 @@ export function DocumentCenterPage({ onOpenDoc }: DocumentCenterPageProps) {
         const arrayBuffer = await file.arrayBuffer();
         const result = await mammoth.convertToHtml({ arrayBuffer });
         content = result.value;
+      } else if (ext === "pdf") {
+        const text = await extractPdfText(file);
+        if (!text.trim()) throw new Error(t("toast.importPdfNoText"));
+        content = plainTextToHtml(text);
       } else {
-        const raw = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(reader.result as string);
-          reader.onerror = reject;
-          reader.readAsText(file);
-        });
+        const raw = await file.text();
 
         if (ext === "md") {
           // Convert markdown to HTML
           content = await marked.parse(raw);
         } else {
           // TXT: convert plain text with line breaks to HTML paragraphs
-          content = raw
-            .split(/\n\n+/)
-            .map((p) => `<p>${p.replace(/\n/g, "<br>").trim() || "&#8203;"}</p>`)
-            .join("");
+          content = plainTextToHtml(raw);
         }
       }
 
@@ -223,7 +246,7 @@ export function DocumentCenterPage({ onOpenDoc }: DocumentCenterPageProps) {
             <input
               ref={fileInputRef}
               type="file"
-              accept=".txt,.md,.docx"
+              accept=".txt,.md,.pdf,.docx,.doc"
               className="hidden"
               onChange={handleImport}
             />

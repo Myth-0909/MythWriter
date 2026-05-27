@@ -88,7 +88,7 @@ export function EditorPage({ activeNav = "documents", onNavChange, onLogout, act
         </div>
       </div>
 
-      <ShareModal open={shareOpen} onOpenChange={setShareOpen} />
+      <ShareModal open={shareOpen} onOpenChange={setShareOpen} onExport={handleExport} />
     </div>
   );
 }

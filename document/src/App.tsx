@@ -43,6 +43,42 @@ function hashFromPage(page: Page, editorDocId?: string): string {
   return `#/${page}`;
 }
 
+function safeFilename(value: string): string {
+  return (value || "document").replace(/[\\/:*?"<>|]/g, "_");
+}
+
+function buildExportHtml(title: string, meta: string, content: string): string {
+  return `<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <title>${title}</title>
+  <style>
+    body { max-width: 720px; margin: 40px auto; padding: 0 20px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 16px; line-height: 1.8; color: #333; }
+    h1 { font-size: 28px; margin-bottom: 8px; }
+    .meta { color: #999; font-size: 13px; margin-bottom: 24px; }
+    @media print { body { margin: 0 auto; } }
+  </style>
+</head>
+<body>
+  <h1>${title}</h1>
+  <div class="meta">${meta}</div>
+  ${content}
+</body>
+</html>`;
+}
+
+function printHtmlAsPdf(html: string): boolean {
+  const printWindow = window.open("", "_blank");
+  if (!printWindow) return false;
+  printWindow.document.open();
+  printWindow.document.write(html);
+  printWindow.document.close();
+  printWindow.focus();
+  setTimeout(() => printWindow.print(), 250);
+  return true;
+}
+
 function EditorPageContent({ activeDocId, onSelectDoc }: { activeDocId: string; onSelectDoc: (id: string) => void }) {
   return (
     <>
@@ -196,16 +232,34 @@ export default function App() {
       return;
     }
 
-    const title = doc.title || "document";
+    const title = safeFilename(doc.title || "document");
     const dateStr = formatFullDateTime(doc.updatedAt, lang);
+    const meta = `${dateStr}${t("date.separator")}${doc.category}`;
     let content: string;
     let mime: string;
     let ext: string;
 
+    if (format === "pdf") {
+      const html = buildExportHtml(title, meta, doc.content);
+      if (!printHtmlAsPdf(html)) {
+        const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `${title}.html`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      }
+      toast(t("editor.exported"), "success");
+      return;
+    }
+
     if (format === "txt") {
       const tmp = document.createElement("div");
       tmp.innerHTML = doc.content;
-      content = `# ${title}\n${dateStr}${t("date.separator")}${doc.category}\n\n${tmp.textContent || ""}`;
+      content = `# ${title}\n${meta}\n\n${tmp.textContent || ""}`;
       mime = "text/plain;charset=utf-8";
       ext = "txt";
     } else if (format === "md") {
@@ -223,27 +277,15 @@ export default function App() {
         .replace(/<code[^>]*>(.*?)<\/code>/gi, "`$1`")
         .replace(/<pre[^>]*>(.*?)<\/pre>/gi, "```\n$1\n```\n")
         .replace(/<[^>]+>/g, "");
-      content = `# ${title}\n${dateStr}${t("date.separator")}${doc.category}\n\n${md.trim()}`;
+      content = `# ${title}\n${meta}\n\n${md.trim()}`;
       mime = "text/markdown;charset=utf-8";
       ext = "md";
+    } else if (format === "word") {
+      content = buildExportHtml(title, meta, doc.content);
+      mime = "application/msword;charset=utf-8";
+      ext = "doc";
     } else {
-      content = `<!DOCTYPE html>
-<html lang="zh">
-<head>
-  <meta charset="UTF-8">
-  <title>${title}</title>
-  <style>
-    body { max-width: 720px; margin: 40px auto; padding: 0 20px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 16px; line-height: 1.8; color: #333; }
-    h1 { font-size: 28px; margin-bottom: 8px; }
-    .meta { color: #999; font-size: 13px; margin-bottom: 24px; }
-  </style>
-</head>
-<body>
-  <h1>${title}</h1>
-  <div class="meta">${dateStr}${t("date.separator")}${doc.category}</div>
-  ${doc.content}
-</body>
-</html>`;
+      content = buildExportHtml(title, meta, doc.content);
       mime = "text/html;charset=utf-8";
       ext = "html";
     }
@@ -322,7 +364,7 @@ export default function App() {
 
       {currentPage !== "notfound" && <AIChatWidget />}
 
-      <ShareModal open={shareOpen} onOpenChange={setShareOpen} />
+      <ShareModal open={shareOpen} onOpenChange={setShareOpen} onExport={handleExport} />
 
       <ConfirmModal
         open={logoutConfirm}

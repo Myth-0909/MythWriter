@@ -116,7 +116,7 @@ const translations = {
   "editor.color.magenta": { zh: "紫红", en: "Magenta" },
 
   // Share Modal
-  "share.title": { zh: "分享与导出", en: "Share & Export" },
+  "share.title": { zh: "导出文档", en: "Export Document" },
   "share.exportDocument": { zh: "导出文档", en: "Export Document" },
   "share.shareLink": { zh: "分享链接", en: "Share Link" },
   "share.copyLink": { zh: "复制链接", en: "Copy Link" },
@@ -214,6 +214,8 @@ const translations = {
   "toast.importSuccess": { zh: "文档导入成功", en: "Document imported" },
   "toast.importFailed": { zh: "导入失败，请检查文件格式", en: "Import failed, check file format" },
   "toast.importUnsupported": { zh: "不支持的文件格式", en: "Unsupported file format" },
+  "toast.importPdfNoText": { zh: "未能从 PDF 中提取到可编辑文字", en: "No editable text could be extracted from the PDF" },
+  "toast.importLegacyWordUnsupported": { zh: "暂不支持 .doc 文件，请另存为 .docx 后导入", en: ".doc files are not supported yet. Please save as .docx and import again" },
   "toast.avatarSuccess": { zh: "头像上传成功", en: "Avatar uploaded" },
   "toast.avatarFailed": { zh: "头像上传失败", en: "Avatar upload failed" },
   "toast.avatarTooBig": { zh: "图片大小不能超过2MB", en: "Image must be under 2MB" },

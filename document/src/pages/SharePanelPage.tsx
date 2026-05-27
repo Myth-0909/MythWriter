@@ -106,7 +106,7 @@ export function SharePanelPage({ activeNav = "documents", onNavChange, onLogout,
         </div>
       </div>
 
-      <ShareModal open={shareOpen} onOpenChange={setShareOpen} />
+      <ShareModal open={shareOpen} onOpenChange={setShareOpen} onExport={() => {}} />
     </div>
   );
 }

@@ -134,13 +134,21 @@ export function SideNavBar({ activeNav, onNavChange, collapsed = false }: SideNa
       </aside>
 
       <Dialog open={logoPreviewOpen} onOpenChange={setLogoPreviewOpen}>
-        <DialogContent className="max-w-[360px]">
+        <DialogContent
+          hideCloseButton
+          className="max-w-[420px] border-0 bg-transparent p-0 shadow-none dark:bg-transparent"
+        >
           <DialogTitle className="sr-only">{t("app.logoPreview")}</DialogTitle>
-          <div className="flex flex-col items-center justify-center gap-5 px-4 py-8">
+          <div className="flex flex-col items-center justify-center gap-6 px-8 py-10">
             <BrandLogo size="xl" />
-            <div className="text-center text-3xl font-bold tracking-normal text-surface-900 dark:text-surface-100">
-              {t("app.name")}
-            </div>
+            <ShinyText
+              text={t("app.name")}
+              color={theme === "dark" ? "#f8fafc" : "#0f172a"}
+              shineColor={theme === "dark" ? "#d8bd73" : "#b9954e"}
+              speed={3}
+              direction="right"
+              className="text-center text-5xl font-bold tracking-normal"
+            />
           </div>
         </DialogContent>
       </Dialog>
