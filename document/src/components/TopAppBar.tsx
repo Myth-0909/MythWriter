@@ -151,7 +151,7 @@ export function TopAppBar({
         {/* User menu */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button className="flex items-center gap-2 rounded-full py-1 pl-1.5 pr-2.5 text-sm transition-colors hover:bg-surface-100 dark:hover:bg-surface-800 cursor-pointer">
+            <button className="flex items-center gap-1.5 rounded-full py-1 pl-1.5 pr-2 text-sm transition-colors hover:bg-surface-100 dark:hover:bg-surface-800 cursor-pointer">
               {avatarUrl ? (
                 <img
                   src={avatarUrl}
@@ -163,9 +163,6 @@ export function TopAppBar({
                   {initials}
                 </div>
               )}
-              <span className="max-w-[80px] truncate text-sm font-medium text-surface-700 dark:text-surface-200">
-                {user?.name || "User"}
-              </span>
               <ChevronDown className="h-3.5 w-3.5 text-surface-400" />
             </button>
           </DropdownMenuTrigger>

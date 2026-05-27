@@ -157,7 +157,7 @@ const translations = {
 
   // Settings Page
   "settings.title": { zh: "设置", en: "Settings" },
-  "settings.profile": { zh: "个人资料", en: "Profile" },
+  "settings.profile": { zh: "个人信息", en: "Personal Info" },
   "settings.appearance": { zh: "外观", en: "Appearance" },
   "settings.language": { zh: "语言偏好", en: "Language Preference" },
   "settings.languageDesc": { zh: "选择界面显示语言", en: "Choose your interface language" },
@@ -165,7 +165,7 @@ const translations = {
   "settings.themeDesc": { zh: "切换浅色或深色主题", en: "Switch between light and dark theme" },
   "settings.account": { zh: "账户", en: "Account" },
   "settings.email": { zh: "邮箱地址", en: "Email address" },
-  "settings.name": { zh: "显示名称", en: "Display name" },
+  "settings.name": { zh: "昵称", en: "Nickname" },
   "settings.save": { zh: "保存更改", en: "Save changes" },
   "settings.saved": { zh: "设置已保存", en: "Settings saved" },
   "settings.about": { zh: "关于", en: "About" },

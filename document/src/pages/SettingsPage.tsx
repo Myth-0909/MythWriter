@@ -133,6 +133,7 @@ export function SettingsPage() {
     : null;
 
   const isLocked = !!maskedKey && !keyEditable;
+  const themeModeIndex = { system: 0, light: 1, dark: 2 }[themeMode];
 
   return (
     <Scrollbar className="flex-1 bg-surface-50 dark:bg-surface-950">
@@ -185,9 +186,6 @@ export function SettingsPage() {
                 />
               </button>
               <div>
-                <p className="text-sm font-medium text-surface-800 dark:text-surface-200">
-                  {t("settings.name")}
-                </p>
                 <p className="text-xs text-surface-500 mt-0.5">{t("settings.avatarHint")}</p>
               </div>
             </div>
@@ -238,12 +236,16 @@ export function SettingsPage() {
                   </p>
                   <p className="text-xs text-surface-500 mt-0.5">{t("settings.themeDesc")}</p>
                 </div>
-                <div className="flex items-center gap-1 rounded-lg bg-surface-100 p-1 dark:bg-surface-800">
+                <div className="relative grid w-[116px] grid-cols-3 gap-1 rounded-lg bg-surface-100 p-1 dark:bg-surface-800">
+                  <div
+                    className="absolute left-1 top-1 h-8 w-8 rounded-md bg-white shadow-sm transition-transform duration-300 ease-out dark:bg-surface-700"
+                    style={{ transform: `translateX(${themeModeIndex * 36}px)` }}
+                  />
                   <button
                     onClick={() => setThemeMode("system")}
-                    className={`flex items-center justify-center h-8 w-8 rounded-md transition-all cursor-pointer ${
+                    className={`relative z-10 flex h-8 w-8 items-center justify-center rounded-md transition-colors cursor-pointer ${
                       themeMode === "system"
-                        ? "bg-white text-surface-900 shadow-sm dark:bg-surface-700 dark:text-surface-100"
+                        ? "text-surface-900 dark:text-surface-100"
                         : "text-surface-400 hover:text-surface-600 dark:hover:text-surface-300"
                     }`}
                     title={t("nav.followSystem")}
@@ -252,9 +254,9 @@ export function SettingsPage() {
                   </button>
                   <button
                     onClick={() => setThemeMode("light")}
-                    className={`flex items-center justify-center h-8 w-8 rounded-md transition-all cursor-pointer ${
+                    className={`relative z-10 flex h-8 w-8 items-center justify-center rounded-md transition-colors cursor-pointer ${
                       themeMode === "light"
-                        ? "bg-white text-amber-500 shadow-sm dark:bg-surface-700"
+                        ? "text-amber-500"
                         : "text-surface-400 hover:text-surface-600 dark:hover:text-surface-300"
                     }`}
                     title={t("nav.lightMode")}
@@ -263,9 +265,9 @@ export function SettingsPage() {
                   </button>
                   <button
                     onClick={() => setThemeMode("dark")}
-                    className={`flex items-center justify-center h-8 w-8 rounded-md transition-all cursor-pointer ${
+                    className={`relative z-10 flex h-8 w-8 items-center justify-center rounded-md transition-colors cursor-pointer ${
                       themeMode === "dark"
-                        ? "bg-white text-brand-500 shadow-sm dark:bg-surface-700 dark:text-brand-400"
+                        ? "text-brand-500 dark:text-brand-400"
                         : "text-surface-400 hover:text-surface-600 dark:hover:text-surface-300"
                     }`}
                     title={t("nav.darkMode")}
