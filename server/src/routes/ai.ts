@@ -2,6 +2,7 @@ import { Router, Request, Response } from "express";
 import { AuthRequest, authMiddleware, authMiddlewareWithBlacklist } from "../middleware/auth";
 import { aiChatLimiter } from "../middleware/rateLimiter";
 import { t } from "../lib/i18n";
+import prisma from "../lib/prisma";
 import {
   buildSystemPrompt, detectDeleteCommand, detectInjection,
   parseAction, safePersonality, getUserApiKey,
@@ -11,11 +12,73 @@ import {
 import type { Personality } from "../services/aiService";
 
 const router = Router();
+const MAX_REFERENCE_DOCS = 4;
+const MAX_REFERENCE_CHARS = 12000;
+
+type ChatReference = {
+  type?: string;
+  id?: string;
+  title?: string;
+};
+
+type ReferenceDocument = {
+  id: string;
+  title: string;
+  content: string;
+  updatedAt: Date;
+};
 
 function buildChatCompletionsUrl(baseUrl: string): string {
   const trimmed = baseUrl.trim().replace(/\/+$/, "");
   if (trimmed.endsWith("/chat/completions")) return trimmed;
   return `${trimmed}/chat/completions`;
+}
+
+function stripHtml(value: string): string {
+  return value
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    .replace(/<style[\s\S]*?<\/style>/gi, "")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(p|div|h[1-6]|li|tr)>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, "\"")
+    .replace(/&#39;/g, "'")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+async function buildReferenceContext(userId: string, references: ChatReference[] | undefined): Promise<string> {
+  if (!Array.isArray(references) || references.length === 0) return "";
+  const ids = Array.from(new Set(
+    references
+      .filter((ref) => ref?.type === "document" && typeof ref.id === "string")
+      .map((ref) => ref.id as string)
+  )).slice(0, MAX_REFERENCE_DOCS);
+  if (ids.length === 0) return "";
+
+  const docs: ReferenceDocument[] = await prisma.document.findMany({
+    where: { id: { in: ids }, userId, isDeleted: false },
+    select: { id: true, title: true, content: true, updatedAt: true },
+  });
+  if (docs.length === 0) return "";
+
+  const orderedDocs = ids
+    .map((id) => docs.find((doc) => doc.id === id))
+    .filter((doc): doc is ReferenceDocument => Boolean(doc));
+
+  return orderedDocs.map((doc) => {
+    const content = stripHtml(doc.content).slice(0, MAX_REFERENCE_CHARS);
+    return [
+      `[引用文档：${doc.title}]`,
+      `更新时间：${doc.updatedAt.toISOString()}`,
+      "内容：",
+      content || "(空文档)",
+    ].join("\n");
+  }).join("\n\n---\n\n");
 }
 
 // All AI routes require auth (with blacklist check) + rate limit
@@ -46,7 +109,7 @@ router.post("/greeting", async (req: Request, res: Response) => {
 // Streaming chat
 router.post("/chat", async (req: Request, res: Response) => {
   try {
-    const { messages, personality, memoryContext, purpose } = req.body;
+    const { messages, personality, memoryContext, purpose, references } = req.body;
     const isSelectionEdit = purpose === "selection_edit";
 
     if (!messages || !Array.isArray(messages)) {
@@ -83,7 +146,16 @@ router.post("/chat", async (req: Request, res: Response) => {
     }
 
     const pers = safePersonality(personality);
-    const systemPrompt = buildSystemPrompt(pers, memoryContext || "");
+    const referenceContext = await buildReferenceContext(authReq.user!.userId, references);
+    const systemPrompt = buildSystemPrompt(
+      pers,
+      [
+        memoryContext || "",
+        referenceContext
+          ? `用户为本次对话引用了以下项目文档作为上下文。回答时优先依据这些文档；如果文档信息不足，请明确说明。\n\n${referenceContext}`
+          : "",
+      ].filter(Boolean).join("\n\n")
+    );
 
     const apiUrl = buildChatCompletionsUrl(apiBaseUrl);
     console.log("[AI] Sending request to:", apiUrl, "model:", aiModel);

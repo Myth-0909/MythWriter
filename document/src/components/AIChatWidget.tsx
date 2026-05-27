@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { Bot, X, Send, Sparkles, Smile, ChevronDown, ThumbsUp, ThumbsDown, Star, Trash2, Check, Pencil, Mic, MicOff, Square } from "lucide-react";
+import { Bot, X, Send, Sparkles, Smile, ChevronDown, ThumbsUp, ThumbsDown, Star, Trash2, Check, Pencil, Mic, MicOff, Square, FileText } from "lucide-react";
 import { ConfirmModal } from "@/components/ConfirmModal";
 import { Scrollbar } from "@/components/ui/scrollbar";
 import { useI18n } from "@/components/I18nProvider";
@@ -39,6 +39,12 @@ interface Message {
   content: string;
 }
 
+interface DocumentReference {
+  type: "document";
+  id: string;
+  title: string;
+}
+
 interface Position {
   x: number;
   y: number;
@@ -60,8 +66,14 @@ function buildMemoryContext(memory: Message[]): string {
   }).join("\n");
 }
 
+function getMentionQuery(value: string): { query: string; start: number } | null {
+  const match = value.match(/(^|\s)@([^\s@]*)$/);
+  if (!match || match.index === undefined) return null;
+  return { query: match[2] || "", start: match.index + match[1].length };
+}
+
 async function streamChat(
-  data: { messages: Message[]; personality: string; memoryContext: string },
+  data: { messages: Message[]; personality: string; memoryContext: string; references?: DocumentReference[] },
   onDelta: (delta: string) => void,
   signal: AbortSignal
 ): Promise<{ reply: string; action: any }> {
@@ -145,7 +157,7 @@ async function streamChat(
 export function AIChatWidget() {
   const { t } = useI18n();
   const { toast } = useToast();
-  const { createDocument } = useDocuments();
+  const { createDocument, documents } = useDocuments();
   const { user } = useAuth();
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -175,6 +187,8 @@ export function AIChatWidget() {
   const [listening, setListening] = useState(false);
   const recognitionRef = useRef<any>(null);
   const [keyOk, setKeyOk] = useState(false);
+  const [references, setReferences] = useState<DocumentReference[]>([]);
+  const [mentionOpen, setMentionOpen] = useState(false);
 
   // Save conversation to DB
   const saveConversation = useCallback(async () => {
@@ -365,10 +379,19 @@ export function AIChatWidget() {
     const text = input.trim();
     if (!text || loading || streaming) return;
 
+    const referencedByText = documents
+      .filter((doc) => text.includes(`@${doc.title}`))
+      .map((doc) => ({ type: "document" as const, id: doc.id, title: doc.title }));
+    const requestReferences = [...references, ...referencedByText].filter(
+      (ref, index, all) => all.findIndex((item) => item.id === ref.id) === index
+    );
+
     const userMsg: Message = { role: "user", content: text };
     const withUser = [...messages, userMsg];
     setMessages(withUser);
     setInput("");
+    setReferences([]);
+    setMentionOpen(false);
     setLoading(true);
     api.logActivity({ action: "chat_send", detail: text.slice(0, 100) }).catch(() => {});
 
@@ -384,7 +407,7 @@ export function AIChatWidget() {
       let firstDelta = true;
 
       const { reply, action } = await streamChat(
-        { messages: withUser, personality: personalityRef.current, memoryContext },
+        { messages: withUser, personality: personalityRef.current, memoryContext, references: requestReferences },
         (delta) => {
           fullContent += delta;
           if (firstDelta) {
@@ -451,7 +474,7 @@ export function AIChatWidget() {
       setLoading(false);
       setStreaming(false);
     }
-  }, [input, loading, streaming, messages, createDocument, toast, t]);
+  }, [input, loading, streaming, messages, createDocument, toast, t, documents, references]);
 
   const handleStop = useCallback(() => {
     abortRef.current?.abort();
@@ -523,6 +546,25 @@ export function AIChatWidget() {
 
   const currentPersonality = PERSONALITY_OPTIONS.find((p) => p.key === personality) || PERSONALITY_OPTIONS[0];
   const isGenerating = loading || streaming;
+  const mention = getMentionQuery(input);
+  const mentionMatches = mention
+    ? documents
+        .filter((doc) => !references.some((ref) => ref.id === doc.id))
+        .filter((doc) => doc.title.toLowerCase().includes(mention.query.toLowerCase()))
+        .slice(0, 6)
+    : [];
+  const showMentionMenu = mentionOpen && !!mention && !isGenerating;
+
+  const selectReference = (doc: { id: string; title: string }) => {
+    if (!mention) return;
+    setReferences((prev) => (
+      prev.some((ref) => ref.id === doc.id)
+        ? prev
+        : [...prev, { type: "document", id: doc.id, title: doc.title }]
+    ));
+    setInput((prev) => `${prev.slice(0, mention.start)}@${doc.title} `);
+    setMentionOpen(false);
+  };
 
   return (
     <>
@@ -831,16 +873,64 @@ export function AIChatWidget() {
 
           {/* Input */}
           <div className="shrink-0 border-t border-surface-200 px-3 py-3 dark:border-surface-700">
+            {references.length > 0 && (
+              <div className="mb-2 flex flex-wrap items-center gap-1.5">
+                <span className="text-[10px] font-medium text-surface-400">{t("ai.referenceContext")}</span>
+                {references.map((ref) => (
+                  <span
+                    key={ref.id}
+                    className="inline-flex max-w-[180px] items-center gap-1 rounded-full bg-brand-50 px-2 py-1 text-[11px] font-medium text-brand-700 dark:bg-brand-950 dark:text-brand-300"
+                  >
+                    <FileText className="h-3 w-3 shrink-0" />
+                    <span className="truncate">@{ref.title}</span>
+                    <button
+                      type="button"
+                      title={t("ai.removeReference")}
+                      onClick={() => setReferences((prev) => prev.filter((item) => item.id !== ref.id))}
+                      className="rounded-full p-0.5 text-brand-400 hover:bg-brand-100 hover:text-brand-700 dark:hover:bg-brand-900 dark:hover:text-brand-200"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
             <div className="flex items-center gap-2">
+              <div className="relative flex-1">
               <input
                 type="text"
                 value={input}
-                onChange={(e) => setInput(e.target.value)}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  setInput(next);
+                  setMentionOpen(!!getMentionQuery(next));
+                }}
                 onKeyDown={handleKeyDown}
-                placeholder={isGenerating ? t("ai.replying") : t("ai.placeholder")}
+                placeholder={isGenerating ? t("ai.replying") : `${t("ai.placeholder")} ${t("ai.mentionHint")}`}
                 disabled={isGenerating}
-                className="flex-1 rounded-xl border border-surface-200 bg-surface-50 px-4 py-2 text-sm text-surface-900 outline-none transition-all duration-200 hover:border-surface-300 hover:bg-surface-100 focus:border-brand-300 focus:ring-1 focus:ring-brand-300 focus:bg-white disabled:opacity-50 disabled:cursor-not-allowed dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 dark:hover:border-surface-600 dark:hover:bg-surface-700 dark:focus:border-brand-700 dark:focus:bg-surface-800"
+                className="w-full rounded-xl border border-surface-200 bg-surface-50 px-4 py-2 text-sm text-surface-900 outline-none transition-all duration-200 hover:border-surface-300 hover:bg-surface-100 focus:border-brand-300 focus:ring-1 focus:ring-brand-300 focus:bg-white disabled:opacity-50 disabled:cursor-not-allowed dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 dark:hover:border-surface-600 dark:hover:bg-surface-700 dark:focus:border-brand-700 dark:focus:bg-surface-800"
               />
+              {showMentionMenu && (
+                <div className="absolute bottom-full left-0 z-30 mb-2 max-h-56 w-full overflow-hidden rounded-xl border border-surface-200 bg-white py-1 shadow-lg dark:border-surface-700 dark:bg-surface-900">
+                  {mentionMatches.length > 0 ? (
+                    mentionMatches.map((doc) => (
+                      <button
+                        key={doc.id}
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => selectReference(doc)}
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-surface-700 transition-colors hover:bg-surface-50 dark:text-surface-200 dark:hover:bg-surface-800"
+                      >
+                        <FileText className="h-3.5 w-3.5 shrink-0 text-brand-500" />
+                        <span className="truncate">@{doc.title}</span>
+                      </button>
+                    ))
+                  ) : (
+                    <div className="px-3 py-2 text-xs text-surface-400">{t("ai.noMatchingDocs")}</div>
+                  )}
+                </div>
+              )}
+              </div>
               <Button
                 size="icon"
                 variant="ghost"

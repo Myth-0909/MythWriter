@@ -122,7 +122,12 @@ export const api = {
       "/ai/greeting", { method: "POST", body: JSON.stringify(data) }
     ),
 
-  aiChat: (data: { messages: { role: string; content: string }[]; personality: string; memoryContext: string }) =>
+  aiChat: (data: {
+    messages: { role: string; content: string }[];
+    personality: string;
+    memoryContext: string;
+    references?: { type: "document"; id: string; title: string }[];
+  }) =>
     request<{ reply: string; action: { type: string; title: string; content: string } | null }>(
       "/ai/chat", { method: "POST", body: JSON.stringify(data) }
     ),
