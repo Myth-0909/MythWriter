@@ -71,6 +71,7 @@ export function Editor({ documentId }: EditorProps) {
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadedDocumentIdRef = useRef<string | null>(null);
   const [selectionChars, setSelectionChars] = useState(0);
+  const [toolbarRevision, setToolbarRevision] = useState(0);
 
   const editor = useEditor({
     extensions: [
@@ -85,10 +86,12 @@ export function Editor({ documentId }: EditorProps) {
       TextAlign.configure({ types: ["heading", "paragraph"] }),
     ],
     onUpdate: ({ editor: ed }) => {
+      setToolbarRevision((revision) => revision + 1);
       updateCounts(ed);
       autoSave(ed);
     },
     onSelectionUpdate: ({ editor: ed }) => {
+      setToolbarRevision((revision) => revision + 1);
       const { from, to } = ed.state.selection;
       // For select-all (AllSelection), use the exact same value as total count
       if (from === 0 && to === ed.state.doc.content.size) {
@@ -180,7 +183,10 @@ export function Editor({ documentId }: EditorProps) {
     <div className="flex h-full flex-col bg-white dark:bg-surface-950">
       {/* Toolbar */}
       <TooltipProvider delayDuration={150}>
-        <div className="flex flex-wrap items-center gap-0.5 border-b border-surface-200 px-4 py-1.5 dark:border-surface-800">
+        <div
+          data-toolbar-revision={toolbarRevision}
+          className="flex flex-wrap items-center gap-0.5 border-b border-surface-200 px-4 py-1.5 dark:border-surface-800"
+        >
           {/* Undo / Redo */}
           <Tooltip content={t("editor.undo")}>
             <Toggle size="sm" pressed={false} onPressedChange={() => editor.chain().focus().undo().run()} aria-label={t("editor.undo")}>
