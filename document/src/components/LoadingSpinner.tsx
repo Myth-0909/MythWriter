@@ -40,7 +40,7 @@ export function useLoading() {
   const [loading, setLoading] = useState(false);
   const [loadingMsg, setLoadingMsg] = useState("");
 
-  const withLoading = async <T,>(fn: () => Promise<T>, msg = ""): Promise<T> => {
+  const withLoading = async <T,>(fn: () => Promise<T>, msg = "Loading..."): Promise<T> => {
     setLoading(true);
     setLoadingMsg(msg);
     // Mock delay
