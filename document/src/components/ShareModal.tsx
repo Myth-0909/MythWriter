@@ -1,15 +1,14 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { FileText, FileType, Code2 } from "lucide-react";
+import { FileType, Code2 } from "lucide-react";
 import { useI18n } from "@/components/I18nProvider";
 
 interface ShareModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onExport: (format: "pdf" | "word" | "md") => void;
+  onExport: (format: "word" | "md") => void;
 }
 
 const exportFormats = [
-  { id: "pdf", label: "PDF", descKey: "share.pdfDesc" as const, icon: FileText, iconColor: "text-red-600 dark:text-red-400", iconBg: "bg-red-50 dark:bg-red-950" },
   { id: "word", label: "Word", descKey: "share.wordDesc" as const, icon: FileType, iconColor: "text-blue-600 dark:text-blue-400", iconBg: "bg-blue-50 dark:bg-blue-950" },
   { id: "md", label: "Markdown", descKey: "share.mdDesc" as const, icon: Code2, iconColor: "text-purple-600 dark:text-purple-400", iconBg: "bg-purple-50 dark:bg-purple-950" },
 ] as const;
@@ -29,7 +28,7 @@ export function ShareModal({ open, onOpenChange, onExport }: ShareModalProps) {
             <p className="text-[11px] font-semibold uppercase tracking-[0.15em] text-surface-400 mb-4">
               {t("share.exportDocument")}
             </p>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 gap-3">
               {exportFormats.map((format) => (
                 <button
                   key={format.id}

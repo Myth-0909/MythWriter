@@ -72,17 +72,6 @@ function buildExportHtml(title: string, meta: string, content: string): string {
 </html>`;
 }
 
-function printHtmlAsPdf(html: string): boolean {
-  const printWindow = window.open("", "_blank");
-  if (!printWindow) return false;
-  printWindow.document.open();
-  printWindow.document.write(html);
-  printWindow.document.close();
-  printWindow.focus();
-  setTimeout(() => printWindow.print(), 250);
-  return true;
-}
-
 function EditorPageContent({ activeDocId, onSelectDoc }: { activeDocId: string; onSelectDoc: (id: string) => void }) {
   return (
     <>
@@ -242,23 +231,6 @@ export default function App() {
     let content: string;
     let mime: string;
     let ext: string;
-
-    if (format === "pdf") {
-      const html = buildExportHtml(title, meta, doc.content);
-      if (!printHtmlAsPdf(html)) {
-        const blob = new Blob([html], { type: "text/html;charset=utf-8" });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `${title}.html`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-      }
-      toast(t("editor.exported"), "success");
-      return;
-    }
 
     if (format === "txt") {
       const tmp = document.createElement("div");

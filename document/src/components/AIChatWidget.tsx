@@ -491,7 +491,7 @@ export function AIChatWidget() {
     recognition.onresult = (event: any) => {
       const transcript = event.results[0][0].transcript;
       setInput((prev) => prev + transcript);
-      toast("语音识别成功", "success");
+      toast(t("ai.recognitionSuccess"), "success");
     };
     recognition.onerror = (event: any) => {
       if (event.error === "not-allowed") {

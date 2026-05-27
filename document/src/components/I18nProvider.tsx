@@ -124,7 +124,6 @@ const translations = {
   "share.copyLink": { zh: "复制链接", en: "Copy Link" },
   "share.cancel": { zh: "取消", en: "Cancel" },
   "share.exportBtn": { zh: "导出", en: "Export" },
-  "share.pdfDesc": { zh: "适合打印和分享", en: "Best for printing and sharing" },
   "share.wordDesc": { zh: "可编辑文档格式", en: "Editable document format" },
   "share.mdDesc": { zh: "纯文本带格式", en: "Plain text with formatting" },
 
@@ -296,6 +295,7 @@ const translations = {
   "ai.voiceNotSupported": { zh: "当前环境不支持语音识别，请检查麦克风权限", en: "Voice input unavailable, check mic permissions" },
   "ai.recording": { zh: "正在录音...", en: "Recording..." },
   "ai.tapToStop": { zh: "点击停止", en: "Tap to stop" },
+  "ai.recognitionSuccess": { zh: "语音识别成功", en: "Voice recognized successfully" },
   "ai.needApiKey": { zh: "请先在设置中配置 API Key 后再使用对话助手", en: "Please configure API Key in Settings first" },
 
   // API Key
