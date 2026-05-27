@@ -250,6 +250,7 @@ const translations = {
 
   // Settings
   "settings.avatarHint": { zh: "点击相机图标上传头像", en: "Click camera icon to upload" },
+  "settings.avatarChangeHint": { zh: "点击相机图标更改头像", en: "Click camera icon to change" },
 
   // AI BubbleMenu
   "ai.menu.rewrite": { zh: "改写", en: "Rewrite" },

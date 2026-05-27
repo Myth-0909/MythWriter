@@ -186,7 +186,9 @@ export function SettingsPage() {
                 />
               </button>
               <div>
-                <p className="text-xs text-surface-500 mt-0.5">{t("settings.avatarHint")}</p>
+                <p className="text-xs text-surface-500 mt-0.5">
+                  {t(avatarUrl ? "settings.avatarChangeHint" : "settings.avatarHint")}
+                </p>
               </div>
             </div>
 
