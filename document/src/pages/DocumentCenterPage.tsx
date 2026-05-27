@@ -31,7 +31,6 @@ import { useI18n } from "@/components/I18nProvider";
 import { useDocuments } from "@/store";
 import { useToast } from "@/components/Toast";
 import { api } from "@/api";
-import { extractPdfText } from "@/lib/pdfText";
 import { escapeHtml, sanitizeHtml } from "@/lib/html";
 import { categoryLabels, type DocumentCategory } from "@/types";
 import { formatFullDateTime, formatRelativeModified } from "@/lib/date";
@@ -130,7 +129,7 @@ export function DocumentCenterPage({ onOpenDoc }: DocumentCenterPageProps) {
       return;
     }
 
-    if (!ext || !["txt", "md", "docx", "pdf"].includes(ext)) {
+    if (!ext || !["txt", "md", "docx"].includes(ext)) {
       toast(t("toast.importUnsupported"), "error");
       if (fileInputRef.current) fileInputRef.current.value = "";
       return;
@@ -146,10 +145,6 @@ export function DocumentCenterPage({ onOpenDoc }: DocumentCenterPageProps) {
         const arrayBuffer = await file.arrayBuffer();
         const result = await mammoth.convertToHtml({ arrayBuffer });
         content = sanitizeHtml(result.value);
-      } else if (ext === "pdf") {
-        const text = await extractPdfText(file);
-        if (!text.trim()) throw new Error(t("toast.importPdfNoText"));
-        content = plainTextToHtml(text);
       } else {
         const raw = await file.text();
 
@@ -234,7 +229,7 @@ export function DocumentCenterPage({ onOpenDoc }: DocumentCenterPageProps) {
             <input
               ref={fileInputRef}
               type="file"
-              accept=".txt,.md,.pdf,.docx,.doc"
+              accept=".txt,.md,.docx,.doc"
               className="hidden"
               onChange={handleImport}
             />
