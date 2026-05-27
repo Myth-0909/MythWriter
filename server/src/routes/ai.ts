@@ -46,7 +46,8 @@ router.post("/greeting", async (req: Request, res: Response) => {
 // Streaming chat
 router.post("/chat", async (req: Request, res: Response) => {
   try {
-    const { messages, personality, memoryContext } = req.body;
+    const { messages, personality, memoryContext, purpose } = req.body;
+    const isSelectionEdit = purpose === "selection_edit";
 
     if (!messages || !Array.isArray(messages)) {
       res.status(400).json({ error: "messages array is required" });
@@ -65,7 +66,7 @@ router.post("/chat", async (req: Request, res: Response) => {
         return;
       }
 
-      if (detectDeleteCommand(content)) {
+      if (!isSelectionEdit && detectDeleteCommand(content)) {
         res.json({
           reply: "为了安全起见，我无法执行删除操作。请使用应用内的删除功能手动操作。",
           action: null,
@@ -130,9 +131,11 @@ router.post("/chat", async (req: Request, res: Response) => {
       return;
     }
 
-    // Check if upstream returned JSON (non-streaming) instead of SSE
+    // Check if upstream returned JSON (non-streaming) instead of SSE.
+    // Some OpenAI-compatible services send streaming chunks as text/plain, so
+    // only application/json should take the eager JSON path.
     const upstreamContentType = response.headers.get("content-type") || "";
-    const isJson = upstreamContentType.includes("application/json") || upstreamContentType.includes("text/plain");
+    const isJson = upstreamContentType.includes("application/json");
     if (isJson) {
       try {
         const json = await response.json() as any;
@@ -167,6 +170,7 @@ router.post("/chat", async (req: Request, res: Response) => {
     const decoder = new TextDecoder();
     let fullContent = "";
     let buffer = "";
+    let rawTextContent = "";
 
     try {
       while (true) {
@@ -179,21 +183,28 @@ router.post("/chat", async (req: Request, res: Response) => {
 
         for (const line of lines) {
           const trimmed = line.trim();
-          if (!trimmed || !trimmed.startsWith("data: ")) continue;
+          if (!trimmed) continue;
+          if (!trimmed.startsWith("data: ")) {
+            rawTextContent += `${trimmed}\n`;
+            continue;
+          }
 
           const data = trimmed.slice(6);
           if (data === "[DONE]") continue;
 
           try {
             const parsed = JSON.parse(data);
-            const delta = parsed.choices?.[0]?.delta?.content;
-            if (delta) {
-              fullContent += delta;
+            const content =
+              parsed.choices?.[0]?.delta?.content ??
+              parsed.choices?.[0]?.message?.content ??
+              parsed.choices?.[0]?.text;
+            if (content) {
+              fullContent += content;
               // Send the delta to client
-              res.write(`data: ${JSON.stringify({ delta })}\n\n`);
+              res.write(`data: ${JSON.stringify({ delta: content })}\n\n`);
             }
           } catch {
-            // Skip malformed chunks
+            rawTextContent += `${data}\n`;
           }
         }
       }
@@ -203,14 +214,15 @@ router.post("/chat", async (req: Request, res: Response) => {
 
     // Fallback: if no content captured via SSE, try parsing buffer as JSON
     let finalContent = fullContent;
-    if (!fullContent && buffer.trim()) {
+    const rawFallback = `${rawTextContent}${buffer}`.trim();
+    if (!fullContent && rawFallback) {
       try {
-        const json = JSON.parse(buffer.trim());
+        const json = JSON.parse(rawFallback);
         finalContent = json.choices?.[0]?.message?.content || json.choices?.[0]?.text || "";
         console.log("[AI] Fallback JSON parse success, content length:", finalContent.length);
       } catch {
-        // Not JSON, keep empty
-        console.log("[AI] Fallback parse failed, buffer:", buffer.slice(0, 200));
+        finalContent = rawFallback;
+        console.log("[AI] Fallback raw text response, content length:", finalContent.length);
       }
     }
 

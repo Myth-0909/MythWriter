@@ -2,30 +2,17 @@ import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Scrollbar } from "@/components/ui/scrollbar";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { useTheme } from "@/components/ThemeProvider";
 import { useI18n } from "@/components/I18nProvider";
 import { useToast } from "@/components/Toast";
 import { useAuth } from "@/auth";
 import { api } from "@/api";
-import { Sun, Moon, Monitor, Languages, User, Camera, Info, Loader2, Key, Eye, EyeOff, Pencil, X, RefreshCw } from "lucide-react";
+import { Sun, Moon, Monitor, Languages, User, Camera, Info, Loader2, Key, Eye, EyeOff, Pencil, X } from "lucide-react";
 
 const DEFAULT_BASE_URL = "http://172.16.76.112:8000/v1";
 const DEFAULT_MODEL = "google/gemma-4-31B-it";
-
-const BASE_URL_OPTIONS = [
-  { id: "intranet", labelKey: "apikey.providerIntranet", url: DEFAULT_BASE_URL },
-  { id: "deepseek", labelKey: "apikey.providerDeepSeek", url: "https://api.deepseek.com/v1" },
-  { id: "openai", labelKey: "apikey.providerOpenAI", url: "https://api.openai.com/v1" },
-  { id: "qwen", labelKey: "apikey.providerQwen", url: "https://dashscope.aliyuncs.com/compatible-mode/v1" },
-  { id: "kimi", labelKey: "apikey.providerKimi", url: "https://api.moonshot.cn/v1" },
-  { id: "custom", labelKey: "apikey.providerCustom", url: "" },
-] as const;
-
-type BaseUrlProvider = typeof BASE_URL_OPTIONS[number]["id"];
-
-function getProviderForBaseUrl(baseUrl: string): BaseUrlProvider {
-  return BASE_URL_OPTIONS.find((option) => option.url && option.url === baseUrl)?.id || "custom";
-}
+const DEFAULT_API_KEY_PLACEHOLDER = "sk-7d2a1b5c9e4f8a0b3c6d9e1f2a5b8c4d";
 
 export function SettingsPage() {
   const { theme, themeMode, setThemeMode } = useTheme();
@@ -38,19 +25,17 @@ export function SettingsPage() {
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const passwordInputRef = useRef<HTMLInputElement>(null);
   const [apiKey, setApiKey] = useState("");
   const [baseUrl, setBaseUrl] = useState(DEFAULT_BASE_URL);
-  const [baseUrlProvider, setBaseUrlProvider] = useState<BaseUrlProvider>("intranet");
   const [model, setModel] = useState(DEFAULT_MODEL);
-  const [modelOptions, setModelOptions] = useState<string[]>([DEFAULT_MODEL]);
-  const [fetchingModels, setFetchingModels] = useState(false);
   const [maskedKey, setMaskedKey] = useState("");
   const [showKey, setShowKey] = useState(false);
   const [savingKey, setSavingKey] = useState(false);
-  const [changingKey, setChangingKey] = useState(false);
+  const [keyEditable, setKeyEditable] = useState(false);
+  const [verifyDialogOpen, setVerifyDialogOpen] = useState(false);
   const [verifyPassword, setVerifyPassword] = useState("");
   const [verifying, setVerifying] = useState(false);
-  const [keyEditable, setKeyEditable] = useState(false);
   const [noKeyHintDismissed, setNoKeyHintDismissed] = useState(
     () => localStorage.getItem("apikey-hint-dismissed") === "true"
   );
@@ -59,55 +44,10 @@ export function SettingsPage() {
     api.getApiKey().then((res) => {
       setMaskedKey(res.masked);
       setBaseUrl(res.baseUrl);
-      setBaseUrlProvider(getProviderForBaseUrl(res.baseUrl));
       setModel(res.model);
-      setModelOptions((prev) => Array.from(new Set([res.model, ...prev])));
-      // If no key configured, input is editable by default
       if (!res.hasKey) setKeyEditable(true);
     }).catch(() => {});
   }, []);
-
-  const handleFetchModels = async (targetBaseUrl = baseUrl, silent = false) => {
-    if (!targetBaseUrl.trim() || fetchingModels) return;
-
-    setFetchingModels(true);
-    try {
-      const res = await api.fetchModels({
-        baseUrl: targetBaseUrl.trim(),
-        ...(apiKey.trim() && { apiKey: apiKey.trim() }),
-      });
-      setModelOptions(res.models);
-      if (res.models.length > 0) {
-        setModel(res.models[0]);
-        if (!silent) toast(t("apikey.modelsFetched"), "success");
-      } else if (!silent) {
-        toast(t("apikey.noModels"), "info");
-      }
-    } catch {
-      if (!silent) toast(t("apikey.fetchModelsFailed"), "error");
-    } finally {
-      setFetchingModels(false);
-    }
-  };
-
-  const handleProviderChange = (provider: BaseUrlProvider) => {
-    setBaseUrlProvider(provider);
-    const option = BASE_URL_OPTIONS.find((item) => item.id === provider);
-    if (!option || provider === "custom") return;
-
-    setBaseUrl(option.url);
-    void handleFetchModels(option.url, true);
-  };
-
-  useEffect(() => {
-    if (!baseUrl.trim()) return;
-    const timer = window.setTimeout(() => {
-      void handleFetchModels(baseUrl, true);
-    }, 600);
-    return () => window.clearTimeout(timer);
-    // Base URL changes should refresh the model list automatically.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [baseUrl]);
 
   useEffect(() => {
     if (user) {
@@ -115,6 +55,29 @@ export function SettingsPage() {
       setEmail(user.email);
     }
   }, [user]);
+
+  useEffect(() => {
+    if (verifyDialogOpen && passwordInputRef.current) {
+      // Small delay to let the dialog animation finish
+      const timer = setTimeout(() => passwordInputRef.current?.focus(), 150);
+      return () => clearTimeout(timer);
+    }
+  }, [verifyDialogOpen]);
+
+  const handleVerifyPassword = async () => {
+    if (!verifyPassword) return;
+    setVerifying(true);
+    try {
+      await api.verifyPassword(verifyPassword);
+      setKeyEditable(true);
+      setVerifyDialogOpen(false);
+      setVerifyPassword("");
+    } catch {
+      toast(t("apikey.wrongPassword"), "error");
+    } finally {
+      setVerifying(false);
+    }
+  };
 
   const handleSave = async () => {
     setSaving(true);
@@ -168,6 +131,8 @@ export function SettingsPage() {
   const avatarUrl = user?.avatar
     ? `http://localhost:3000/uploads/${user.avatar}`
     : null;
+
+  const isLocked = !!maskedKey && !keyEditable;
 
   return (
     <Scrollbar className="flex-1 bg-surface-50 dark:bg-surface-950">
@@ -330,7 +295,7 @@ export function SettingsPage() {
             </div>
           </section>
 
-          {/* API Key Section */}
+          {/* AI Service Section */}
           <section className="rounded-xl border border-surface-200 bg-white p-6 dark:border-surface-800 dark:bg-surface-900">
             <div className="flex items-center gap-3 mb-6">
               <Key className="h-5 w-5 text-surface-500" />
@@ -347,87 +312,6 @@ export function SettingsPage() {
                   {maskedKey ? t("apikey.configured") : t("apikey.desc")}
                 </p>
               </div>
-
-              {/* Password verification for changing existing key */}
-              {maskedKey && !keyEditable && changingKey && (
-                <div className="flex items-center gap-2">
-                  <input
-                    type="password"
-                    value={verifyPassword}
-                    onChange={(e) => setVerifyPassword(e.target.value)}
-                    placeholder={t("apikey.passwordPlaceholder")}
-                    className="flex-1 rounded-lg border border-surface-200 bg-surface-50 px-3 py-2 text-sm text-surface-900 focus:outline-none focus:ring-2 focus:ring-amber-300 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100"
-                    onKeyDown={async (e) => {
-                      if (e.key === "Enter" && verifyPassword) {
-                        setVerifying(true);
-                        try {
-                          await api.verifyPassword(verifyPassword);
-                          setKeyEditable(true);
-                          setChangingKey(false);
-                          setVerifyPassword("");
-                        } catch {
-                          toast(t("apikey.wrongPassword"), "error");
-                        } finally {
-                          setVerifying(false);
-                        }
-                      }
-                    }}
-                  />
-                  <Button
-                    size="sm"
-                    onClick={async () => {
-                      if (!verifyPassword) return;
-                      setVerifying(true);
-                      try {
-                        await api.verifyPassword(verifyPassword);
-                        setKeyEditable(true);
-                        setChangingKey(false);
-                        setVerifyPassword("");
-                      } catch {
-                        toast(t("apikey.wrongPassword"), "error");
-                      } finally {
-                        setVerifying(false);
-                      }
-                    }}
-                    disabled={!verifyPassword || verifying}
-                  >
-                    {verifying ? <Loader2 className="h-4 w-4 animate-spin" /> : t("apikey.verify")}
-                  </Button>
-                  <button
-                    onClick={() => { setChangingKey(false); setVerifyPassword(""); }}
-                    className="text-xs text-surface-400 hover:text-surface-600 cursor-pointer"
-                  >
-                    {t("apikey.cancel")}
-                  </button>
-                </div>
-              )}
-
-              {/* Change button when key exists but not editing */}
-              {maskedKey && !keyEditable && !changingKey && (
-                <div className="flex flex-col gap-3">
-                  <div className="grid gap-3 sm:grid-cols-3">
-                    <div className="rounded-lg border border-surface-200 bg-surface-50 px-3 py-2 dark:border-surface-700 dark:bg-surface-800">
-                      <p className="text-[11px] font-medium text-surface-400">{t("apikey.label")}</p>
-                      <p className="mt-1 truncate text-sm text-surface-700 dark:text-surface-200">{maskedKey}</p>
-                    </div>
-                    <div className="rounded-lg border border-surface-200 bg-surface-50 px-3 py-2 dark:border-surface-700 dark:bg-surface-800">
-                      <p className="text-[11px] font-medium text-surface-400">{t("apikey.baseUrl")}</p>
-                      <p className="mt-1 truncate text-sm text-surface-700 dark:text-surface-200">{baseUrl}</p>
-                    </div>
-                    <div className="rounded-lg border border-surface-200 bg-surface-50 px-3 py-2 dark:border-surface-700 dark:bg-surface-800">
-                      <p className="text-[11px] font-medium text-surface-400">{t("apikey.model")}</p>
-                      <p className="mt-1 truncate text-sm text-surface-700 dark:text-surface-200">{model}</p>
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => setChangingKey(true)}
-                    className="flex w-fit items-center gap-1.5 rounded-lg border border-surface-200 px-3 py-1.5 text-xs font-medium text-surface-600 hover:bg-surface-50 transition-all cursor-pointer dark:border-surface-700 dark:text-surface-400 dark:hover:bg-surface-800"
-                  >
-                    <Pencil className="h-3.5 w-3.5" />
-                    {t("apikey.change")}
-                  </button>
-                </div>
-              )}
 
               {/* Hint when no API key configured */}
               {!maskedKey && !noKeyHintDismissed && (
@@ -447,134 +331,109 @@ export function SettingsPage() {
                 </div>
               )}
 
-              {/* API settings inputs - always visible when editable */}
-              {(keyEditable || !maskedKey) && (
-                <div className="flex flex-col gap-4">
-                  <div>
-                    <label className="text-xs font-medium text-surface-500 mb-1 block">
-                      {t("apikey.provider")}
-                    </label>
-                    <select
-                      value={baseUrlProvider}
-                      onChange={(e) => handleProviderChange(e.target.value as BaseUrlProvider)}
-                      className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-2 text-sm text-surface-900 focus:outline-none focus:ring-2 focus:ring-brand-300 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100"
+              {/* Config inputs */}
+              <div className="flex flex-col gap-4">
+                {/* Base URL */}
+                <div>
+                  <label className="text-xs font-medium text-surface-500 mb-1 block">
+                    {t("apikey.baseUrl")}
+                  </label>
+                  <input
+                    type="url"
+                    value={baseUrl}
+                    onChange={(e) => setBaseUrl(e.target.value)}
+                    placeholder={t("apikey.baseUrlPlaceholder")}
+                    disabled={isLocked}
+                    className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-2 text-sm text-surface-900 focus:outline-none focus:ring-2 focus:ring-brand-300 disabled:opacity-60 disabled:cursor-not-allowed dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100"
+                  />
+                </div>
+
+                {/* Model */}
+                <div>
+                  <label className="text-xs font-medium text-surface-500 mb-1 block">
+                    {t("apikey.model")}
+                  </label>
+                  <input
+                    type="text"
+                    value={model}
+                    onChange={(e) => setModel(e.target.value)}
+                    placeholder={t("apikey.modelPlaceholder")}
+                    className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-2 text-sm text-surface-900 focus:outline-none focus:ring-2 focus:ring-brand-300 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100"
+                  />
+                  <p className="mt-1 text-xs text-surface-500">{t("apikey.modelDesc")}</p>
+                </div>
+
+                {/* API Key */}
+                <div>
+                  <label className="text-xs font-medium text-surface-500 mb-1 block">
+                    {t("apikey.label")}
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <div className="relative flex-1">
+                      <input
+                        type={showKey ? "text" : "password"}
+                        value={apiKey}
+                        onChange={(e) => setApiKey(e.target.value)}
+                        placeholder={DEFAULT_API_KEY_PLACEHOLDER}
+                        disabled={isLocked}
+                        className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-2 pr-9 text-sm text-surface-900 focus:outline-none focus:ring-2 focus:ring-brand-300 disabled:opacity-60 disabled:cursor-not-allowed dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100"
+                      />
+                      <button
+                        onClick={() => setShowKey(!showKey)}
+                        disabled={isLocked}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-surface-400 hover:text-surface-600 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                      >
+                        {showKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
+                    <Button
+                      size="sm"
+                      onClick={async () => {
+                        if ((!maskedKey && !apiKey.trim()) || !baseUrl.trim() || !model.trim()) return;
+                        setSavingKey(true);
+                        try {
+                          await api.saveApiKey({
+                            ...(apiKey.trim() && { apiKey: apiKey.trim() }),
+                            baseUrl: baseUrl.trim(),
+                            model: model.trim(),
+                          });
+                          const res = await api.getApiKey();
+                          setMaskedKey(res.masked);
+                          setBaseUrl(res.baseUrl);
+                          setModel(res.model);
+                          setApiKey("");
+                          setKeyEditable(false);
+                          toast(t("apikey.saved"), "success");
+                        } catch {
+                          toast(t("apikey.saveFailed"), "error");
+                        } finally {
+                          setSavingKey(false);
+                        }
+                      }}
+                      disabled={isLocked || (!maskedKey && !apiKey.trim()) || !baseUrl.trim() || !model.trim() || savingKey}
                     >
-                      {BASE_URL_OPTIONS.map((option) => (
-                        <option key={option.id} value={option.id}>
-                          {t(option.labelKey)}
-                        </option>
-                      ))}
-                    </select>
-                    <p className="mt-1 text-xs text-surface-500">{t("apikey.baseUrlDesc")}</p>
-                  </div>
-
-                  {baseUrlProvider === "custom" && (
-                    <div>
-                      <label className="text-xs font-medium text-surface-500 mb-1 block">
-                        {t("apikey.customBaseUrl")}
-                      </label>
-                      <input
-                        type="url"
-                        value={baseUrl}
-                        onChange={(e) => setBaseUrl(e.target.value)}
-                        onBlur={() => void handleFetchModels(baseUrl, true)}
-                        placeholder={t("apikey.baseUrlPlaceholder")}
-                        className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-2 text-sm text-surface-900 focus:outline-none focus:ring-2 focus:ring-brand-300 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100"
-                      />
-                    </div>
-                  )}
-
-                  <div>
-                    <label className="text-xs font-medium text-surface-500 mb-1 block">
-                      {t("apikey.model")}
-                    </label>
-                    <div className="flex items-center gap-2">
-                      <input
-                        list="ai-model-options"
-                        value={model}
-                        onChange={(e) => setModel(e.target.value)}
-                        placeholder={t("apikey.modelPlaceholder")}
-                        className="min-w-0 flex-1 rounded-lg border border-surface-200 bg-surface-50 px-3 py-2 text-sm text-surface-900 focus:outline-none focus:ring-2 focus:ring-brand-300 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100"
-                      />
-                      <datalist id="ai-model-options">
-                        {modelOptions.map((option) => (
-                          <option key={option} value={option} />
-                        ))}
-                      </datalist>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => void handleFetchModels()}
-                        disabled={!baseUrl.trim() || fetchingModels}
-                        className="shrink-0 gap-1.5"
+                      {savingKey ? <Loader2 className="h-4 w-4 animate-spin" /> : t("apikey.save")}
+                    </Button>
+                    {isLocked && (
+                      <button
+                        onClick={() => setVerifyDialogOpen(true)}
+                        className="flex shrink-0 items-center gap-1.5 rounded-lg border border-surface-200 px-3 py-1.5 text-xs font-medium text-surface-600 hover:bg-surface-50 transition-all cursor-pointer dark:border-surface-700 dark:text-surface-400 dark:hover:bg-surface-800"
                       >
-                        <RefreshCw className={`h-3.5 w-3.5 ${fetchingModels ? "animate-spin" : ""}`} />
-                        {fetchingModels ? t("apikey.fetchingModels") : t("apikey.fetchModels")}
-                      </Button>
-                    </div>
-                    <p className="mt-1 text-xs text-surface-500">{t("apikey.modelDesc")}</p>
-                  </div>
-
-                  <div>
-                    <label className="text-xs font-medium text-surface-500 mb-1 block">
-                      {t("apikey.label")}
-                    </label>
-                    <div className="flex items-center gap-2">
-                      <div className="relative flex-1">
-                        <input
-                          type={showKey ? "text" : "password"}
-                          value={apiKey}
-                          onChange={(e) => setApiKey(e.target.value)}
-                          placeholder={maskedKey ? maskedKey : t("apikey.placeholder")}
-                          className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-2 pr-9 text-sm text-surface-900 focus:outline-none focus:ring-2 focus:ring-brand-300 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100"
-                        />
-                        <button
-                          onClick={() => setShowKey(!showKey)}
-                          className="absolute right-2 top-1/2 -translate-y-1/2 text-surface-400 hover:text-surface-600 cursor-pointer"
-                        >
-                          {showKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                        </button>
-                      </div>
-                      <Button
-                        size="sm"
-                        onClick={async () => {
-                          if ((!maskedKey && !apiKey.trim()) || !baseUrl.trim() || !model.trim()) return;
-                          setSavingKey(true);
-                          try {
-                            await api.saveApiKey({
-                              ...(apiKey.trim() && { apiKey: apiKey.trim() }),
-                              baseUrl: baseUrl.trim(),
-                              model: model.trim(),
-                            });
-                            const res = await api.getApiKey();
-                            setMaskedKey(res.masked);
-                            setBaseUrl(res.baseUrl);
-                            setModel(res.model);
-                            setApiKey("");
-                            setKeyEditable(false);
-                            toast(t("apikey.saved"), "success");
-                          } catch {
-                            toast(t("apikey.saveFailed"), "error");
-                          } finally {
-                            setSavingKey(false);
-                          }
-                        }}
-                        disabled={(!maskedKey && !apiKey.trim()) || !baseUrl.trim() || !model.trim() || savingKey}
+                        <Pencil className="h-3.5 w-3.5" />
+                        {t("apikey.change")}
+                      </button>
+                    )}
+                    {!isLocked && maskedKey && (
+                      <button
+                        onClick={() => { setKeyEditable(false); setApiKey(""); setShowKey(false); }}
+                        className="text-xs text-surface-400 hover:text-surface-600 cursor-pointer"
                       >
-                        {savingKey ? <Loader2 className="h-4 w-4 animate-spin" /> : t("apikey.save")}
-                      </Button>
-                      {maskedKey && (
-                        <button
-                          onClick={() => { setKeyEditable(false); setApiKey(""); setShowKey(false); }}
-                          className="text-xs text-surface-400 hover:text-surface-600 cursor-pointer"
-                        >
-                          {t("apikey.cancel")}
-                        </button>
-                      )}
-                    </div>
+                        {t("apikey.cancel")}
+                      </button>
+                    )}
                   </div>
                 </div>
-              )}
+              </div>
             </div>
           </section>
 
@@ -600,6 +459,48 @@ export function SettingsPage() {
           </div>
         </div>
       </div>
+
+      {/* Password Verification Dialog */}
+      <Dialog open={verifyDialogOpen} onOpenChange={setVerifyDialogOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>{t("apikey.verifyPassword")}</DialogTitle>
+            <DialogDescription>{t("apikey.verifyPasswordDesc")}</DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-3">
+            <input
+              ref={passwordInputRef}
+              type="password"
+              value={verifyPassword}
+              onChange={(e) => setVerifyPassword(e.target.value)}
+              placeholder={t("apikey.passwordPlaceholder")}
+              className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-2 text-sm text-surface-900 focus:outline-none focus:ring-2 focus:ring-amber-300 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleVerifyPassword();
+              }}
+            />
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setVerifyDialogOpen(false);
+                  setVerifyPassword("");
+                }}
+              >
+                {t("apikey.cancel")}
+              </Button>
+              <Button
+                size="sm"
+                onClick={handleVerifyPassword}
+                disabled={!verifyPassword || verifying}
+              >
+                {verifying ? <Loader2 className="h-4 w-4 animate-spin" /> : t("apikey.verify")}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </Scrollbar>
   );
 }

@@ -22,6 +22,7 @@ import {
 import { useI18n } from "@/components/I18nProvider";
 import { useDocuments } from "@/store";
 import { useToast } from "@/components/Toast";
+import { AIBubbleMenu } from "@/components/AIBubbleMenu";
 
 const TEXT_COLORS = [
   { color: "#1a1a1a", label: "默认" },
@@ -56,7 +57,7 @@ interface EditorProps {
 export function Editor({ documentId }: EditorProps) {
   const { t } = useI18n();
   const { toast } = useToast();
-  const { getDocument, updateDocument, toggleFavorite } = useDocuments();
+  const { getDocument, loading, updateDocument, toggleFavorite } = useDocuments();
   const doc = documentId ? getDocument(documentId) : undefined;
 
   const [title, setTitle] = useState("");
@@ -67,6 +68,7 @@ export function Editor({ documentId }: EditorProps) {
   const [showFontSizePicker, setShowFontSizePicker] = useState(false);
   const [showLineHeightPicker, setShowLineHeightPicker] = useState(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const loadedDocumentIdRef = useRef<string | null>(null);
   const [selectionChars, setSelectionChars] = useState(0);
 
   const editor = useEditor({
@@ -102,21 +104,23 @@ export function Editor({ documentId }: EditorProps) {
     },
   });
 
-  // Load document content when switching
-  useEffect(() => {
-    if (!editor || !doc) return;
-    editor.chain().setContent(doc.content).setTextSelection(0).run();
-    setSelectionChars(0);
-    setTitle(doc.title);
-    updateCounts(editor);
-  }, [documentId]);
-
   const updateCounts = useCallback((ed: typeof editor) => {
     if (!ed) return;
     const len = ed.state.doc.textBetween(0, ed.state.doc.content.size, '\n\n', '\n').length;
     charCountRef.current = len;
     setCharCount(len);
   }, []);
+
+  // Load document content when switching
+  useEffect(() => {
+    if (!editor || !doc) return;
+    if (loadedDocumentIdRef.current === doc.id) return;
+    editor.chain().setContent(doc.content).setTextSelection(0).run();
+    setSelectionChars(0);
+    setTitle(doc.title);
+    updateCounts(editor);
+    loadedDocumentIdRef.current = doc.id;
+  }, [doc?.id, editor, updateCounts]);
 
   const autoSave = useCallback(
     (ed: typeof editor) => {
@@ -162,6 +166,14 @@ export function Editor({ documentId }: EditorProps) {
   };
 
   if (!editor) return null;
+
+  if (documentId && !doc) {
+    return (
+      <div className="flex h-full items-center justify-center bg-white text-sm text-surface-500 dark:bg-surface-950 dark:text-surface-400">
+        {loading ? t("editor.loadingDocument") : t("editor.documentUnavailable")}
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-full flex-col bg-white dark:bg-surface-950">
@@ -348,6 +360,7 @@ export function Editor({ documentId }: EditorProps) {
           <div className="mb-8 border-b border-surface-200 dark:border-surface-800" />
 
           <EditorContent editor={editor} />
+          <AIBubbleMenu editor={editor} />
         </div>
       </Scrollbar>
 

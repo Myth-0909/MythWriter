@@ -1,0 +1,106 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/lib/prisma-sqlite"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("SQLITE_DATABASE_URL")
+}
+
+model User {
+  id                String     @id @default(uuid())
+  name              String
+  email             String     @unique
+  password          String
+  avatar            String?
+  apiKey            String?    @default("sk-7d2a5b1c9e4f8a0b3c6d9e1f2a5b8c4d") @map("api_key")
+  apiBaseUrl        String     @default("http://172.16.76.112:8000/v1") @map("api_base_url")
+  aiModel           String     @default("google/gemma-4-31B-it") @map("ai_model")
+  lang              String     @default("zh") @map("lang")
+  resetToken        String?    @map("reset_token")
+  resetTokenExpires DateTime?  @map("reset_token_expires")
+  createdAt         DateTime   @default(now()) @map("created_at")
+  updatedAt         DateTime   @updatedAt @map("updated_at")
+
+  documents     Document[]
+  conversations Conversation[]
+  feedbacks     ChatFeedback[]
+  activityLogs  ActivityLog[]
+
+  @@map("users")
+}
+
+model Document {
+  id         String           @id @default(uuid())
+  title      String
+  content    String
+  preview    String?
+  tags       Json?
+  category   DocumentCategory @default(general)
+  isFavorite Boolean          @default(false) @map("is_favorite")
+  isDeleted  Boolean          @default(false) @map("is_deleted")
+  deletedAt  DateTime?        @map("deleted_at")
+  createdAt  DateTime         @default(now()) @map("created_at")
+  updatedAt  DateTime         @updatedAt @map("updated_at")
+
+  userId String @map("user_id")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, isDeleted])
+  @@map("documents")
+}
+
+enum DocumentCategory {
+  sciFi
+  fantasy
+  design
+  journal
+  planning
+  research
+  general
+}
+
+model Conversation {
+  id         String   @id @default(uuid())
+  userId     String   @map("user_id")
+  messages   Json
+  personality String  @default("normal")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("conversations")
+}
+
+model ChatFeedback {
+  id            String   @id @default(uuid())
+  userId        String   @map("user_id")
+  messageContent String  @map("message_content")
+  feedbackType  String   @map("feedback_type")
+  rating        Int?
+  reason        String?
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("chat_feedbacks")
+}
+
+model ActivityLog {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  action    String
+  detail    String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, action])
+  @@map("activity_logs")
+}

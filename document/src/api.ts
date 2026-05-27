@@ -69,6 +69,9 @@ export const api = {
   listTrash: () =>
     request<{ documents: Document[] }>("/documents/trash"),
 
+  getDocument: (id: string) =>
+    request<{ document: Document }>(`/documents/${id}`),
+
   createDocument: (data?: { title?: string; content?: string; preview?: string; category?: string }) =>
     request<{ document: Document }>("/documents", {
       method: "POST",

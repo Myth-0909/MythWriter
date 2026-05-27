@@ -47,14 +47,29 @@ export function DocumentList({ activeId, onSelect }: DocumentListProps) {
     setDeleteTarget(id);
   };
 
-  const confirmDelete = () => {
+  const confirmDelete = async () => {
     if (!deleteTarget) return;
-    moveToTrash(deleteTarget);
     const doc = documents.find((d) => d.id === deleteTarget);
-    if (doc) {
-      toast(`"${doc.title}" ${t("toast.movedToTrash")}`, "info");
-    }
+    const deleteIndex = documents.findIndex((d) => d.id === deleteTarget);
+    const nextDoc = deleteIndex >= 0 ? documents[deleteIndex + 1] || documents[deleteIndex - 1] : undefined;
+    const shouldSwitchDoc = activeId === deleteTarget && !!nextDoc;
+
     setDeleteTarget(null);
+    if (shouldSwitchDoc && nextDoc) {
+      onSelect?.(nextDoc.id);
+    }
+
+    try {
+      await moveToTrash(deleteTarget);
+      if (doc) {
+        toast(`"${doc.title}" ${t("toast.movedToTrash")}`, "info");
+      }
+    } catch (error) {
+      if (shouldSwitchDoc) {
+        onSelect?.(deleteTarget);
+      }
+      toast(t("toast.deleteFailed"), "error");
+    }
   };
 
   const handleChangeCategory = (e: React.MouseEvent, docId: string, cat: DocumentCategory) => {

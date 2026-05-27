@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { Bot, X, Send, Sparkles, Smile, ChevronDown, ThumbsUp, ThumbsDown, Star, Trash2, Check, Pencil, Mic, MicOff } from "lucide-react";
+import { Bot, X, Send, Sparkles, Smile, ChevronDown, ThumbsUp, ThumbsDown, Star, Trash2, Check, Pencil, Mic, MicOff, Square } from "lucide-react";
 import { ConfirmModal } from "@/components/ConfirmModal";
 import { Scrollbar } from "@/components/ui/scrollbar";
 import { useI18n } from "@/components/I18nProvider";
@@ -9,6 +9,7 @@ import { useToast } from "@/components/Toast";
 import { useDocuments } from "@/store";
 import { useAuth } from "@/auth";
 import { api } from "@/api";
+import { markdownToHtml } from "@/lib/markdown";
 
 const API_BASE = "http://localhost:3000/api";
 
@@ -99,6 +100,7 @@ async function streamChat(
 
   const decoder = new TextDecoder();
   let buffer = "";
+  let fullContent = "";
   let finalReply = "";
   let finalAction = null;
 
@@ -113,10 +115,15 @@ async function streamChat(
     for (const line of lines) {
       const trimmed = line.trim();
       if (!trimmed || !trimmed.startsWith("data: ")) continue;
+      // Skip SSE comments (e.g., ":ok")
+      if (trimmed.startsWith("data: :")) continue;
       try {
         const parsed = JSON.parse(trimmed.slice(6));
         if (parsed.error) throw new Error(parsed.error);
-        if (parsed.delta) onDelta(parsed.delta);
+        if (parsed.delta) {
+          fullContent += parsed.delta;
+          onDelta(parsed.delta);
+        }
         if (parsed.done) {
           finalReply = parsed.reply;
           finalAction = parsed.action;
@@ -127,9 +134,9 @@ async function streamChat(
     }
   }
 
-  // Fallback: if no done event received, use accumulated content as reply
-  if (!finalReply) {
-    console.warn("SSE stream ended without done event, using accumulated content");
+  // Fallback: if no done event received, use accumulated content
+  if (!finalReply && fullContent) {
+    finalReply = fullContent;
   }
 
   return { reply: finalReply, action: finalAction };
@@ -215,7 +222,7 @@ export function AIChatWidget() {
     return () => window.removeEventListener("resize", updatePos);
   }, []);
 
-  // On open: check API key first, then restore/greet. On close: save.
+  // On close: abort any ongoing stream and save. On open: check API key.
   useEffect(() => {
     if (!open) {
       if (messages.length > 0) {
@@ -223,6 +230,10 @@ export function AIChatWidget() {
       }
       restoredRef.current = false;
       setKeyOk(false);
+      // Abort any ongoing stream when closing
+      if (abortRef.current) {
+        abortRef.current.abort();
+      }
       return;
     }
     // Verify API key before proceeding
@@ -398,6 +409,9 @@ export function AIChatWidget() {
 
       // Finalize with parsed reply
       const finalContent = reply || fullContent;
+      if (!finalContent.trim()) {
+        throw new Error(t("ai.emptyReply"));
+      }
       setMessages((prev) => {
         const next = [...prev];
         const last = next[next.length - 1];
@@ -414,7 +428,7 @@ export function AIChatWidget() {
 
       if (action?.type === "create_document" && action.content) {
         try {
-          await createDocument("general", action.title, action.content);
+          await createDocument("general", action.title, markdownToHtml(action.content));
           toast(`${t("ai.docCreated")}: ${action.title}`, "success");
         } catch {
           toast(t("ai.docCreateFailed"), "error");
@@ -437,7 +451,7 @@ export function AIChatWidget() {
       setLoading(false);
       setStreaming(false);
     }
-  }, [input, loading, streaming, messages, createDocument, toast]);
+  }, [input, loading, streaming, messages, createDocument, toast, t]);
 
   const handleStop = useCallback(() => {
     abortRef.current?.abort();
@@ -528,6 +542,17 @@ export function AIChatWidget() {
 
       {open && keyOk && (
         <div className="fixed bottom-6 right-6 z-50 flex h-[640px] w-[480px] flex-col rounded-2xl border border-surface-200 bg-white shadow-2xl dark:border-surface-700 dark:bg-surface-900">
+          {/* Backdrop: click outside to close and abort */}
+          <div
+            className="fixed inset-0 -z-10"
+            onClick={() => {
+              if (abortRef.current) {
+                abortRef.current.abort();
+              }
+              saveConversation();
+              setOpen(false);
+            }}
+          />
           {/* Header */}
           <div className="shrink-0 border-b border-surface-200 px-4 py-3 dark:border-surface-700">
             <div className="flex items-center justify-between mb-2">
@@ -547,7 +572,7 @@ export function AIChatWidget() {
                 <Button variant="ghost" size="icon" onClick={() => setDeleteConfirm(true)} className="h-8 w-8" title={t("ai.clearHistory")}>
                   <Trash2 className="h-4 w-4" />
                 </Button>
-                <Button variant="ghost" size="icon" onClick={() => { saveConversation(); setOpen(false); }} className="h-8 w-8">
+                <Button variant="ghost" size="icon" onClick={() => { abortRef.current?.abort(); saveConversation(); setOpen(false); }} className="h-8 w-8">
                   <X className="h-4 w-4" />
                 </Button>
               </div>
@@ -779,6 +804,31 @@ export function AIChatWidget() {
             </div>
           )}
 
+          {/* Recording indicator */}
+          {listening && (
+            <div className="shrink-0 mx-3 mt-2 flex items-center gap-3 rounded-xl bg-red-50 border border-red-200 px-4 py-3 dark:bg-red-950 dark:border-red-800 animate-in fade-in slide-in-from-bottom-2 duration-200">
+              {/* Red dot + text */}
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="relative flex h-3 w-3">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500" />
+                </span>
+                <span className="text-sm font-medium text-red-600 dark:text-red-400">{t("ai.recording")}</span>
+              </div>
+              {/* Waveform bars */}
+              <div className="flex items-center gap-[2px] h-6 flex-1 justify-center">
+                {Array.from({ length: 9 }).map((_, i) => (
+                  <div
+                    key={i}
+                    className="w-[3px] rounded-full bg-red-400 recording-bar"
+                    style={{ animationDelay: `${i * 0.1}s`, animationDuration: `${0.6 + Math.random() * 0.4}s` }}
+                  />
+                ))}
+              </div>
+              <span className="text-xs text-red-400 dark:text-red-500 shrink-0">{t("ai.tapToStop")}</span>
+            </div>
+          )}
+
           {/* Input */}
           <div className="shrink-0 border-t border-surface-200 px-3 py-3 dark:border-surface-700">
             <div className="flex items-center gap-2">
@@ -805,12 +855,12 @@ export function AIChatWidget() {
               >
                 {listening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
               </Button>
-              {streaming ? (
+              {isGenerating ? (
                 <Button size="icon" onClick={handleStop} className="h-9 w-9 shrink-0 rounded-xl bg-red-500 hover:bg-red-600">
-                  <div className="h-3 w-3 rounded-sm bg-white" />
+                  <Square className="h-3.5 w-3.5 text-white" fill="white" />
                 </Button>
               ) : (
-                <Button size="icon" onClick={handleSend} disabled={isGenerating || !input.trim()} className="h-9 w-9 shrink-0 rounded-xl">
+                <Button size="icon" onClick={handleSend} disabled={!input.trim()} className="h-9 w-9 shrink-0 rounded-xl">
                   <Send className="h-4 w-4" />
                 </Button>
               )}

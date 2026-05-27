@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { TopAppBar } from "@/components/TopAppBar";
 import { SideNavBar } from "@/components/SideNavBar";
 import { PageTransition } from "@/components/PageTransition";
@@ -9,6 +9,7 @@ import { FavoritesPage } from "@/pages/FavoritesPage";
 import { TrashPage } from "@/pages/TrashPage";
 import { SettingsPage } from "@/pages/SettingsPage";
 import { LoginPage } from "@/pages/LoginPage";
+import { NotFoundPage } from "@/pages/NotFoundPage";
 import { ShareModal } from "@/components/ShareModal";
 import { ConfirmModal } from "@/components/ConfirmModal";
 import { AIChatWidget } from "@/components/AIChatWidget";
@@ -20,12 +21,31 @@ import { isLoggedIn as checkLoggedIn, clearToken, api } from "@/api";
 import "./App.css";
 
 export type NavId = "documents" | "favorites" | "trash" | "settings";
-type Page = "editor" | "documents" | "favorites" | "share" | "login" | "trash" | "settings";
+type Page = "editor" | "documents" | "favorites" | "share" | "login" | "trash" | "settings" | "notfound";
 
-function EditorPageContent({ activeDocId, setActiveDocId }: { activeDocId: string; setActiveDocId: (id: string) => void }) {
+const VALID_PAGES = new Set<string>(["documents", "favorites", "trash", "settings", "login"]);
+
+function pageFromHash(hash: string): { page: Page; editorId?: string } | null {
+  const name = hash.replace(/^#\//, "");
+  if (VALID_PAGES.has(name)) return { page: name as Page };
+  if (name.startsWith("editor/")) {
+    const id = name.slice(7); // "editor/".length === 7
+    return { page: "editor", editorId: id || undefined };
+  }
+  if (hash === "" || hash === "#" || hash === "#/") return null;
+  return { page: "notfound" };
+}
+
+function hashFromPage(page: Page, editorDocId?: string): string {
+  if (page === "editor") return editorDocId ? `#/editor/${editorDocId}` : "#/documents";
+  if (page === "share" || page === "notfound") return window.location.hash || "#/documents";
+  return `#/${page}`;
+}
+
+function EditorPageContent({ activeDocId, onSelectDoc }: { activeDocId: string; onSelectDoc: (id: string) => void }) {
   return (
     <>
-      <DocumentList activeId={activeDocId} onSelect={setActiveDocId} />
+      <DocumentList activeId={activeDocId} onSelect={onSelectDoc} />
       <div className="flex-1">
         <Editor documentId={activeDocId} key={activeDocId} />
       </div>
@@ -38,33 +58,114 @@ export default function App() {
   const { t, lang } = useI18n();
   const { updateUser } = useAuth();
 
-  // Sync language preference to DB
   useEffect(() => {
     api.updateProfile({ lang }).catch(() => {});
   }, [lang]);
-  const { getDocument, refreshDocuments } = useDocuments();
-  const [currentPage, setCurrentPage] = useState<Page>("documents");
+
+  const { getDocument, loadDocument, loading, refreshDocuments } = useDocuments();
+  const [currentPage, setCurrentPage] = useState<Page>(() => {
+    const fromHash = pageFromHash(window.location.hash);
+    if (fromHash) return fromHash.page;
+    return checkLoggedIn() ? "documents" : "login";
+  });
   const [isLoggedIn, setIsLoggedIn] = useState(() => checkLoggedIn());
-  const [activeNav, setActiveNav] = useState<NavId>("documents");
+  const [activeNav, setActiveNav] = useState<NavId>(() => {
+    const fromHash = pageFromHash(window.location.hash);
+    if (fromHash && fromHash.page !== "login" && fromHash.page !== "notfound") return fromHash.page as NavId;
+    return "documents";
+  });
   const [logoutConfirm, setLogoutConfirm] = useState(false);
-  const [editorDocId, setEditorDocId] = useState<string>("");
+  const [editorDocId, setEditorDocId] = useState<string>(() => {
+    const fromHash = pageFromHash(window.location.hash);
+    return fromHash?.page === "editor" ? fromHash.editorId || "" : "";
+  });
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
 
-  const handleNavChange = (id: NavId) => {
-    setActiveNav(id);
-    switch (id) {
-      case "documents": setCurrentPage("documents"); break;
-      case "favorites": setCurrentPage("favorites"); break;
-      case "trash": setCurrentPage("trash"); break;
-      case "settings": setCurrentPage("settings"); break;
+  // Verify token validity on mount
+  useEffect(() => {
+    if (!checkLoggedIn()) return;
+    api.getProfile().catch(() => {
+      clearToken();
+      setIsLoggedIn(false);
+      setCurrentPage("login");
+    });
+  }, []);
+
+  // Keep deep-linked editor pages valid after refreshes and trash moves.
+  useEffect(() => {
+    if (currentPage !== "editor" || !editorDocId) return;
+    const doc = getDocument(editorDocId);
+    if (doc?.isDeleted) {
+      setEditorDocId("");
+      setCurrentPage("documents");
+      setActiveNav("documents");
+      window.location.hash = "#/documents";
+      return;
     }
+    if (doc || loading) return;
+
+    let cancelled = false;
+    loadDocument(editorDocId).then((loadedDoc) => {
+      if (cancelled || getDocument(editorDocId)) return;
+      if (!loadedDoc || loadedDoc.isDeleted) {
+        setEditorDocId("");
+        setCurrentPage("documents");
+        setActiveNav("documents");
+        window.location.hash = "#/documents";
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentPage, editorDocId, getDocument, loadDocument, loading]);
+
+  // Navigate to a page and update hash
+  const navigateTo = useCallback((page: Page, navId?: NavId) => {
+    setCurrentPage(page);
+    if (navId) setActiveNav(navId);
+    const hash = hashFromPage(page, editorDocId);
+    if (hash !== window.location.hash) {
+      window.location.hash = hash;
+    }
+  }, [editorDocId]);
+
+  // Listen for browser back/forward
+  useEffect(() => {
+    const onHashChange = () => {
+      const fromHash = pageFromHash(window.location.hash);
+      if (fromHash) {
+        setCurrentPage(fromHash.page);
+        if (fromHash.page === "editor" && fromHash.editorId) {
+          setEditorDocId(fromHash.editorId);
+          setActiveNav("documents");
+        } else if (fromHash.page !== "login" && fromHash.page !== "notfound") {
+          setActiveNav(fromHash.page as NavId);
+        }
+        if (fromHash.page === "login" && checkLoggedIn()) {
+          setCurrentPage("documents");
+          window.location.hash = "#/documents";
+        }
+      } else {
+        const defaultPage = checkLoggedIn() ? "documents" : "login";
+        setCurrentPage(defaultPage);
+        if (defaultPage === "documents") setActiveNav("documents");
+      }
+    };
+    window.addEventListener("hashchange", onHashChange);
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
+
+  const handleNavChange = (id: NavId) => {
+    navigateTo(id, id);
   };
 
   const handleOpenDoc = (docId: string) => {
     setEditorDocId(docId);
     setCurrentPage("editor");
     setActiveNav("documents");
+    window.location.hash = `#/editor/${docId}`;
   };
 
   const handleLogout = () => setLogoutConfirm(true);
@@ -74,6 +175,7 @@ export default function App() {
     setIsLoggedIn(false);
     setCurrentPage("login");
     setEditorDocId("");
+    window.location.hash = "#/login";
     toast(t("toast.logoutSuccess"), "success");
   };
 
@@ -81,6 +183,8 @@ export default function App() {
     updateUser(user);
     setIsLoggedIn(true);
     setCurrentPage("documents");
+    setActiveNav("documents");
+    window.location.hash = "#/documents";
     refreshDocuments();
   };
 
@@ -98,18 +202,15 @@ export default function App() {
     let ext: string;
 
     if (format === "txt") {
-      // Strip HTML tags
       const tmp = document.createElement("div");
       tmp.innerHTML = doc.content;
       content = `# ${title}\n${dateStr} · ${doc.category}\n\n${tmp.textContent || ""}`;
       mime = "text/plain;charset=utf-8";
       ext = "txt";
     } else if (format === "md") {
-      // Simple HTML-to-Markdown (headings, paragraphs, bold, italic)
       let md = doc.content
         .replace(/<h1[^>]*>(.*?)<\/h1>/gi, "# $1\n\n")
         .replace(/<h2[^>]*>(.*?)<\/h2>/gi, "## $1\n\n")
-        .replace(/<h3[^>]*>(.*?)<\/h3>/gi, "### $1\n\n")
         .replace(/<\/p>\s*<p[^>]*>/gi, "\n\n")
         .replace(/<p[^>]*>/gi, "")
         .replace(/<\/p>/gi, "\n\n")
@@ -125,7 +226,6 @@ export default function App() {
       mime = "text/markdown;charset=utf-8";
       ext = "md";
     } else {
-      // HTML (default)
       content = `<!DOCTYPE html>
 <html lang="zh">
 <head>
@@ -166,6 +266,7 @@ export default function App() {
     : currentPage === "settings" ? "settings"
     : "documents";
 
+  // Login page
   if (!isLoggedIn && currentPage !== "login") {
     return <LoginPage onLogin={handleLogin} />;
   }
@@ -173,25 +274,31 @@ export default function App() {
     return <LoginPage onLogin={handleLogin} />;
   }
 
+  // Not logged in but trying to access protected pages — handled above, will show login
+
   return (
     <div className="h-screen w-screen overflow-hidden bg-white dark:bg-surface-950">
       <div className="flex h-full w-full flex-col">
-        <TopAppBar
-          variant={topBarVariant}
-          onShare={currentPage === "editor" || currentPage === "share" ? () => setShareOpen(true) : undefined}
-          onExport={currentPage === "editor" ? handleExport : undefined}
-          onLogout={handleLogout}
-          onSettings={() => handleNavChange("settings")}
-          sidebarCollapsed={sidebarCollapsed}
-          onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)}
-        />
+        {currentPage !== "notfound" && (
+          <TopAppBar
+            variant={topBarVariant}
+            onShare={currentPage === "editor" || currentPage === "share" ? () => setShareOpen(true) : undefined}
+            onExport={currentPage === "editor" ? handleExport : undefined}
+            onLogout={handleLogout}
+            onSettings={() => handleNavChange("settings")}
+            sidebarCollapsed={sidebarCollapsed}
+            onToggleSidebar={() => setSidebarCollapsed(!sidebarCollapsed)}
+          />
+        )}
 
         <div className="flex flex-1 overflow-hidden">
-          <SideNavBar activeNav={activeNav} onNavChange={handleNavChange} collapsed={sidebarCollapsed} />
+          {currentPage !== "notfound" && (
+            <SideNavBar activeNav={activeNav} onNavChange={handleNavChange} collapsed={sidebarCollapsed} />
+          )}
 
           <PageTransition pageKey={currentPage}>
             {currentPage === "editor" && (
-              <EditorPageContent activeDocId={editorDocId} setActiveDocId={setEditorDocId} />
+              <EditorPageContent activeDocId={editorDocId} onSelectDoc={handleOpenDoc} />
             )}
             {currentPage === "documents" && (
               <DocumentCenterPage onOpenDoc={handleOpenDoc} />
@@ -205,11 +312,14 @@ export default function App() {
             {currentPage === "settings" && (
               <SettingsPage />
             )}
+            {currentPage === "notfound" && (
+              <NotFoundPage onGoHome={() => navigateTo("documents", "documents")} />
+            )}
           </PageTransition>
         </div>
       </div>
 
-      <AIChatWidget />
+      {currentPage !== "notfound" && <AIChatWidget />}
 
       <ShareModal open={shareOpen} onOpenChange={setShareOpen} />
 

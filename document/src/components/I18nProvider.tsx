@@ -53,6 +53,8 @@ const translations = {
   // Editor
   "editor.untitled": { zh: "未命名文档", en: "Untitled Document" },
   "editor.placeholder": { zh: "开始写作...", en: "Start writing..." },
+  "editor.loadingDocument": { zh: "正在加载文档...", en: "Loading document..." },
+  "editor.documentUnavailable": { zh: "文档不可用", en: "Document unavailable" },
   "editor.characters": { zh: "字符", en: "characters" },
   "editor.selected": { zh: "已选中", en: "Selected" },
   "editor.avgChars": { zh: "平均字/词", en: "avg. chars/word" },
@@ -230,6 +232,20 @@ const translations = {
   // Settings
   "settings.avatarHint": { zh: "点击相机图标上传头像", en: "Click camera icon to upload" },
 
+  // AI BubbleMenu
+  "ai.menu.rewrite": { zh: "改写", en: "Rewrite" },
+  "ai.menu.expand": { zh: "扩写", en: "Expand" },
+  "ai.menu.summarize": { zh: "缩写", en: "Summarize" },
+  "ai.menu.translate": { zh: "翻译", en: "Translate" },
+  "ai.menu.continue": { zh: "续写", en: "Continue" },
+  "ai.menu.tone": { zh: "语气", en: "Tone" },
+  "ai.menu.toneFormal": { zh: "正式语气", en: "Formal" },
+  "ai.menu.toneCasual": { zh: "轻松语气", en: "Casual" },
+  "ai.menu.loading": { zh: "AI 处理中...", en: "AI processing..." },
+  "ai.menu.applied": { zh: "已应用", en: "Applied" },
+  "ai.menu.failed": { zh: "AI 操作失败", en: "AI operation failed" },
+  "ai.menu.emptyResult": { zh: "AI 未返回可用内容", en: "AI returned no usable content" },
+
   // AI Chat
   "ai.title": { zh: "小麦", en: "XiaoMai" },
   "ai.subtitle": { zh: "内网模型", en: "Intranet Model" },
@@ -255,7 +271,10 @@ const translations = {
   "ai.dislikeTone": { zh: "语气不当", en: "Wrong tone" },
   "ai.dislikeOther": { zh: "其他", en: "Other" },
   "ai.serviceUnavailable": { zh: "AI 服务不可用", en: "AI service unavailable" },
+  "ai.emptyReply": { zh: "AI 未返回可用内容，请稍后重试", en: "AI returned no usable content. Please try again later" },
   "ai.voiceNotSupported": { zh: "当前环境不支持语音识别，请检查麦克风权限", en: "Voice input unavailable, check mic permissions" },
+  "ai.recording": { zh: "正在录音...", en: "Recording..." },
+  "ai.tapToStop": { zh: "点击停止", en: "Tap to stop" },
   "ai.needApiKey": { zh: "请先在设置中配置 API Key 后再使用对话助手", en: "Please configure API Key in Settings first" },
 
   // API Key
@@ -293,10 +312,16 @@ const translations = {
   "apikey.saveFailed": { zh: "保存失败", en: "Save failed" },
   "apikey.change": { zh: "更改", en: "Change" },
   "apikey.verifyPassword": { zh: "请输入登录密码以更改 API Key", en: "Enter your login password to change API Key" },
+  "apikey.verifyPasswordDesc": { zh: "为保护您的 API 配置安全，修改前请验证登录密码", en: "Please verify your login password before modifying API settings" },
   "apikey.passwordPlaceholder": { zh: "输入登录密码", en: "Enter password" },
   "apikey.verify": { zh: "验证", en: "Verify" },
   "apikey.wrongPassword": { zh: "密码错误", en: "Wrong password" },
   "apikey.noKeyHint": { zh: "未配置 API Key 将无法使用 AI 小麦助手", en: "AI assistant unavailable without an API Key" },
+
+  // 404
+  "notfound.title": { zh: "页面不存在", en: "Page not found" },
+  "notfound.desc": { zh: "您访问的地址不存在或已被移除", en: "The page you're looking for doesn't exist or has been moved" },
+  "notfound.backHome": { zh: "返回首页", en: "Back to Home" },
 } as const;
 
 type TranslationKey = keyof typeof translations;

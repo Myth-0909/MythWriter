@@ -61,6 +61,24 @@ echo "==============================="
 echo "  MythWriter 一键启动"
 echo "==============================="
 
+# 选择启动模式
+USE_TAURI=false
+if has_cargo; then
+  echo ""
+  echo "请选择启动模式:"
+  echo "  [1] 网页端 (浏览器开发)"
+  echo "  [2] 桌面端 (Tauri 原生窗口)"
+  echo ""
+  read -p "请输入选项 [1/2] (默认: 1): " MODE_CHOICE
+  if [ "$MODE_CHOICE" = "2" ]; then
+    USE_TAURI=true
+  fi
+else
+  echo ""
+  echo "[提示] Rust/Cargo 未安装，仅支持网页模式"
+  echo "[提示] 如需桌面端，请安装 Rust: https://rustup.rs"
+fi
+
 # 释放端口
 kill_port $BACKEND_PORT
 kill_port $FRONTEND_PORT
@@ -103,13 +121,24 @@ start_redis() {
 
 start_redis
 
+# 确保数据库就绪（生成 Prisma Client + 推送 SQLite schema）
+echo "[数据库] 初始化..."
+cd "$BACKEND_DIR"
+echo "[数据库]   生成 Prisma Client..."
+npx prisma generate 2>&1 | tail -1
+echo "[数据库]   生成 SQLite Client..."
+npx prisma generate --schema=prisma/schema-sqlite.prisma 2>&1 | tail -1
+echo "[数据库]   推送 SQLite 表结构..."
+npx prisma db push --schema=prisma/schema-sqlite.prisma 2>&1 | tail -1
+echo "[数据库] 就绪"
+
 # 启动后端
 echo "[后端] 启动 API 服务 (port $BACKEND_PORT)..."
 cd "$BACKEND_DIR" && npm run dev &
 BACKEND_PID=$!
 
 # 启动前端
-if has_cargo; then
+if [ "$USE_TAURI" = true ]; then
   echo "[桌面端] 启动 Tauri 应用..."
   cd "$FRONTEND_DIR" && pnpm tauri dev &
   FRONTEND_PID=$!
@@ -117,8 +146,7 @@ if has_cargo; then
   echo "后端 API: http://localhost:$BACKEND_PORT"
   echo "后端健康检查: http://localhost:$BACKEND_PORT/api/health"
 else
-  echo "[前端] Rust/Cargo 未安装，使用网页模式 (port $FRONTEND_PORT)..."
-  echo "[前端] 如需桌面端，请安装 Rust: https://rustup.rs"
+  echo "[前端] 启动网页开发服务器 (port $FRONTEND_PORT)..."
   cd "$FRONTEND_DIR" && pnpm dev &
   FRONTEND_PID=$!
   echo ""

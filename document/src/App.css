@@ -299,6 +299,19 @@ body.dark {
   transform: scale(1.2) rotate(-5deg);
 }
 
+/* ==================== Recording Waveform ==================== */
+
+@keyframes recordingBar {
+  0%, 100% { height: 4px; }
+  25% { height: 16px; }
+  50% { height: 6px; }
+  75% { height: 20px; }
+}
+
+.recording-bar {
+  animation: recordingBar 0.8s ease-in-out infinite;
+}
+
 /* ==================== Input & Editor Base ==================== */
 
 input,

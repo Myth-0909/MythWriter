@@ -8,6 +8,7 @@ interface DocumentStore {
   trash: Document[];
   loading: boolean;
   getDocument: (id: string) => Document | undefined;
+  loadDocument: (id: string) => Promise<Document | undefined>;
   createDocument: (category?: DocumentCategory, title?: string, content?: string) => Promise<string>;
   updateDocument: (id: string, updates: Partial<Pick<Document, "title" | "content" | "category">>) => Promise<void>;
   toggleFavorite: (id: string) => Promise<void>;
@@ -25,6 +26,7 @@ const DocumentStoreContext = createContext<DocumentStore>({
   trash: [],
   loading: false,
   getDocument: () => undefined,
+  loadDocument: async () => undefined,
   createDocument: async () => "",
   updateDocument: async () => {},
   toggleFavorite: async () => {},
@@ -105,6 +107,18 @@ export function DocumentStoreProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  const loadDocument = useCallback(async (id: string) => {
+    if (!isLoggedIn()) return undefined;
+    try {
+      const { document: doc } = await api.getDocument(id);
+      updateLocalDoc(doc);
+      return doc;
+    } catch (error) {
+      console.error("Failed to fetch document:", error);
+      return undefined;
+    }
+  }, [updateLocalDoc]);
+
   const createDocument = useCallback(async (category?: DocumentCategory, title?: string, content?: string) => {
     const { document: doc } = await api.createDocument({
       title: title || "无标题文档",
@@ -179,6 +193,7 @@ export function DocumentStoreProvider({ children }: { children: ReactNode }) {
         trash: trashDocs,
         loading,
         getDocument,
+        loadDocument,
         createDocument,
         updateDocument,
         toggleFavorite,
