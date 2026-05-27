@@ -19,6 +19,7 @@ import { useI18n } from "@/components/I18nProvider";
 import { useAuth } from "@/auth";
 import { isLoggedIn as checkLoggedIn, clearToken, api } from "@/api";
 import { formatFullDateTime } from "@/lib/date";
+import { escapeHtml, sanitizeHtml } from "@/lib/html";
 import "./App.css";
 
 export type NavId = "documents" | "favorites" | "trash" | "settings";
@@ -48,11 +49,14 @@ function safeFilename(value: string): string {
 }
 
 function buildExportHtml(title: string, meta: string, content: string): string {
+  const safeTitle = escapeHtml(title);
+  const safeMeta = escapeHtml(meta);
+  const safeContent = sanitizeHtml(content);
   return `<!DOCTYPE html>
 <html lang="zh">
 <head>
   <meta charset="UTF-8">
-  <title>${title}</title>
+  <title>${safeTitle}</title>
   <style>
     body { max-width: 720px; margin: 40px auto; padding: 0 20px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 16px; line-height: 1.8; color: #333; }
     h1 { font-size: 28px; margin-bottom: 8px; }
@@ -61,9 +65,9 @@ function buildExportHtml(title: string, meta: string, content: string): string {
   </style>
 </head>
 <body>
-  <h1>${title}</h1>
-  <div class="meta">${meta}</div>
-  ${content}
+  <h1>${safeTitle}</h1>
+  <div class="meta">${safeMeta}</div>
+  ${safeContent}
 </body>
 </html>`;
 }

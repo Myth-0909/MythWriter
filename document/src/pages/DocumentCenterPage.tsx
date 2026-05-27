@@ -32,6 +32,7 @@ import { useDocuments } from "@/store";
 import { useToast } from "@/components/Toast";
 import { api } from "@/api";
 import { extractPdfText } from "@/lib/pdfText";
+import { escapeHtml, sanitizeHtml } from "@/lib/html";
 import { categoryLabels, type DocumentCategory } from "@/types";
 import { formatFullDateTime, formatRelativeModified } from "@/lib/date";
 
@@ -44,15 +45,6 @@ const colorByCategory: Record<DocumentCategory, string> = {
   planning: "bg-red-100 text-red-600", research: "bg-cyan-100 text-cyan-600",
   general: "bg-brand-100 text-brand-600",
 };
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
 
 function plainTextToHtml(value: string): string {
   return value
@@ -153,7 +145,7 @@ export function DocumentCenterPage({ onOpenDoc }: DocumentCenterPageProps) {
         // Use convertToHtml to preserve formatting (bold, italic, headings, etc.)
         const arrayBuffer = await file.arrayBuffer();
         const result = await mammoth.convertToHtml({ arrayBuffer });
-        content = result.value;
+        content = sanitizeHtml(result.value);
       } else if (ext === "pdf") {
         const text = await extractPdfText(file);
         if (!text.trim()) throw new Error(t("toast.importPdfNoText"));
@@ -163,7 +155,7 @@ export function DocumentCenterPage({ onOpenDoc }: DocumentCenterPageProps) {
 
         if (ext === "md") {
           // Convert markdown to HTML
-          content = await marked.parse(raw);
+          content = sanitizeHtml(await marked.parse(raw));
         } else {
           // TXT: convert plain text with line breaks to HTML paragraphs
           content = plainTextToHtml(raw);

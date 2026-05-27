@@ -130,6 +130,17 @@ router.patch("/:id/restore", async (req: AuthRequest, res: Response) => {
   }
 });
 
+// DELETE /api/documents/trash/empty - Empty trash
+router.delete("/trash/empty", async (req: AuthRequest, res: Response) => {
+  try {
+    await emptyTrash(req.user!.userId);
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Empty trash error:", error);
+    res.status(500).json({ error: "清空回收站失败" });
+  }
+});
+
 // DELETE /api/documents/:id - Permanently delete
 router.delete("/:id", async (req: AuthRequest, res: Response) => {
   try {
@@ -142,17 +153,6 @@ router.delete("/:id", async (req: AuthRequest, res: Response) => {
   } catch (error) {
     console.error("Delete document error:", error);
     res.status(500).json({ error: "删除文档失败" });
-  }
-});
-
-// DELETE /api/documents/trash/empty - Empty trash
-router.delete("/trash/empty", async (req: AuthRequest, res: Response) => {
-  try {
-    await emptyTrash(req.user!.userId);
-    res.json({ success: true });
-  } catch (error) {
-    console.error("Empty trash error:", error);
-    res.status(500).json({ error: "清空回收站失败" });
   }
 });
 
