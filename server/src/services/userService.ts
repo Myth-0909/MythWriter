@@ -87,6 +87,10 @@ const LEGACY_AI_MODEL = "deepseek-chat";
 function buildModelsUrl(baseUrl: string): string {
   const trimmed = baseUrl.trim().replace(/\/+$/, "");
   if (trimmed.endsWith("/models")) return trimmed;
+  // DeepSeek exposes /models at root level, not under /v1
+  if (trimmed.includes("api.deepseek.com")) {
+    return trimmed.replace(/\/v1\/?$/, "").replace(/\/+$/, "") + "/models";
+  }
   return `${trimmed}/models`;
 }
 

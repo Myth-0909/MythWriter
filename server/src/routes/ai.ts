@@ -84,29 +84,66 @@ router.post("/chat", async (req: Request, res: Response) => {
     const pers = safePersonality(personality);
     const systemPrompt = buildSystemPrompt(pers, memoryContext || "");
 
-    // Use streaming
-    const response = await fetch(buildChatCompletionsUrl(apiBaseUrl), {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: aiModel,
-        messages: [
-          { role: "system", content: systemPrompt },
-          ...messages,
-        ],
-        temperature: 0.7,
-        max_tokens: 2048,
-        stream: true,
-      }),
-    });
+    const apiUrl = buildChatCompletionsUrl(apiBaseUrl);
+    console.log("[AI] Sending request to:", apiUrl, "model:", aiModel);
+
+    // Use streaming with 3min timeout (vLLM cold start can be slow)
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 180000);
+
+    let response: Awaited<ReturnType<typeof fetch>>;
+    try {
+      response = await fetch(apiUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: aiModel,
+          messages: [
+            { role: "system", content: systemPrompt },
+            ...messages,
+          ],
+          temperature: 0.7,
+          max_tokens: 2048,
+          stream: true,
+        }),
+        signal: controller.signal,
+      });
+    } catch (fetchErr: any) {
+      clearTimeout(timeout);
+      console.error("[AI] Fetch failed:", fetchErr.message);
+      if (fetchErr.name === "AbortError") {
+        res.status(504).json({ error: `AI 服务连接超时 (${apiUrl})` });
+      } else {
+        res.status(502).json({ error: `无法连接 AI 服务: ${fetchErr.message}` });
+      }
+      return;
+    }
+    clearTimeout(timeout);
 
     if (!response.ok) {
       const errText = await response.text();
-      console.error("AI API error:", response.status, errText);
-      res.status(502).json({ error: t(userLang, "AI 服务不可用", "AI service unavailable") });
+      console.error("[AI] Upstream error:", response.status, errText.slice(0, 500));
+      res.status(502).json({ error: `AI 服务返回错误 (${response.status}): ${errText.slice(0, 200)}` });
+      return;
+    }
+
+    // Check if upstream returned JSON (non-streaming) instead of SSE
+    const upstreamContentType = response.headers.get("content-type") || "";
+    const isJson = upstreamContentType.includes("application/json") || upstreamContentType.includes("text/plain");
+    if (isJson) {
+      try {
+        const json = await response.json() as any;
+        const content = json.choices?.[0]?.message?.content || json.choices?.[0]?.text || "";
+        const { reply, action } = parseAction(content);
+        console.log("[AI] Got non-streaming JSON response, content length:", content.length);
+        res.json({ reply: reply || content, action });
+      } catch (err) {
+        console.error("[AI] JSON parse error:", err);
+        res.status(502).json({ error: "AI 服务返回了无法解析的响应" });
+      }
       return;
     }
 
@@ -161,19 +198,32 @@ router.post("/chat", async (req: Request, res: Response) => {
         }
       }
     } catch (err) {
-      console.error("Stream read error:", err);
+      console.error("[AI] Stream read error:", err);
+    }
+
+    // Fallback: if no content captured via SSE, try parsing buffer as JSON
+    let finalContent = fullContent;
+    if (!fullContent && buffer.trim()) {
+      try {
+        const json = JSON.parse(buffer.trim());
+        finalContent = json.choices?.[0]?.message?.content || json.choices?.[0]?.text || "";
+        console.log("[AI] Fallback JSON parse success, content length:", finalContent.length);
+      } catch {
+        // Not JSON, keep empty
+        console.log("[AI] Fallback parse failed, buffer:", buffer.slice(0, 200));
+      }
     }
 
     // Parse final response for actions
-    const { reply, action } = parseAction(fullContent);
+    const { reply, action } = parseAction(finalContent);
 
     // Send final message with parsed action
     res.write(`data: ${JSON.stringify({ done: true, reply, action })}\n\n`);
     res.end();
   } catch (error) {
-    console.error("AI route error:", error);
+    console.error("[AI] Route error:", error);
     if (!res.headersSent) {
-      res.status(500).json({ error: "Internal server error" });
+      res.status(500).json({ error: `服务器内部错误: ${(error as Error).message || "未知错误"}` });
     } else {
       res.write(`data: ${JSON.stringify({ error: "Stream error" })}\n\n`);
       res.end();
