@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   DndContext,
   KeyboardSensor,
@@ -9,7 +9,8 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
-import { restrictToVerticalAxis } from "@dnd-kit/modifiers";
+import type { Modifier } from "@dnd-kit/core";
+import { restrictToBoundingRect } from "@dnd-kit/modifiers/dist/utilities";
 import {
   SortableContext,
   arrayMove,
@@ -200,6 +201,19 @@ export function BrainMemoryPage() {
       coordinateGetter: sortableKeyboardCoordinates,
     })
   );
+
+  // Constrain drag overlay within the list container bounds
+  const categoryListRef = useRef<HTMLDivElement | null>(null);
+  const restrictToCategoryList: Modifier = (args) => {
+    const container = categoryListRef.current;
+    if (!container) return args.transform;
+    const containerRect = container.getBoundingClientRect();
+    return restrictToBoundingRect(
+      args.transform,
+      args.containerNodeRect ?? containerRect,
+      containerRect
+    );
+  };
 
   const handleCategoryDragStart = (event: DragStartEvent) => {
     setDraggingCategoryId(String(event.active.id));
@@ -699,7 +713,7 @@ export function BrainMemoryPage() {
               <DndContext
                 sensors={categoryDragSensors}
                 collisionDetection={closestCenter}
-                modifiers={[restrictToVerticalAxis]}
+                modifiers={[restrictToCategoryList]}
                 onDragStart={handleCategoryDragStart}
                 onDragEnd={handleCategoryDragEnd}
                 onDragCancel={handleCategoryDragCancel}
@@ -708,7 +722,10 @@ export function BrainMemoryPage() {
                   items={categories.map((cat) => cat.id)}
                   strategy={verticalListSortingStrategy}
                 >
-                  <div className="max-h-[360px] space-y-2 overflow-y-auto pr-1">
+                  <div
+                    ref={categoryListRef}
+                    className="max-h-[360px] space-y-2 overflow-y-auto pr-1"
+                  >
                     {categories.map((cat, index) => (
                       <SortableCategoryItem
                         key={cat.id}
