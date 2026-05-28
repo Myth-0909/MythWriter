@@ -7,6 +7,7 @@ import { ToastProvider } from "@/components/Toast";
 import { I18nProvider } from "@/components/I18nProvider";
 import { AuthProvider } from "@/auth";
 import { DocumentStoreProvider } from "@/store";
+import { TooltipProvider } from "@/components/ui/tooltip";
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
@@ -15,7 +16,9 @@ ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
         <ToastProvider>
           <AuthProvider>
             <DocumentStoreProvider>
-              <App />
+              <TooltipProvider>
+                <App />
+              </TooltipProvider>
             </DocumentStoreProvider>
           </AuthProvider>
         </ToastProvider>
