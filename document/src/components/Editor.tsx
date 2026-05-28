@@ -65,6 +65,8 @@ export function Editor({ documentId }: EditorProps) {
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadedDocumentIdRef = useRef<string | null>(null);
   const lastSavedContentRef = useRef<string | null>(null);
+  const titleSyncDocumentIdRef = useRef<string | null>(null);
+  const isApplyingExternalContentRef = useRef(false);
   const [selectionChars, setSelectionChars] = useState(0);
   const [toolbarRevision, setToolbarRevision] = useState(0);
 
@@ -103,7 +105,9 @@ export function Editor({ documentId }: EditorProps) {
     onUpdate: ({ editor: ed }) => {
       setToolbarRevision((revision) => revision + 1);
       updateCounts(ed);
-      queueSave();
+      if (!isApplyingExternalContentRef.current) {
+        queueSave();
+      }
       syncSelectionStyles(ed);
     },
     onSelectionUpdate: ({ editor: ed }) => {
@@ -159,6 +163,7 @@ export function Editor({ documentId }: EditorProps) {
     // we only check if the title needs to be updated, then return early.
     if (isSameDoc && !isContentChangedExternally) {
       if (title !== doc.title) {
+        titleSyncDocumentIdRef.current = doc.id;
         setTitle(doc.title);
       }
       return;
@@ -176,8 +181,11 @@ export function Editor({ documentId }: EditorProps) {
       });
     }
 
+    isApplyingExternalContentRef.current = true;
     editor.chain().setContent(doc.content).setTextSelection(0).run();
+    isApplyingExternalContentRef.current = false;
     setSelectionChars(0);
+    titleSyncDocumentIdRef.current = doc.id;
     setTitle(doc.title);
     updateCounts(editor);
     loadedDocumentIdRef.current = doc.id;
@@ -199,7 +207,8 @@ export function Editor({ documentId }: EditorProps) {
   }, [editor]);
 
   const queueSave = useCallback(() => {
-    if (!documentIdRef.current || !editor) return;
+    const targetDocumentId = documentIdRef.current;
+    if (!targetDocumentId || !editor) return;
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
 
     setSaveStatus("saving");
@@ -207,7 +216,7 @@ export function Editor({ documentId }: EditorProps) {
       const content = editor.getHTML();
       const titleVal = titleRef.current;
       lastSavedContentRef.current = content;
-      updateDocumentRef.current(documentIdRef.current!, { title: titleVal, content });
+      updateDocumentRef.current(targetDocumentId, { title: titleVal, content });
       setSaveStatus("saved");
       setTimeout(() => setSaveStatus(""), 1500);
     }, 1500);
@@ -216,6 +225,10 @@ export function Editor({ documentId }: EditorProps) {
   // Auto-save on title change
   useEffect(() => {
     if (!documentId || !editor || !doc) return;
+    if (titleSyncDocumentIdRef.current === documentId) {
+      titleSyncDocumentIdRef.current = null;
+      return;
+    }
     if (title === doc.title) return; // Prevent initial load/switch auto-save trigger
 
     queueSave();
