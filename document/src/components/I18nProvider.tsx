@@ -95,6 +95,7 @@ const translations = {
   "editor.fontSize": { zh: "字号", en: "Font Size" },
   "editor.lineHeight": { zh: "行高", en: "Line Height" },
   "editor.clearFontSize": { zh: "清除字号", en: "Clear" },
+  "editor.clearFormatting": { zh: "清除格式", en: "Clear Formatting" },
   "editor.favorite": { zh: "收藏文档", en: "Favorite" },
   "editor.unfavorite": { zh: "取消收藏", en: "Unfavorite" },
   "editor.noContent": { zh: "没有可导出的内容", en: "No content to export" },

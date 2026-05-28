@@ -123,14 +123,29 @@ export function AIBubbleMenu({ editor }: AIBubbleMenuProps) {
     const selectedText = editor.state.doc.textBetween(from, to, "\n");
     if (!selectedText.trim()) return;
 
+    // Grab 400 characters of context before and after the selection to guide the AI
+    const precedingText = editor.state.doc.textBetween(Math.max(0, from - 400), from, "\n");
+    const succeedingText = editor.state.doc.textBetween(to, Math.min(editor.state.doc.content.size, to + 400), "\n");
+
     let prompt = ACTION_PROMPTS[type];
     if (type === "translate") {
       prompt = prompt.replace("{targetLang}", lang === "zh" ? "英文" : "中文");
     }
 
-    const systemMessage = `你是一个写作助手。用户选中了以下文字，请执行【${prompt}】操作。只返回结果，不要添加任何解释或额外文字。
+    const systemMessage = `你是一个写作助手。当前用户正在撰写一篇文章，以下是文章的上下文信息，请特别参考上下文以确保语境、人设、语气和逻辑的一致性。
 
-选中的文字：${selectedText}`;
+【前文内容（仅作背景参考，请勿在此基础上重复或修改）】
+${precedingText}
+
+【选中的文字（需要你执行 ${prompt} 的主体）】
+>>> ${selectedText} <<<
+
+【后文内容（仅作背景参考，请勿在此基础上重复或修改）】
+${succeedingText}
+
+【重要任务指令】
+请仅对【选中的文字】（即被 >>> <<< 包裹的文本）执行【${prompt}】操作。
+你输出的回答必须只包含处理后的文本结果，严禁包含任何解释、分析、Markdown 标记（如“以下是改写后的内容”等）或前后的引言。`;
 
     setLoading(true);
     setActiveAction(type);

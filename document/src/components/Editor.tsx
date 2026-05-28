@@ -18,7 +18,7 @@ import {
   List, ListOrdered, Code, Code2, Quote, Minus,
   AlignLeft, AlignCenter, AlignRight,
   Undo2, Redo2, Heading1, Heading2, Heading3,
-  Highlighter, Star, Palette,
+  Highlighter, Star, Palette, Eraser,
 } from "lucide-react";
 import { useI18n } from "@/components/I18nProvider";
 import { useDocuments } from "@/store";
@@ -102,7 +102,7 @@ export function Editor({ documentId }: EditorProps) {
     onUpdate: ({ editor: ed }) => {
       setToolbarRevision((revision) => revision + 1);
       updateCounts(ed);
-      autoSave(ed);
+      queueSave();
       syncSelectionStyles(ed);
     },
     onSelectionUpdate: ({ editor: ed }) => {
@@ -114,7 +114,7 @@ export function Editor({ documentId }: EditorProps) {
         return;
       }
       const text = ed.state.doc.textBetween(from, to, '\n\n', '\n');
-      setSelectionChars(text.length);
+      setSelectionChars(countBilingualWords(text));
       syncSelectionStyles(ed);
     },
     editorProps: {
@@ -124,12 +124,26 @@ export function Editor({ documentId }: EditorProps) {
     },
   });
 
+  const countBilingualWords = useCallback((text: string): number => {
+    if (!text) return 0;
+    // Count Chinese/Japanese/Korean characters
+    const cjk = text.match(/[\u4e00-\u9fa5\u3040-\u30ff\uac00-\ud7af]/g)?.length || 0;
+    // Count English/Western words
+    const western = text
+      .replace(/[\u4e00-\u9fa5\u3040-\u30ff\uac00-\ud7af]/g, " ")
+      .trim()
+      .split(/\s+/)
+      .filter((w) => w.length > 0).length;
+    return cjk + western;
+  }, []);
+
   const updateCounts = useCallback((ed: typeof editor) => {
     if (!ed) return;
-    const len = ed.state.doc.textBetween(0, ed.state.doc.content.size, '\n\n', '\n').length;
+    const text = ed.state.doc.textBetween(0, ed.state.doc.content.size, '\n\n', '\n');
+    const len = countBilingualWords(text);
     charCountRef.current = len;
     setCharCount(len);
-  }, []);
+  }, [countBilingualWords]);
 
   // Load document content when switching
   useEffect(() => {
@@ -169,35 +183,27 @@ export function Editor({ documentId }: EditorProps) {
     };
   }, [editor]);
 
-  const autoSave = useCallback(
-    (ed: typeof editor) => {
-      if (!documentIdRef.current || !ed) return;
-      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+  const queueSave = useCallback(() => {
+    if (!documentIdRef.current || !editor) return;
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
 
-      setSaveStatus("saving");
-      saveTimerRef.current = setTimeout(() => {
-        const content = ed.getHTML();
-        updateDocumentRef.current(documentIdRef.current!, { title: titleRef.current, content });
-        setSaveStatus("saved");
-        setTimeout(() => setSaveStatus(""), 1500);
-      }, 1500);
-    },
-    []
-  );
+    setSaveStatus("saving");
+    saveTimerRef.current = setTimeout(() => {
+      const content = editor.getHTML();
+      const titleVal = titleRef.current;
+      updateDocumentRef.current(documentIdRef.current!, { title: titleVal, content });
+      setSaveStatus("saved");
+      setTimeout(() => setSaveStatus(""), 1500);
+    }, 1500);
+  }, [editor]);
 
   // Auto-save on title change
   useEffect(() => {
     if (!documentId || !editor || !doc) return;
     if (title === doc.title) return; // Prevent initial load/switch auto-save trigger
 
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    setSaveStatus("saving");
-    saveTimerRef.current = setTimeout(() => {
-      updateDocumentRef.current(documentId, { title, content: editor.getHTML() });
-      setSaveStatus("saved");
-      setTimeout(() => setSaveStatus(""), 1500);
-    }, 1500);
-  }, [title]);
+    queueSave();
+  }, [title, documentId, doc, editor, queueSave]);
 
   const handleTitleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") {
@@ -301,6 +307,13 @@ export function Editor({ documentId }: EditorProps) {
         <Tooltip content={t("editor.highlight")}>
           <Toggle size="sm" pressed={editor.isActive("highlight")} onPressedChange={() => editor.chain().focus().toggleHighlight().run()} aria-label={t("editor.highlight")}>
             <Highlighter className="h-3.5 w-3.5" />
+          </Toggle>
+        </Tooltip>
+
+        {/* Clear Formatting */}
+        <Tooltip content={t("editor.clearFormatting")}>
+          <Toggle size="sm" pressed={false} onPressedChange={() => editor.chain().focus().unsetAllMarks().clearNodes().run()} aria-label={t("editor.clearFormatting")}>
+            <Eraser className="h-3.5 w-3.5" />
           </Toggle>
         </Tooltip>
 
