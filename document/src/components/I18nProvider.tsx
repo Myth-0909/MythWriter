@@ -54,6 +54,7 @@ const translations = {
   "group.added": { zh: "已成功移入分组", en: "Successfully moved to group" },
   "group.removed": { zh: "已成功移出分组", en: "Successfully removed from group" },
   "group.moveTo": { zh: "移动到分组", en: "Move to Group" },
+  "group.noGroups": { zh: "暂无分组，点击创建", en: "No groups. Click to create" },
 
   // TopAppBar
   "topbar.language": { zh: "语言", en: "Language" },

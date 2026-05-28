@@ -13,6 +13,7 @@ import { LoginPage } from "@/pages/LoginPage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
 import { ShareModal } from "@/components/ShareModal";
 import { ConfirmModal } from "@/components/ConfirmModal";
+import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { AIChatWidget } from "@/components/AIChatWidget";
 import { useDocuments } from "@/store";
 import { useToast } from "@/components/Toast";
@@ -123,13 +124,91 @@ export default function App() {
     api.updateProfile({ lang }).catch(() => {});
   }, [lang]);
 
-  const { getDocument, loadDocument, loading, refreshDocuments } = useDocuments();
+  const { documents, getDocument, loadDocument, loading, refreshDocuments } = useDocuments();
+  const [isLoggedIn, setIsLoggedIn] = useState(() => checkLoggedIn());
+
+  // Grouping state
+  const [groups, setGroups] = useState<any[]>([]);
+  const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
+
+  // Folder Dialog state
+  const [folderModalOpen, setFolderModalOpen] = useState(false);
+  const [isEditingFolder, setIsEditingFolder] = useState(false);
+  const [editingFolderId, setEditingFolderId] = useState<string | null>(null);
+  const [folderFormName, setFolderFormName] = useState("");
+
+  // Delete folder confirmation state
+  const [deleteFolderTargetId, setDeleteFolderTargetId] = useState<string | null>(null);
+
+  const fetchGroups = useCallback(async () => {
+    try {
+      const res = await api.listGroups();
+      setGroups(res.groups || []);
+    } catch (err) {
+      console.error("Failed to fetch groups:", err);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (isLoggedIn) {
+      fetchGroups();
+    }
+  }, [isLoggedIn, documents, fetchGroups]);
+
+  // Folder CRUD actions
+  const handleOpenCreateFolder = () => {
+    setIsEditingFolder(false);
+    setEditingFolderId(null);
+    setFolderFormName("");
+    setFolderModalOpen(true);
+  };
+
+  const handleOpenRenameFolder = (id: string, name: string) => {
+    setIsEditingFolder(true);
+    setEditingFolderId(id);
+    setFolderFormName(name);
+    setFolderModalOpen(true);
+  };
+
+  const handleSaveFolder = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!folderFormName.trim()) return;
+
+    try {
+      if (isEditingFolder && editingFolderId) {
+        await api.renameGroup(editingFolderId, { name: folderFormName });
+        toast(t("group.renamed"), "success");
+      } else {
+        await api.createGroup({ name: folderFormName });
+        toast(t("group.created"), "success");
+      }
+      setFolderModalOpen(false);
+      fetchGroups();
+    } catch (err: any) {
+      toast(err.message || "操作失败", "error");
+    }
+  };
+
+  const handleDeleteFolder = async () => {
+    if (!deleteFolderTargetId) return;
+    try {
+      await api.deleteGroup(deleteFolderTargetId);
+      toast(t("group.deleted"), "success");
+      setDeleteFolderTargetId(null);
+      if (activeGroupId === deleteFolderTargetId) {
+        setActiveGroupId(null);
+      }
+      fetchGroups();
+      refreshDocuments();
+    } catch (err: any) {
+      toast(err.message || "删除失败", "error");
+    }
+  };
   const [currentPage, setCurrentPage] = useState<Page>(() => {
     const fromHash = pageFromHash(window.location.hash);
     if (fromHash) return fromHash.page;
     return checkLoggedIn() ? "documents" : "login";
   });
-  const [isLoggedIn, setIsLoggedIn] = useState(() => checkLoggedIn());
   const [activeNav, setActiveNav] = useState<NavId>(() => {
     const fromHash = pageFromHash(window.location.hash);
     if (fromHash && fromHash.page !== "login" && fromHash.page !== "notfound") return fromHash.page as NavId;
@@ -343,7 +422,20 @@ export default function App() {
 
         <div className="flex flex-1 overflow-hidden">
           {currentPage !== "notfound" && (
-            <SideNavBar activeNav={activeNav} onNavChange={handleNavChange} collapsed={sidebarCollapsed} />
+            <SideNavBar
+              activeNav={activeNav}
+              onNavChange={handleNavChange}
+              collapsed={sidebarCollapsed}
+              groups={groups}
+              activeGroupId={activeGroupId}
+              onSelectGroup={(id) => {
+                setActiveGroupId(id);
+                navigateTo("documents", "documents");
+              }}
+              onAddGroup={handleOpenCreateFolder}
+              onRenameGroup={handleOpenRenameFolder}
+              onDeleteGroup={(id) => setDeleteFolderTargetId(id)}
+            />
           )}
 
           <PageTransition pageKey={currentPage}>
@@ -351,7 +443,12 @@ export default function App() {
               <EditorPageContent activeDocId={editorDocId} onSelectDoc={handleOpenDoc} />
             )}
             {currentPage === "documents" && (
-              <DocumentCenterPage onOpenDoc={handleOpenDoc} />
+              <DocumentCenterPage
+                onOpenDoc={handleOpenDoc}
+                groups={groups}
+                activeGroupId={activeGroupId}
+                setActiveGroupId={setActiveGroupId}
+              />
             )}
             {currentPage === "favorites" && (
               <FavoritesPage onOpenDoc={handleOpenDoc} />
@@ -385,6 +482,58 @@ export default function App() {
         cancelLabel={t("common.cancel")}
         variant="danger"
         onConfirm={confirmLogout}
+      />
+
+      {/* Create / Rename Folder Modal */}
+      <Dialog open={folderModalOpen} onOpenChange={setFolderModalOpen}>
+        <DialogContent className="max-w-[420px]">
+          <DialogTitle>{isEditingFolder ? t("group.renameGroup") : t("group.newGroup")}</DialogTitle>
+          <DialogDescription className="sr-only">
+            Add or rename a document group folder
+          </DialogDescription>
+          <form onSubmit={handleSaveFolder} className="flex flex-col gap-4 mt-3">
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-semibold text-surface-600 dark:text-surface-300">
+                {t("group.groupName")}
+              </label>
+              <input
+                type="text"
+                required
+                value={folderFormName}
+                onChange={(e) => setFolderFormName(e.target.value)}
+                placeholder={t("group.groupNamePlaceholder")}
+                className="w-full px-3 py-2 text-xs border border-surface-200 bg-white rounded-lg focus:outline-none focus:ring-1 focus:ring-brand-500 dark:border-surface-850 dark:bg-surface-900 dark:text-surface-100 placeholder-surface-400"
+              />
+            </div>
+            <div className="flex items-center justify-end gap-2 mt-4">
+              <button
+                type="button"
+                onClick={() => setFolderModalOpen(false)}
+                className="px-3.5 py-1.5 text-xs font-semibold text-surface-600 hover:bg-surface-100 border border-surface-200 rounded-md cursor-pointer dark:text-surface-300 dark:hover:bg-surface-800 dark:border-surface-800"
+              >
+                {t("common.cancel")}
+              </button>
+              <button
+                type="submit"
+                className="px-3.5 py-1.5 text-xs font-semibold text-white bg-brand-500 hover:bg-brand-600 rounded-md cursor-pointer transition-colors"
+              >
+                确定
+              </button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Folder Modal */}
+      <ConfirmModal
+        open={!!deleteFolderTargetId}
+        onOpenChange={(open) => !open && setDeleteFolderTargetId(null)}
+        title={t("group.deleteGroup")}
+        description={t("group.deleteGroupDesc")}
+        confirmLabel="删除"
+        cancelLabel="取消"
+        variant="danger"
+        onConfirm={handleDeleteFolder}
       />
     </div>
   );

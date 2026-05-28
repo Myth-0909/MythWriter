@@ -6,6 +6,8 @@ import {
   Trash2,
   Settings,
   Brain,
+  Folder,
+  Plus,
   type LucideIcon,
 } from "lucide-react";
 import { ShinyText } from "@/components/ShinyText";
@@ -14,6 +16,13 @@ import { useTheme } from "@/components/ThemeProvider";
 import { useI18n } from "@/components/I18nProvider";
 import { BrandLogo } from "@/components/BrandLogo";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
 
 export type NavId = "documents" | "favorites" | "trash" | "settings" | "brain";
 
@@ -35,6 +44,12 @@ interface SideNavBarProps {
   activeNav: NavId;
   onNavChange: (id: NavId) => void;
   collapsed?: boolean;
+  groups?: any[];
+  activeGroupId?: string | null;
+  onSelectGroup?: (groupId: string | null) => void;
+  onAddGroup?: () => void;
+  onRenameGroup?: (id: string, name: string) => void;
+  onDeleteGroup?: (id: string) => void;
 }
 
 function NavButton({ item, isActive, collapsed, onClick }: {
@@ -75,7 +90,17 @@ function NavButton({ item, isActive, collapsed, onClick }: {
   return button;
 }
 
-export function SideNavBar({ activeNav, onNavChange, collapsed = false }: SideNavBarProps) {
+export function SideNavBar({
+  activeNav,
+  onNavChange,
+  collapsed = false,
+  groups = [],
+  activeGroupId = null,
+  onSelectGroup = () => {},
+  onAddGroup = () => {},
+  onRenameGroup = () => {},
+  onDeleteGroup = () => {},
+}: SideNavBarProps) {
   const { theme } = useTheme();
   const { t } = useI18n();
   const [logoPreviewOpen, setLogoPreviewOpen] = useState(false);
@@ -93,14 +118,14 @@ export function SideNavBar({ activeNav, onNavChange, collapsed = false }: SideNa
           {collapsed ? (
             <button
               onClick={() => setLogoPreviewOpen(true)}
-              className="flex w-full justify-center rounded-lg p-0"
+              className="flex w-full justify-center rounded-lg p-0 cursor-pointer"
             >
               <BrandLogo size="md" />
             </button>
           ) : (
             <button
               onClick={() => setLogoPreviewOpen(true)}
-              className="flex items-center gap-2 rounded-lg p-0 text-left"
+              className="flex items-center gap-2 rounded-lg p-0 text-left cursor-pointer"
             >
               <BrandLogo size="sm" />
               <ShinyText
@@ -121,13 +146,110 @@ export function SideNavBar({ activeNav, onNavChange, collapsed = false }: SideNa
             {navItems.map((item) => {
               const isActive = item.id === activeNav;
               return (
-                <li key={item.id}>
+                <li key={item.id} className="flex flex-col gap-0.5">
                   <NavButton
                     item={item}
-                    isActive={isActive}
+                    isActive={isActive && (item.id !== "documents" || activeGroupId === null)}
                     collapsed={collapsed}
-                    onClick={() => onNavChange(item.id)}
+                    onClick={() => {
+                      if (item.id === "documents") {
+                        onSelectGroup(null);
+                      }
+                      onNavChange(item.id);
+                    }}
                   />
+                  {/* Under documents item, show the group sub-menu */}
+                  {item.id === "documents" && !collapsed && (
+                    <div className="pl-6 pr-2 py-1 flex flex-col gap-1">
+                      {/* Section Header */}
+                      <div className="flex items-center justify-between px-2 py-1 text-[11px] font-bold text-surface-400 dark:text-surface-500 tracking-wider uppercase">
+                        <span>{t("group.title")}</span>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onAddGroup();
+                          }}
+                          className="hover:text-surface-700 dark:hover:text-surface-200 transition-colors p-0.5 rounded cursor-pointer"
+                          title={t("group.newGroup")}
+                        >
+                          <Plus className="h-3 w-3" />
+                        </button>
+                      </div>
+                      
+                      {/* Groups List */}
+                      {groups.length === 0 ? (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onAddGroup();
+                          }}
+                          className="w-full text-left px-2 py-1.5 text-[11px] text-brand-500 hover:text-brand-600 hover:bg-surface-100 dark:hover:bg-surface-900 rounded-md cursor-pointer border border-dashed border-brand-200 dark:border-brand-900/40 transition-colors"
+                        >
+                          {t("group.noGroups")}
+                        </button>
+                      ) : (
+                        <div className="flex flex-col gap-0.5 max-h-[220px] overflow-y-auto custom-scrollbar">
+                          {groups.map((group) => {
+                            const isGroupActive = activeNav === "documents" && activeGroupId === group.id;
+                            return (
+                              <div
+                                key={group.id}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onSelectGroup(group.id);
+                                }}
+                                className={cn(
+                                  "group/item relative flex items-center justify-between px-2 py-1 rounded-md text-[12px] font-medium cursor-pointer transition-all min-w-0",
+                                  isGroupActive
+                                    ? "bg-surface-200 text-surface-900 dark:bg-surface-800 dark:text-surface-100"
+                                    : "text-surface-600 hover:bg-surface-100 hover:text-surface-900 dark:text-surface-400 dark:hover:bg-surface-850 dark:hover:text-surface-200"
+                                )}
+                              >
+                                <div className="flex items-center gap-2 min-w-0 flex-1">
+                                  <Folder className={cn("h-3.5 w-3.5 shrink-0", isGroupActive ? "text-brand-500" : "text-surface-400")} fill={isGroupActive ? "currentColor" : "none"} />
+                                  <span className="truncate pr-4">{group.name}</span>
+                                </div>
+                                
+                                {/* Dropdown menu for folder actions */}
+                                <div className="opacity-0 group-hover/item:opacity-100 focus-within:opacity-100 transition-opacity duration-150 shrink-0">
+                                  <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                      <button
+                                        onClick={(e) => e.stopPropagation()}
+                                        className="p-0.5 rounded text-surface-400 hover:text-surface-600 hover:bg-surface-200 dark:hover:bg-surface-700 transition-colors cursor-pointer"
+                                      >
+                                        <Settings className="h-3 w-3" />
+                                      </button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end" className="w-[120px]">
+                                      <DropdownMenuItem
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          onRenameGroup(group.id, group.name);
+                                        }}
+                                      >
+                                        <span>重命名</span>
+                                      </DropdownMenuItem>
+                                      <DropdownMenuSeparator />
+                                      <DropdownMenuItem
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          onDeleteGroup(group.id);
+                                        }}
+                                        className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950"
+                                      >
+                                        <span>删除分组</span>
+                                      </DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                  </DropdownMenu>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </li>
               );
             })}
