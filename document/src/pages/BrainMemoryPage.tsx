@@ -2,13 +2,13 @@ import { useState, useEffect } from "react";
 import { Scrollbar } from "@/components/ui/scrollbar";
 import { ConfirmModal } from "@/components/ConfirmModal";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { TabGroup } from "@/components/ui/tab-group";
 import { useI18n } from "@/components/I18nProvider";
 import { useToast } from "@/components/Toast";
 import { api } from "@/api";
 import {
-  Brain, Sparkles, Plus, Search, Edit2, Trash2, X,
-  User, MapPin, Zap, Layers, Loader2,
-  type LucideIcon,
+  Brain, Sparkles, Plus, Search, Edit2, Trash2, X, GripVertical,
+  Layers, Loader2, Check,
 } from "lucide-react";
 import { Tooltip } from "@/components/ui/tooltip";
 import {
@@ -19,73 +19,113 @@ import {
   SelectItem,
 } from "@/components/ui/select";
 
-type Category = "character" | "location" | "concept" | "other";
-
 interface SettingCard {
   id: string;
   title: string;
   description: string;
-  category: Category;
+  category: string;
+  categoryId: string | null;
   createdAt: string;
   updatedAt: string;
 }
 
-const iconByCategory: Record<Category, LucideIcon> = {
-  character: User,
-  location: MapPin,
-  concept: Zap,
-  other: Layers,
-};
+interface BrainCategory {
+  id: string;
+  name: string;
+  color: string | null;
+}
 
-const colorByCategory: Record<Category, string> = {
-  character: "bg-amber-50 text-amber-600 border-amber-200 dark:bg-amber-950/40 dark:text-amber-400 dark:border-amber-900/50",
-  location: "bg-emerald-50 text-emerald-600 border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-900/50",
-  concept: "bg-indigo-50 text-indigo-600 border-indigo-200 dark:bg-indigo-950/40 dark:text-indigo-400 dark:border-indigo-900/50",
-  other: "bg-slate-50 text-slate-600 border-slate-200 dark:bg-slate-900/50 dark:text-slate-400 dark:border-slate-800/50",
-};
+const CATEGORY_COLORS = [
+  "#f59e0b", "#10b981", "#6366f1", "#8b5cf6",
+  "#ec4899", "#ef4444", "#14b8a6", "#3b82f6",
+  "#f97316", "#84cc16", "#a855f7", "#06b6d4",
+];
 
 export function BrainMemoryPage() {
   const { t } = useI18n();
   const { toast } = useToast();
   const [cards, setCards] = useState<SettingCard[]>([]);
+  const [categories, setCategories] = useState<BrainCategory[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState<"all" | Category>("all");
+  const [selectedCategory, setSelectedCategory] = useState<string>("all");
 
-  // CRUD modals state
+  // Knowledge CRUD
   const [dialogOpen, setDialogOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editingCardId, setEditingCardId] = useState<string | null>(null);
   const [formTitle, setFormTitle] = useState("");
-  const [formCategory, setFormCategory] = useState<Category>("character");
+  const [formCategoryId, setFormCategoryId] = useState<string>("");
   const [formDesc, setFormDesc] = useState("");
   const [saveLoading, setSaveLoading] = useState(false);
 
-  // Delete confirm modal state
-  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
+  // Category management dialog
+  const [manageDialogOpen, setManageDialogOpen] = useState(false);
 
-  const fetchCards = async () => {
+  // Category add/edit dialog (inside manage dialog)
+  const [categoryFormOpen, setCategoryFormOpen] = useState(false);
+  const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
+  const [categoryName, setCategoryName] = useState("");
+  const [categoryColor, setCategoryColor] = useState(CATEGORY_COLORS[0]);
+  const [categorySaveLoading, setCategorySaveLoading] = useState(false);
+
+  // Delete confirms
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
+  const [deleteCategoryTargetId, setDeleteCategoryTargetId] = useState<string | null>(null);
+
+  // Drag reorder state
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+
+  const handleDragStart = (index: number) => setDragIndex(index);
+
+  const handleDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    if (dragIndex === null || dragIndex === index) return;
+    setCategories((prev) => {
+      const next = [...prev];
+      const [moved] = next.splice(dragIndex, 1);
+      next.splice(index, 0, moved);
+      setDragIndex(index);
+      return next;
+    });
+  };
+
+  const handleDragEnd = () => {
+    setDragIndex(null);
+  };
+
+  const persistCategoryOrder = async () => {
+    for (const cat of categories) {
+      await api.updateBrainCategory(cat.id, { name: cat.name, color: cat.color ?? undefined });
+    }
+  };
+
+  const fetchData = async () => {
     try {
       setLoading(true);
-      const res = await api.listBrainKnowledges();
-      setCards(res.knowledges || []);
+      const [knowledgesRes, categoriesRes] = await Promise.all([
+        api.listBrainKnowledges(),
+        api.listBrainCategories(),
+      ]);
+      setCards(knowledgesRes.knowledges || []);
+      setCategories(categoriesRes.categories || []);
     } catch (err: any) {
-      console.error("Failed to load brain setting cards:", err);
-      toast(err.message || "获取设定卡失败", "error");
+      console.error("Failed to load brain data:", err);
+      toast(err.message || t("brain.fetchFailed"), "error");
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchCards();
+    fetchData();
   }, []);
 
   const handleOpenAdd = () => {
     setIsEditing(false);
     setEditingCardId(null);
     setFormTitle("");
-    setFormCategory("character");
+    setFormCategoryId(categories[0]?.id || "");
     setFormDesc("");
     setDialogOpen(true);
   };
@@ -94,7 +134,8 @@ export function BrainMemoryPage() {
     setIsEditing(true);
     setEditingCardId(card.id);
     setFormTitle(card.title);
-    setFormCategory(card.category);
+    const cat = categories.find((c) => c.name === card.category);
+    setFormCategoryId(cat?.id || "");
     setFormDesc(card.description);
     setDialogOpen(true);
   };
@@ -102,31 +143,29 @@ export function BrainMemoryPage() {
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formTitle.trim() || !formDesc.trim()) {
-      toast("请填写完整的名称和描述信息", "error");
+      toast(t("brain.fillComplete"), "error");
       return;
     }
-
+    const cat = categories.find((c) => c.id === formCategoryId);
     try {
       setSaveLoading(true);
       if (isEditing && editingCardId) {
         await api.updateBrainKnowledge(editingCardId, {
           title: formTitle,
-          category: formCategory,
-          description: formDesc,
+          category: cat?.name || "",
         });
-        toast(t("brain.cardSaved"), "success");
       } else {
         await api.createBrainKnowledge({
           title: formTitle,
-          category: formCategory,
+          category: cat?.name || "",
           description: formDesc,
         });
-        toast(t("brain.cardSaved"), "success");
       }
+      toast(t("brain.cardSaved"), "success");
       setDialogOpen(false);
-      fetchCards();
+      fetchData();
     } catch (err: any) {
-      toast(err.message || "保存失败", "error");
+      toast(err.message || t("brain.saveFailed"), "error");
     } finally {
       setSaveLoading(false);
     }
@@ -138,9 +177,61 @@ export function BrainMemoryPage() {
       await api.deleteBrainKnowledge(deleteTargetId);
       toast(t("brain.cardDeleted"), "success");
       setDeleteTargetId(null);
-      fetchCards();
+      fetchData();
     } catch (err: any) {
-      toast(err.message || "删除失败", "error");
+      toast(err.message || t("brain.deleteFailed"), "error");
+    }
+  };
+
+  // Category CRUD
+  const handleOpenAddCategory = () => {
+    setEditingCategoryId(null);
+    setCategoryName("");
+    setCategoryColor(CATEGORY_COLORS[categories.length % CATEGORY_COLORS.length]);
+    setCategoryFormOpen(true);
+  };
+
+  const handleOpenEditCategory = (cat: BrainCategory) => {
+    setEditingCategoryId(cat.id);
+    setCategoryName(cat.name);
+    setCategoryColor(cat.color || CATEGORY_COLORS[0]);
+    setCategoryFormOpen(true);
+  };
+
+  const handleSaveCategory = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!categoryName.trim()) return;
+    try {
+      setCategorySaveLoading(true);
+      if (editingCategoryId) {
+        await api.updateBrainCategory(editingCategoryId, {
+          name: categoryName.trim(),
+          color: categoryColor,
+        });
+      } else {
+        await api.createBrainCategory({
+          name: categoryName.trim(),
+          color: categoryColor,
+        });
+      }
+      setCategoryFormOpen(false);
+      fetchData();
+    } catch (err: any) {
+      toast(err.message || t("brain.categorySaveFailed"), "error");
+    } finally {
+      setCategorySaveLoading(false);
+    }
+  };
+
+  const handleDeleteCategory = async () => {
+    if (!deleteCategoryTargetId) return;
+    try {
+      await api.deleteBrainCategory(deleteCategoryTargetId);
+      toast(t("brain.categoryDeleted"), "success");
+      setDeleteCategoryTargetId(null);
+      fetchData();
+    } catch (err: any) {
+      toast(err.message || t("brain.categoryDeleteFailed"), "error");
     }
   };
 
@@ -152,8 +243,6 @@ export function BrainMemoryPage() {
     const matchesCategory = selectedCategory === "all" || card.category === selectedCategory;
     return matchesSearch && matchesCategory;
   });
-
-  const categories: ("all" | Category)[] = ["all", "character", "location", "concept", "other"];
 
   return (
     <Scrollbar className="flex-1 bg-surface-50 dark:bg-surface-950">
@@ -171,33 +260,37 @@ export function BrainMemoryPage() {
               {t("brain.subtitle")}
             </p>
           </div>
-          <button
-            onClick={handleOpenAdd}
-            className="flex items-center justify-center gap-1.5 self-start px-4 py-2 text-xs font-semibold text-white bg-brand-500 hover:bg-brand-600 rounded-lg cursor-pointer transition-colors shadow-sm shrink-0"
-          >
-            <Plus className="h-4 w-4" />
-            <span>{t("brain.addCard")}</span>
-          </button>
+          <div className="flex items-center gap-2 self-start">
+            <button
+              onClick={() => setManageDialogOpen(true)}
+              className="flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold text-surface-700 border border-surface-200 hover:bg-surface-50 rounded-lg cursor-pointer transition-colors dark:text-surface-300 dark:border-surface-700 dark:hover:bg-surface-800"
+            >
+              <Layers className="h-4 w-4" />
+              <span>{t("brain.manageCategories")}</span>
+            </button>
+            <button
+              onClick={handleOpenAdd}
+              className="flex items-center justify-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-brand-500 hover:bg-brand-600 rounded-lg cursor-pointer transition-colors shadow-sm"
+            >
+              <Plus className="h-4 w-4" />
+              <span>{t("brain.addCard")}</span>
+            </button>
+          </div>
         </div>
 
         {/* Filter and Search Bar */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
-          {/* Tabs */}
-          <div className="flex flex-wrap gap-1 bg-surface-100 p-1 rounded-lg dark:bg-surface-900 max-w-fit">
-            {categories.map((cat) => (
-              <button
-                key={cat}
-                onClick={() => setSelectedCategory(cat)}
-                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-all cursor-pointer ${
-                  selectedCategory === cat
-                    ? "bg-white text-surface-900 shadow-sm dark:bg-surface-800 dark:text-surface-100"
-                    : "text-surface-500 hover:text-surface-850 dark:hover:text-surface-300"
-                }`}
-              >
-                {cat === "all" ? "全部" : t(`brain.cardCategory.${cat}`)}
-              </button>
-            ))}
-          </div>
+          {/* Tabs with sliding animation */}
+          {categories.length > 0 && (
+            <TabGroup
+              value={selectedCategory}
+              onChange={setSelectedCategory}
+              items={[
+                { label: t("brain.allCategories"), value: "all" },
+                ...categories.map((cat) => ({ label: cat.name, value: cat.name })),
+              ]}
+            />
+          )}
 
           {/* Search Box */}
           <div className="relative w-full sm:max-w-[280px]">
@@ -224,43 +317,48 @@ export function BrainMemoryPage() {
         {loading ? (
           <div className="flex flex-col items-center justify-center py-48">
             <Loader2 className="h-8 w-8 text-brand-500 animate-spin mb-4" />
-            <p className="text-xs text-surface-400">加载设定数据中...</p>
+            <p className="text-xs text-surface-400">{t("brain.loadingData")}</p>
           </div>
         ) : filteredCards.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
             {filteredCards.map((card) => {
-              const Icon = iconByCategory[card.category];
-              const styles = colorByCategory[card.category];
+              const cat = categories.find((c) => c.name === card.category);
+              const catColor = cat?.color || "#94a3b8";
               return (
                 <div
                   key={card.id}
                   className="flex flex-col justify-between border border-surface-200 bg-white rounded-xl p-5 hover:shadow-md dark:border-surface-800 dark:bg-surface-900 transition-all group"
                 >
                   <div>
-                    {/* Header: Icon & Category */}
                     <div className="flex items-center justify-between mb-4">
-                      <div className={`flex h-8 w-8 items-center justify-center rounded-lg border ${styles}`}>
-                        <Icon className="h-4 w-4" />
+                      <div
+                        className="flex h-8 w-8 items-center justify-center rounded-lg border text-sm font-bold"
+                        style={{
+                          backgroundColor: `${catColor}15`,
+                          borderColor: `${catColor}30`,
+                          color: catColor,
+                        }}
+                      >
+                        {card.title.charAt(0)}
                       </div>
-                      <span className="text-[10px] font-medium text-surface-400 tracking-wider">
-                        {t(`brain.cardCategory.${card.category}`)}
-                      </span>
+                      {card.category && (
+                        <span className="text-[10px] font-medium text-surface-400 tracking-wider">
+                          {card.category}
+                        </span>
+                      )}
                     </div>
 
-                    {/* Title */}
                     <h3 className="text-sm font-bold text-surface-900 dark:text-surface-100 mb-2 truncate group-hover:text-brand-500 transition-colors">
                       {card.title}
                     </h3>
 
-                    {/* Description */}
                     <p className="text-xs text-surface-500 leading-relaxed line-clamp-3 mb-6 whitespace-pre-wrap">
                       {card.description}
                     </p>
                   </div>
 
-                  {/* Footer Actions */}
                   <div className="flex items-center justify-end gap-1.5 border-t border-surface-100 pt-3 dark:border-surface-800">
-                    <Tooltip content="编辑" delay={150}>
+                    <Tooltip content={t("brain.edit")} delay={150}>
                       <button
                         onClick={() => handleOpenEdit(card)}
                         className="p-1.5 text-surface-400 hover:text-brand-500 hover:bg-surface-100 rounded-md transition-colors cursor-pointer dark:hover:bg-surface-800"
@@ -268,7 +366,7 @@ export function BrainMemoryPage() {
                         <Edit2 className="h-3.5 w-3.5" />
                       </button>
                     </Tooltip>
-                    <Tooltip content="删除" delay={150}>
+                    <Tooltip content={t("brain.delete")} delay={150}>
                       <button
                         onClick={() => setDeleteTargetId(card.id)}
                         className="p-1.5 text-surface-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors cursor-pointer dark:hover:bg-red-950/30"
@@ -293,13 +391,13 @@ export function BrainMemoryPage() {
               onClick={handleOpenAdd}
               className="mt-4 px-3.5 py-1.5 text-xs font-medium text-white bg-brand-500 hover:bg-brand-600 rounded-md transition-colors cursor-pointer"
             >
-              立即创建
+              {t("brain.createNow")}
             </button>
           </div>
         )}
       </div>
 
-      {/* Add / Edit Dialog */}
+      {/* Add / Edit Knowledge Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-[480px]">
           <DialogTitle>{isEditing ? t("brain.editCard") : t("brain.addCard")}</DialogTitle>
@@ -307,7 +405,6 @@ export function BrainMemoryPage() {
             Add or update an AI setting card
           </DialogDescription>
           <form onSubmit={handleSave} className="flex flex-col gap-4 mt-3">
-            {/* Title */}
             <div className="flex flex-col gap-1.5">
               <label className="text-xs font-semibold text-surface-600 dark:text-surface-300">
                 {t("brain.cardTitle")}
@@ -322,25 +419,34 @@ export function BrainMemoryPage() {
               />
             </div>
 
-            {/* Category */}
             <div className="flex flex-col gap-1.5">
               <label className="text-xs font-semibold text-surface-600 dark:text-surface-300">
                 {t("brain.cardCategory")}
               </label>
-              <Select value={formCategory} onValueChange={(val) => setFormCategory(val as Category)}>
+              <Select value={formCategoryId} onValueChange={setFormCategoryId}>
                 <SelectTrigger className="w-full">
                   <SelectValue placeholder={t("brain.cardCategory")} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="character">{t("brain.cardCategory.character")}</SelectItem>
-                  <SelectItem value="location">{t("brain.cardCategory.location")}</SelectItem>
-                  <SelectItem value="concept">{t("brain.cardCategory.concept")}</SelectItem>
-                  <SelectItem value="other">{t("brain.cardCategory.other")}</SelectItem>
+                  {categories.length === 0 ? (
+                    <div className="px-3 py-2 text-xs text-surface-400">{t("brain.noCategoryHint")}</div>
+                  ) : (
+                    categories.map((cat) => (
+                      <SelectItem key={cat.id} value={cat.id}>
+                        <div className="flex items-center gap-2">
+                          <span
+                            className="inline-block h-3 w-3 rounded-full"
+                            style={{ backgroundColor: cat.color || "#94a3b8" }}
+                          />
+                          <span>{cat.name}</span>
+                        </div>
+                      </SelectItem>
+                    ))
+                  )}
                 </SelectContent>
               </Select>
             </div>
 
-            {/* Description */}
             <div className="flex flex-col gap-1.5">
               <label className="text-xs font-semibold text-surface-600 dark:text-surface-300">
                 {t("brain.cardDesc")}
@@ -355,14 +461,13 @@ export function BrainMemoryPage() {
               />
             </div>
 
-            {/* Footer Buttons */}
             <div className="flex items-center justify-end gap-2 mt-4">
               <button
                 type="button"
                 onClick={() => setDialogOpen(false)}
                 className="px-3.5 py-1.5 text-xs font-semibold text-surface-600 hover:bg-surface-100 border border-surface-200 rounded-md cursor-pointer dark:text-surface-300 dark:hover:bg-surface-800 dark:border-surface-800"
               >
-                取消
+                {t("brain.cancel")}
               </button>
               <button
                 type="submit"
@@ -370,23 +475,160 @@ export function BrainMemoryPage() {
                 className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-white bg-brand-500 hover:bg-brand-600 disabled:opacity-50 rounded-md cursor-pointer transition-colors"
               >
                 {saveLoading && <Loader2 className="h-3 w-3 animate-spin" />}
-                <span>确定</span>
+                <span>{t("brain.confirm")}</span>
               </button>
             </div>
           </form>
         </DialogContent>
       </Dialog>
 
-      {/* Delete Confirmation Modal */}
+      {/* Delete Knowledge Confirmation */}
       <ConfirmModal
         open={!!deleteTargetId}
         onOpenChange={(open) => !open && setDeleteTargetId(null)}
-        title="确定要删除该设定项吗？"
-        description="该设定项一旦删除，将无法在AI写作时自动匹配背景，且此操作不可撤销。"
-        confirmLabel="删除"
-        cancelLabel="取消"
+        title={t("brain.deleteSettingTitle")}
+        description={t("brain.deleteSettingDesc")}
+        confirmLabel={t("brain.delete")}
+        cancelLabel={t("brain.cancel")}
         variant="danger"
         onConfirm={handleDelete}
+      />
+
+      {/* Category Management Dialog */}
+      <Dialog open={manageDialogOpen} onOpenChange={(open) => {
+        if (!open) persistCategoryOrder();
+        setManageDialogOpen(open);
+      }}>
+        <DialogContent className="max-w-[480px]">
+          <div className="flex flex-col gap-4">
+            <div className="flex items-center justify-start gap-3 pr-8">
+              <DialogTitle>{t("brain.manageCategories")}</DialogTitle>
+              <button
+                onClick={handleOpenAddCategory}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-brand-500 hover:bg-brand-600 rounded-md cursor-pointer transition-colors shrink-0"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                <span>{t("brain.createCategory")}</span>
+              </button>
+            </div>
+            <DialogDescription className="sr-only">Manage AI brain categories</DialogDescription>
+            {categories.length === 0 ? (
+              <p className="text-sm text-surface-400 text-center py-8">{t("brain.noCategories")}</p>
+            ) : (
+              <div className="flex flex-col gap-2 max-h-64 overflow-y-auto pr-2">
+                {categories.map((cat, index) => (
+                  <div
+                    key={cat.id}
+                    draggable
+                    onDragStart={() => handleDragStart(index)}
+                    onDragOver={(e) => handleDragOver(e, index)}
+                    onDragEnd={handleDragEnd}
+                    className={`flex items-center gap-2 rounded-lg border py-2.5 transition-all duration-200 dark:border-surface-800 border-surface-200 ${
+                      dragIndex === index
+                        ? "opacity-40 scale-[0.98]"
+                        : "opacity-100 hover:bg-surface-50 dark:hover:bg-surface-800/50"
+                    }`}
+                  >
+                    <GripVertical className="h-4 w-4 shrink-0 cursor-grab text-surface-400 active:cursor-grabbing" />
+                    <span
+                      className="inline-block h-3 w-3 rounded-full shrink-0"
+                      style={{ backgroundColor: cat.color || "#94a3b8" }}
+                    />
+                    <span className="flex-1 text-sm font-medium text-surface-800 dark:text-surface-200 truncate">
+                      {cat.name}
+                    </span>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        onClick={() => handleOpenEditCategory(cat)}
+                        className="p-1 text-surface-400 hover:text-brand-500 rounded cursor-pointer"
+                      >
+                        <Edit2 className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        onClick={() => setDeleteCategoryTargetId(cat.id)}
+                        className="p-1 text-surface-400 hover:text-red-500 rounded cursor-pointer"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Category Add/Edit Form Dialog */}
+      <Dialog open={categoryFormOpen} onOpenChange={setCategoryFormOpen}>
+        <DialogContent className="max-w-[400px]">
+          <DialogTitle>{editingCategoryId ? t("brain.editCategory") : t("brain.createCategory")}</DialogTitle>
+          <DialogDescription className="sr-only">Category form</DialogDescription>
+          <form onSubmit={handleSaveCategory} className="flex flex-col gap-4 mt-3">
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-semibold text-surface-600 dark:text-surface-300">
+                {t("brain.categoryName")}
+              </label>
+              <input
+                type="text"
+                required
+                value={categoryName}
+                onChange={(e) => setCategoryName(e.target.value)}
+                placeholder={t("brain.categoryNamePlaceholder")}
+                className="w-full px-3 py-2 text-xs border border-surface-200 bg-white rounded-lg focus:outline-none focus:ring-1 focus:ring-brand-500 dark:border-surface-800 dark:bg-surface-900 dark:text-surface-100 placeholder-surface-400"
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-semibold text-surface-600 dark:text-surface-300">
+                {t("brain.categoryColor")}
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {CATEGORY_COLORS.map((color) => (
+                  <button
+                    key={color}
+                    type="button"
+                    onClick={() => setCategoryColor(color)}
+                    className="relative h-7 w-7 rounded-full transition-transform hover:scale-110 cursor-pointer"
+                    style={{ backgroundColor: color }}
+                  >
+                    {categoryColor === color && (
+                      <Check className="absolute inset-0 h-4 w-4 m-auto text-white" />
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-2 mt-2">
+              <button
+                type="button"
+                onClick={() => setCategoryFormOpen(false)}
+                className="px-3.5 py-1.5 text-xs font-semibold text-surface-600 hover:bg-surface-100 border border-surface-200 rounded-md cursor-pointer dark:text-surface-300 dark:hover:bg-surface-800 dark:border-surface-800"
+              >
+                {t("brain.cancel")}
+              </button>
+              <button
+                type="submit"
+                disabled={categorySaveLoading || !categoryName.trim()}
+                className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-white bg-brand-500 hover:bg-brand-600 disabled:opacity-50 rounded-md cursor-pointer transition-colors"
+              >
+                {categorySaveLoading && <Loader2 className="h-3 w-3 animate-spin" />}
+                <span>{t("brain.confirm")}</span>
+              </button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Category Confirmation */}
+      <ConfirmModal
+        open={!!deleteCategoryTargetId}
+        onOpenChange={(open) => !open && setDeleteCategoryTargetId(null)}
+        title={t("brain.deleteCategory")}
+        description={t("brain.deleteCategoryDesc")}
+        confirmLabel={t("brain.delete")}
+        cancelLabel={t("brain.cancel")}
+        variant="danger"
+        onConfirm={handleDeleteCategory}
       />
     </Scrollbar>
   );

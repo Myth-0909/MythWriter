@@ -27,6 +27,7 @@ model User {
   feedbacks       ChatFeedback[]
   activityLogs    ActivityLog[]
   brainKnowledges AIBrainKnowledge[]
+  brainCategories AIBrainCategory[]
   documentGroups  DocumentGroup[]
   apiKeyHistories  ApiKeyConfigHistory[]
 
@@ -138,17 +139,35 @@ model DocumentGroup {
   @@map("document_groups")
 }
 
-model AIBrainKnowledge {
+model AIBrainCategory {
   id          String   @id @default(uuid())
-  title       String   // e.g. "林动", "大炎王朝"
-  description String   @db.Text // The description / lore setting
-  category    String   @default("character") // "character" | "location" | "concept" | "other"
+  name        String   // e.g. "角色", "势力", "世界观"
+  color       String?  // optional hex color for the tab pill
   userId      String   @map("user_id")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  knowledges  AIBrainKnowledge[]
 
   @@index([userId])
+  @@map("ai_brain_categories")
+}
+
+model AIBrainKnowledge {
+  id          String   @id @default(uuid())
+  title       String   // e.g. "林动", "大炎王朝"
+  description String   @db.Text // The description / lore setting
+  category    String   @default("") // references AIBrainCategory.name, empty = unclassified
+  userId      String   @map("user_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  categoryRef AIBrainCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  categoryId  String?  @map("category_id")
+
+  @@index([userId])
+  @@index([categoryId])
   @@map("ai_brain_knowledges")
 }

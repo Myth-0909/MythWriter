@@ -96,10 +96,10 @@ async function buildBrainKnowledgeContext(userId: string, text: string): Promise
     if (matches.length === 0) return "";
 
     return [
-      "【关联背景设定库（请务必严格遵守以下角色/地点/概念设定，以保证故事前后逻辑连贯，切勿与这些设定相冲突）：】",
+      "【关联背景设定库（请务必严格遵守以下设定，以保证故事前后逻辑连贯，切勿与这些设定相冲突）：】",
       ...matches.map((k: any) => {
-        const catZh = k.category === "character" ? "角色" : k.category === "location" ? "地点" : k.category === "concept" ? "概念" : "其他";
-        return `* [${catZh}] ${k.title}: ${k.description}`;
+        const catLabel = k.category ? `[${k.category}] ` : "";
+        return `* ${catLabel}${k.title}: ${k.description}`;
       }),
     ].join("\n");
   } catch (err) {

@@ -241,4 +241,23 @@ export const api = {
 
   deleteBrainKnowledge: (id: string) =>
     request<{ success: boolean }>(`/ai/knowledge/${id}`, { method: "DELETE" }),
+
+  // AI Brain Categories API
+  listBrainCategories: () =>
+    request<{ categories: any[] }>("/ai/categories"),
+
+  createBrainCategory: (data: { name: string; color?: string }) =>
+    request<{ category: any }>("/ai/categories", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  updateBrainCategory: (id: string, data: { name?: string; color?: string }) =>
+    request<{ category: any }>(`/ai/categories/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
+
+  deleteBrainCategory: (id: string) =>
+    request<{ success: boolean }>(`/ai/categories/${id}`, { method: "DELETE" }),
 };

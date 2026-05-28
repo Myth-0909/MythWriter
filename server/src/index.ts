@@ -10,6 +10,7 @@ import aiRoutes from "./routes/ai";
 import sessionRoutes from "./routes/session";
 import groupsRoutes from "./routes/groups";
 import aiKnowledgeRoutes from "./routes/aiKnowledge";
+import aiCategoryRoutes from "./routes/aiCategory";
 import { connectRedis } from "./lib/redis";
 import prisma from "./lib/prisma";
 
@@ -32,6 +33,7 @@ app.use("/api/ai", aiRoutes);
 app.use("/api/session", sessionRoutes);
 app.use("/api/groups", groupsRoutes);
 app.use("/api/ai/knowledge", aiKnowledgeRoutes);
+app.use("/api/ai/categories", aiCategoryRoutes);
 
 // Health check
 app.get("/api/health", (_req, res) => {
