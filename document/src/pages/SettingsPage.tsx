@@ -373,7 +373,7 @@ export function SettingsPage() {
                   <Select
                     value={selectedHistoryId}
                     onValueChange={handleApplyHistory}
-                    disabled={applyingHistory || apiKeyHistories.length === 0}
+                    disabled={isLocked || applyingHistory || apiKeyHistories.length === 0}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder={apiKeyHistories.length > 0 ? t("apikey.historyPlaceholder") : t("apikey.noHistory")} />
