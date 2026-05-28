@@ -9,6 +9,7 @@ import {
   type DragEndEvent,
   type DragStartEvent,
 } from "@dnd-kit/core";
+import { restrictToVerticalAxis } from "@dnd-kit/modifiers";
 import {
   SortableContext,
   arrayMove,
@@ -698,6 +699,7 @@ export function BrainMemoryPage() {
               <DndContext
                 sensors={categoryDragSensors}
                 collisionDetection={closestCenter}
+                modifiers={[restrictToVerticalAxis]}
                 onDragStart={handleCategoryDragStart}
                 onDragEnd={handleCategoryDragEnd}
                 onDragCancel={handleCategoryDragCancel}
