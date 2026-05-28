@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { Bot, X, Send, Sparkles, Smile, ChevronDown, ThumbsUp, ThumbsDown, Star, Trash2, Check, Pencil, Mic, MicOff, Square, FileText } from "lucide-react";
+import { Bot, X, Send, Sparkles, Smile, ChevronDown, ThumbsUp, ThumbsDown, Star, Trash2, Check, Pencil, Square, FileText } from "lucide-react";
 import { ConfirmModal } from "@/components/ConfirmModal";
 import { Scrollbar } from "@/components/ui/scrollbar";
 import { useI18n } from "@/components/I18nProvider";
@@ -96,6 +96,10 @@ function getMentionQuery(value: string): { query: string; start: number } | null
   const match = value.match(/(^|\s)@([^\s@]*)$/);
   if (!match || match.index === undefined) return null;
   return { query: match[2] || "", start: match.index + match[1].length };
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 async function streamChat(
@@ -210,8 +214,6 @@ export function AIChatWidget() {
   const [deleteMsgConfirm, setDeleteMsgConfirm] = useState(false);
   const feedbackDoneRef = useRef<Set<number>>(new Set());
   const restoredRef = useRef(false);
-  const [listening, setListening] = useState(false);
-  const recognitionRef = useRef<any>(null);
   const [keyOk, setKeyOk] = useState(false);
   const [references, setReferences] = useState<DocumentReference[]>([]);
   const [mentionOpen, setMentionOpen] = useState(false);
@@ -304,11 +306,6 @@ export function AIChatWidget() {
       // Abort any ongoing stream when closing
       if (abortRef.current) {
         abortRef.current.abort();
-      }
-      // Stop microphone recording on close to prevent background leak
-      if (recognitionRef.current) {
-        recognitionRef.current.stop();
-        setListening(false);
       }
       return;
     }
@@ -406,8 +403,14 @@ export function AIChatWidget() {
     if (!el) return;
     el.style.height = "auto";
     const maxHeight = 96; // ~4 lines
-    el.style.height = `${Math.min(el.scrollHeight, maxHeight)}px`;
+    const nextHeight = Math.min(el.scrollHeight, maxHeight);
+    el.style.height = `${nextHeight}px`;
+    el.style.overflowY = el.scrollHeight > maxHeight ? "auto" : "hidden";
   }, []);
+
+  useEffect(() => {
+    resizeTextarea();
+  }, [input, resizeTextarea]);
 
   const changePersonality = useCallback((p: Personality) => {
     personalityRef.current = p;
@@ -570,61 +573,6 @@ export function AIChatWidget() {
     setStreaming(false);
   }, []);
 
-  const toggleVoice = useCallback(async () => {
-    if (listening) {
-      recognitionRef.current?.stop();
-      setListening(false);
-      return;
-    }
-
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-
-    // Request mic permission first (triggers OS permission dialog)
-    if (navigator.mediaDevices?.getUserMedia) {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        stream.getTracks().forEach((t) => t.stop());
-      } catch {
-        toast("请在系统设置中允许麦克风权限后重试", "error");
-        return;
-      }
-    }
-
-    if (!SpeechRecognition) {
-      toast(t("ai.voiceNotSupported"), "error");
-      return;
-    }
-
-    const recognition = new SpeechRecognition();
-    recognition.lang = "zh-CN";
-    recognition.interimResults = false;
-    recognition.maxAlternatives = 1;
-    recognition.onresult = (event: any) => {
-      const transcript = event.results[0][0].transcript;
-      setInput((prev) => prev + transcript);
-      toast(t("ai.recognitionSuccess"), "success");
-    };
-    recognition.onerror = (event: any) => {
-      if (event.error === "not-allowed") {
-        toast("请在系统设置中允许麦克风权限后重试", "error");
-      } else if (event.error === "no-speech") {
-        toast("未检测到语音，请重试", "info");
-      } else {
-        toast(`语音识别失败: ${event.error}`, "error");
-      }
-      setListening(false);
-    };
-    recognition.onend = () => setListening(false);
-    recognitionRef.current = recognition;
-    try {
-      recognition.start();
-      setListening(true);
-    } catch {
-      toast(t("ai.voiceNotSupported"), "error");
-      setListening(false);
-    }
-  }, [listening, toast]);
-
   const handleKeyDown = (e: React.KeyboardEvent) => {
     // When mention menu is open, intercept all navigation keys
     if (showMentionMenu) {
@@ -681,6 +629,20 @@ export function AIChatWidget() {
     ));
     setInput((prev) => `${prev.slice(0, mention.start)}@${doc.title} `);
     setMentionOpen(false);
+  };
+
+  const removeReference = (ref: DocumentReference) => {
+    setReferences((prev) => prev.filter((item) => item.id !== ref.id));
+    const tokenPattern = new RegExp(`(^|\\s)@${escapeRegExp(ref.title)}(?=\\s|$)`, "g");
+    setInput((prev) => prev.replace(tokenPattern, " ").replace(/\s{2,}/g, " ").trimStart());
+  };
+
+  const handleInputChange = (next: string) => {
+    setInput(next);
+    const nextMention = getMentionQuery(next);
+    setMentionOpen(!!nextMention);
+    setMentionIndex(0);
+    setReferences((prev) => prev.filter((ref) => next.includes(`@${ref.title}`)));
   };
 
   return (
@@ -978,31 +940,6 @@ export function AIChatWidget() {
             </div>
           )}
 
-          {/* Recording indicator */}
-          {listening && (
-            <div className="shrink-0 mx-3 mt-2 flex items-center gap-3 rounded-xl bg-red-50 border border-red-200 px-4 py-3 dark:bg-red-950 dark:border-red-800 animate-in fade-in slide-in-from-bottom-2 duration-200">
-              {/* Red dot + text */}
-              <div className="flex items-center gap-2 shrink-0">
-                <span className="relative flex h-3 w-3">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
-                  <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500" />
-                </span>
-                <span className="text-sm font-medium text-red-600 dark:text-red-400">{t("ai.recording")}</span>
-              </div>
-              {/* Waveform bars */}
-              <div className="flex items-center gap-[2px] h-6 flex-1 justify-center">
-                {Array.from({ length: 9 }).map((_, i) => (
-                  <div
-                    key={i}
-                    className="w-[3px] rounded-full bg-red-400 recording-bar"
-                    style={{ animationDelay: `${i * 0.1}s`, animationDuration: `${0.6 + Math.random() * 0.4}s` }}
-                  />
-                ))}
-              </div>
-              <span className="text-xs text-red-400 dark:text-red-500 shrink-0">{t("ai.tapToStop")}</span>
-            </div>
-          )}
-
           {/* Input */}
           <div className="shrink-0 border-t border-surface-200 px-3 py-3 dark:border-surface-700">
             {references.length > 0 && (
@@ -1018,7 +955,7 @@ export function AIChatWidget() {
                     <button
                       type="button"
                       title={t("ai.removeReference")}
-                      onClick={() => setReferences((prev) => prev.filter((item) => item.id !== ref.id))}
+                      onClick={() => removeReference(ref)}
                       className="rounded-full p-0.5 text-brand-400 hover:bg-brand-100 hover:text-brand-700 dark:hover:bg-brand-900 dark:hover:text-brand-200"
                     >
                       <X className="h-3 w-3" />
@@ -1032,15 +969,7 @@ export function AIChatWidget() {
               <textarea
                 ref={inputRef}
                 value={input}
-                onChange={(e) => {
-                  const next = e.target.value;
-                  setInput(next);
-                  const nextMention = getMentionQuery(next);
-                  setMentionOpen(!!nextMention);
-                  setMentionIndex(0);
-                  // Auto-resize textarea
-                  requestAnimationFrame(resizeTextarea);
-                }}
+                onChange={(e) => handleInputChange(e.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder={isGenerating ? t("ai.replying") : `${t("ai.placeholder")} ${t("ai.mentionHint")}`}
                 disabled={isGenerating}
@@ -1074,22 +1003,6 @@ export function AIChatWidget() {
                 </div>
               )}
               </div>
-              <Tooltip content={listening ? "停止录音" : "语音输入"} delay={150}>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  onClick={toggleVoice}
-                  disabled={isGenerating}
-                  className={cn(
-                    "h-9 w-9 shrink-0 rounded-xl transition-colors",
-                    listening
-                      ? "text-red-500 bg-red-50 hover:bg-red-100 animate-pulse"
-                      : "text-surface-400 hover:text-surface-600 hover:bg-surface-100 dark:hover:bg-surface-800"
-                  )}
-                >
-                  {listening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
-                </Button>
-              </Tooltip>
               {isGenerating ? (
                 <Tooltip content="停止生成" delay={150}>
                   <Button size="icon" onClick={handleStop} className="h-9 w-9 shrink-0 rounded-xl bg-red-500 hover:bg-red-600">
