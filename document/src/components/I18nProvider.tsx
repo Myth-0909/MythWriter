@@ -351,6 +351,7 @@ const translations = {
   "ai.removeReference": { zh: "移除引用", en: "Remove reference" },
   "ai.replying": { zh: "小麦正在回复中...", en: "XiaoMai is replying..." },
   "ai.thinking": { zh: "小麦正在思考...", en: "XiaoMai is thinking..." },
+  "ai.action": { zh: "小麦正在行动...", en: "XiaoMai is acting..." },
   "ai.clearHistory": { zh: "清除历史记录", en: "Clear History" },
   "ai.clearConfirmTitle": { zh: "清除历史记录", en: "Clear History" },
   "ai.clearConfirmDesc": { zh: "确定要清除所有对话记录吗？此操作不可撤销。", en: "Are you sure you want to clear all conversations? This cannot be undone." },

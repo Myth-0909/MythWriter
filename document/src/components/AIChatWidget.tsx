@@ -76,6 +76,13 @@ function absoluteToAnchored(pos: Position): AnchoredPosition {
   return { side, yPercent };
 }
 
+// Detect if user message contains action intent (create, edit, delete, etc.)
+const ACTION_KEYWORDS = /生成|创建|修改|删除|收藏|添加|编辑|写文章|新建|制作|翻译|改写|润色|扩写|总结/i;
+
+function isActionIntent(message: string): boolean {
+  return ACTION_KEYWORDS.test(message);
+}
+
 function loadMemory(): Message[] {
   try { return JSON.parse(localStorage.getItem(MEMORY_KEY) || "[]"); } catch { return []; }
 }
@@ -222,6 +229,7 @@ export function AIChatWidget() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [streaming, setStreaming] = useState(false);
+  const [actionMode, setActionMode] = useState(false);
   const [personality, setPersonality] = useState<Personality>(() =>
     safePersonality(localStorage.getItem(PERSONALITY_KEY))
   );
@@ -512,6 +520,7 @@ export function AIChatWidget() {
     setReferences([]);
     setMentionOpen(false);
     setLoading(true);
+    setActionMode(isActionIntent(text));
     api.logActivity({ action: "chat_send", detail: text.slice(0, 100) }).catch(() => {});
 
     const memory = [...memoryRef.current, userMsg];
@@ -529,6 +538,8 @@ export function AIChatWidget() {
         { messages: withUser, personality: personalityRef.current, memoryContext, references: requestReferences },
         (delta) => {
           fullContent += delta;
+          // For action intents (e.g. create_document), don't show streaming in chat
+          if (actionMode) return;
           if (firstDelta) {
             firstDelta = false;
             setStreaming(true);
@@ -551,6 +562,8 @@ export function AIChatWidget() {
 
       // Finalize with parsed reply
       const finalContent = reply || fullContent;
+
+      // Always show reply in chat (parseAction already strips doc content from reply)
       if (!finalContent.trim()) {
         throw new Error(t("ai.emptyReply"));
       }
@@ -564,14 +577,17 @@ export function AIChatWidget() {
         }
         return next;
       });
-
       memoryRef.current = [...memory, { role: "assistant", content: finalContent }];
       saveMemory(memoryRef.current);
 
+      // Handle create_document action: create doc in background
       if (action?.type === "create_document" && action.content) {
         try {
           await createDocument("general", action.title, markdownToHtml(action.content));
-          toast(`${t("ai.docCreated")}: ${action.title}`, "success");
+          // Append a system note to memory so the model knows what was created in follow-up turns
+          const docNote = { role: "assistant" as const, content: `[系统] 已为用户创建文档「${action.title}」。内容摘要：${action.content.slice(0, 200)}...` };
+          memoryRef.current = [...memoryRef.current, docNote];
+          saveMemory(memoryRef.current);
         } catch {
           toast(t("ai.docCreateFailed"), "error");
         }
@@ -592,6 +608,7 @@ export function AIChatWidget() {
     } finally {
       setLoading(false);
       setStreaming(false);
+      setActionMode(false);
     }
   }, [input, loading, streaming, messages, createDocument, toast, t, documents, references]);
 
@@ -599,6 +616,7 @@ export function AIChatWidget() {
     abortRef.current?.abort();
     setLoading(false);
     setStreaming(false);
+    setActionMode(false);
   }, []);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -953,7 +971,7 @@ export function AIChatWidget() {
                     </div>
                   );
                 })}
-                {/* Thinking indicator */}
+                {/* Thinking/Action indicator */}
                 {loading && !streaming && (
                   <div className="mb-4 flex gap-2">
                     <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-100 dark:bg-brand-900 mt-0.5">
@@ -961,7 +979,7 @@ export function AIChatWidget() {
                     </div>
                     <div className="flex items-center gap-1.5 rounded-2xl rounded-bl-md bg-surface-100 px-4 py-3 dark:bg-surface-800">
                       <span className="text-xs text-surface-500">
-                        {t("ai.thinking").split("").map((char, ci) => (
+                        {(actionMode ? t("ai.action") : t("ai.thinking")).split("").map((char, ci) => (
                           <span
                             key={ci}
                             className="inline-block animate-bounce"
