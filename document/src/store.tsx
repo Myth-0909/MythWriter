@@ -10,8 +10,8 @@ interface DocumentStore {
   loading: boolean;
   getDocument: (id: string) => Document | undefined;
   loadDocument: (id: string) => Promise<Document | undefined>;
-  createDocument: (category?: DocumentCategory, title?: string, content?: string) => Promise<string>;
-  updateDocument: (id: string, updates: Partial<Pick<Document, "title" | "content" | "category">>) => Promise<void>;
+  createDocument: (category?: DocumentCategory, title?: string, content?: string, groupId?: string | null) => Promise<string>;
+  updateDocument: (id: string, updates: Partial<Pick<Document, "title" | "content" | "category" | "groupId">>) => Promise<void>;
   toggleFavorite: (id: string) => Promise<void>;
   moveToTrash: (id: string) => Promise<void>;
   restoreFromTrash: (id: string) => Promise<void>;
@@ -121,20 +121,21 @@ export function DocumentStoreProvider({ children }: { children: ReactNode }) {
     }
   }, [updateLocalDoc]);
 
-  const createDocument = useCallback(async (category?: DocumentCategory, title?: string, content?: string) => {
+  const createDocument = useCallback(async (category?: DocumentCategory, title?: string, content?: string, groupId?: string | null) => {
     const plainText = content ? content.replace(/<[^>]*>/g, "") : "";
     const { document: doc } = await api.createDocument({
       title: title || t("editor.untitled"),
       content: content || "",
       preview: plainText.slice(0, 80) + (plainText.length > 80 ? "..." : ""),
       category: category || "general",
+      groupId: groupId || null,
     });
     setDocuments((prev) => [doc, ...prev]);
     return doc.id;
   }, [t]);
 
   const updateDocument = useCallback(
-    async (id: string, updates: Partial<Pick<Document, "title" | "content" | "category">>) => {
+    async (id: string, updates: Partial<Pick<Document, "title" | "content" | "category" | "groupId">>) => {
       // Optimistic update
       setDocuments((prev) =>
         prev.map((d) =>

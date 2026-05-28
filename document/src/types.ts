@@ -10,6 +10,7 @@ export interface Document {
   isDeleted: boolean;
   deletedAt?: string;
   userId?: string;
+  groupId?: string | null;
 }
 
 export type DocumentCategory = "design" | "journal" | "planning" | "research" | "general";

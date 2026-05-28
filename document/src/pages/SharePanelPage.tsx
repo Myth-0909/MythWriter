@@ -3,7 +3,7 @@ import { SideNavBar } from "@/components/SideNavBar";
 import { TopAppBar } from "@/components/TopAppBar";
 import { ShareModal } from "@/components/ShareModal";
 import { Search } from "lucide-react";
-import type { NavId } from "@/App";
+import type { NavId } from "@/components/SideNavBar";
 
 const notes = [
   {

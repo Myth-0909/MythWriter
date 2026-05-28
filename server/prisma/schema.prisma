@@ -22,10 +22,12 @@ model User {
   createdAt         DateTime   @default(now()) @map("created_at")
   updatedAt         DateTime   @updatedAt @map("updated_at")
 
-  documents     Document[]
-  conversations Conversation[]
-  feedbacks     ChatFeedback[]
-  activityLogs  ActivityLog[]
+  documents       Document[]
+  conversations   Conversation[]
+  feedbacks       ChatFeedback[]
+  activityLogs    ActivityLog[]
+  brainKnowledges AIBrainKnowledge[]
+  documentGroups  DocumentGroup[]
 
   @@map("users")
 }
@@ -46,8 +48,12 @@ model Document {
   userId String @map("user_id")
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  groupId String?        @map("group_id")
+  group   DocumentGroup? @relation(fields: [groupId], references: [id], onDelete: SetNull)
+
   @@index([userId])
   @@index([userId, isDeleted])
+  @@index([groupId])
   @@map("documents")
 }
 
@@ -100,4 +106,33 @@ model ActivityLog {
   @@index([userId])
   @@index([userId, action])
   @@map("activity_logs")
+}
+
+model DocumentGroup {
+  id        String     @id @default(uuid())
+  name      String
+  userId    String     @map("user_id")
+  createdAt DateTime   @default(now()) @map("created_at")
+  updatedAt DateTime   @updatedAt @map("updated_at")
+
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  documents Document[]
+
+  @@index([userId])
+  @@map("document_groups")
+}
+
+model AIBrainKnowledge {
+  id          String   @id @default(uuid())
+  title       String   // e.g. "林动", "大炎王朝"
+  description String   @db.Text // The description / lore setting
+  category    String   @default("character") // "character" | "location" | "concept" | "other"
+  userId      String   @map("user_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("ai_brain_knowledges")
 }

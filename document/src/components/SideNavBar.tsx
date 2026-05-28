@@ -5,6 +5,7 @@ import {
   Star,
   Trash2,
   Settings,
+  Brain,
   type LucideIcon,
 } from "lucide-react";
 import { ShinyText } from "@/components/ShinyText";
@@ -14,17 +15,18 @@ import { useI18n } from "@/components/I18nProvider";
 import { BrandLogo } from "@/components/BrandLogo";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 
-type NavId = "documents" | "favorites" | "trash" | "settings";
+export type NavId = "documents" | "favorites" | "trash" | "settings" | "brain";
 
 interface NavItem {
   id: NavId;
-  labelKey: "nav.documents" | "nav.favorites" | "nav.trash" | "nav.settings";
+  labelKey: "nav.documents" | "nav.favorites" | "nav.trash" | "nav.settings" | "nav.brain";
   icon: LucideIcon;
 }
 
 const navItems: NavItem[] = [
   { id: "documents", labelKey: "nav.documents", icon: FileText },
   { id: "favorites", labelKey: "nav.favorites", icon: Star },
+  { id: "brain", labelKey: "nav.brain", icon: Brain },
   { id: "trash", labelKey: "nav.trash", icon: Trash2 },
   { id: "settings", labelKey: "nav.settings", icon: Settings },
 ];

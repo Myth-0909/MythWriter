@@ -7,7 +7,7 @@ import { ShareModal } from "@/components/ShareModal";
 import { useDocuments } from "@/store";
 import { useI18n } from "@/components/I18nProvider";
 import { useToast } from "@/components/Toast";
-import type { NavId } from "@/App";
+import type { NavId } from "@/components/SideNavBar";
 import { formatFullDateTime } from "@/lib/date";
 
 interface EditorPageProps {

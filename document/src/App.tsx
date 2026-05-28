@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { TopAppBar } from "@/components/TopAppBar";
-import { SideNavBar } from "@/components/SideNavBar";
+import { SideNavBar, type NavId } from "@/components/SideNavBar";
 import { PageTransition } from "@/components/PageTransition";
 import { Editor } from "@/components/Editor";
 import { DocumentList } from "@/components/DocumentList";
@@ -8,6 +8,7 @@ import { DocumentCenterPage } from "@/pages/DocumentCenterPage";
 import { FavoritesPage } from "@/pages/FavoritesPage";
 import { TrashPage } from "@/pages/TrashPage";
 import { SettingsPage } from "@/pages/SettingsPage";
+import { BrainMemoryPage } from "@/pages/BrainMemoryPage";
 import { LoginPage } from "@/pages/LoginPage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
 import { ShareModal } from "@/components/ShareModal";
@@ -22,10 +23,9 @@ import { formatFullDateTime } from "@/lib/date";
 import { escapeHtml, sanitizeHtml } from "@/lib/html";
 import "./App.css";
 
-export type NavId = "documents" | "favorites" | "trash" | "settings";
-type Page = "editor" | "documents" | "favorites" | "share" | "login" | "trash" | "settings" | "notfound";
+type Page = "editor" | "documents" | "favorites" | "share" | "login" | "trash" | "settings" | "brain" | "notfound";
 
-const VALID_PAGES = new Set<string>(["documents", "favorites", "trash", "settings", "login"]);
+const VALID_PAGES = new Set<string>(["documents", "favorites", "trash", "settings", "login", "brain"]);
 
 function pageFromHash(hash: string): { page: Page; editorId?: string } | null {
   const name = hash.replace(/^#\//, "");
@@ -361,6 +361,9 @@ export default function App() {
             )}
             {currentPage === "settings" && (
               <SettingsPage />
+            )}
+            {currentPage === "brain" && (
+              <BrainMemoryPage />
             )}
             {currentPage === "notfound" && (
               <NotFoundPage onGoHome={() => navigateTo("documents", "documents")} />

@@ -8,6 +8,8 @@ import userRoutes from "./routes/users";
 import statsRoutes from "./routes/stats";
 import aiRoutes from "./routes/ai";
 import sessionRoutes from "./routes/session";
+import groupsRoutes from "./routes/groups";
+import aiKnowledgeRoutes from "./routes/aiKnowledge";
 import { connectRedis } from "./lib/redis";
 import prisma from "./lib/prisma";
 
@@ -28,6 +30,8 @@ app.use("/api/users", userRoutes);
 app.use("/api/stats", statsRoutes);
 app.use("/api/ai", aiRoutes);
 app.use("/api/session", sessionRoutes);
+app.use("/api/groups", groupsRoutes);
+app.use("/api/ai/knowledge", aiKnowledgeRoutes);
 
 // Health check
 app.get("/api/health", (_req, res) => {

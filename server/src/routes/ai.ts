@@ -81,6 +81,33 @@ async function buildReferenceContext(userId: string, references: ChatReference[]
   }).join("\n\n---\n\n");
 }
 
+async function buildBrainKnowledgeContext(userId: string, text: string): Promise<string> {
+  if (!text) return "";
+  try {
+    const knowledges = await prisma.aIBrainKnowledge.findMany({
+      where: { userId },
+      select: { title: true, description: true, category: true },
+    });
+    if (knowledges.length === 0) return "";
+
+    const matches = knowledges.filter((k: any) =>
+      text.toLowerCase().includes(k.title.toLowerCase())
+    );
+    if (matches.length === 0) return "";
+
+    return [
+      "【关联背景设定库（请务必严格遵守以下角色/地点/概念设定，以保证故事前后逻辑连贯，切勿与这些设定相冲突）：】",
+      ...matches.map((k: any) => {
+        const catZh = k.category === "character" ? "角色" : k.category === "location" ? "地点" : k.category === "concept" ? "概念" : "其他";
+        return `* [${catZh}] ${k.title}: ${k.description}`;
+      }),
+    ].join("\n");
+  } catch (err) {
+    console.error("Build brain knowledge context error:", err);
+    return "";
+  }
+}
+
 // All AI routes require auth (with blacklist check) + rate limit
 router.use(authMiddlewareWithBlacklist);
 router.use(aiChatLimiter);
@@ -147,6 +174,10 @@ router.post("/chat", async (req: Request, res: Response) => {
 
     const pers = safePersonality(personality);
     const referenceContext = await buildReferenceContext(authReq.user!.userId, references);
+    
+    const userText = lastUserMsg ? lastUserMsg.content : "";
+    const brainKnowledgeContext = await buildBrainKnowledgeContext(authReq.user!.userId, userText);
+
     const systemPrompt = buildSystemPrompt(
       pers,
       [
@@ -154,6 +185,7 @@ router.post("/chat", async (req: Request, res: Response) => {
         referenceContext
           ? `用户为本次对话引用了以下项目文档作为上下文。回答时优先依据这些文档；如果文档信息不足，请明确说明。\n\n${referenceContext}`
           : "",
+        brainKnowledgeContext || "",
       ].filter(Boolean).join("\n\n")
     );
 

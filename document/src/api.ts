@@ -72,13 +72,13 @@ export const api = {
   getDocument: (id: string) =>
     request<{ document: Document }>(`/documents/${id}`),
 
-  createDocument: (data?: { title?: string; content?: string; preview?: string; category?: string }) =>
+  createDocument: (data?: { title?: string; content?: string; preview?: string; category?: string; groupId?: string | null }) =>
     request<{ document: Document }>("/documents", {
       method: "POST",
       body: JSON.stringify(data || {}),
     }),
 
-  updateDocument: (id: string, data: Partial<Pick<Document, "title" | "content" | "preview" | "category">>) =>
+  updateDocument: (id: string, data: Partial<Pick<Document, "title" | "content" | "preview" | "category" | "groupId">>) =>
     request<{ document: Document }>(`/documents/${id}`, {
       method: "PUT",
       body: JSON.stringify(data),
@@ -181,4 +181,48 @@ export const api = {
     request<{ success: boolean; message: string }>(
       "/session/logout", { method: "POST" }
     ),
+
+  // Document Groups API
+  listGroups: () =>
+    request<{ groups: any[] }>("/groups"),
+
+  createGroup: (data: { name: string }) =>
+    request<{ group: any }>("/groups", { method: "POST", body: JSON.stringify(data) }),
+
+  renameGroup: (id: string, data: { name: string }) =>
+    request<{ group: any }>(`/groups/${id}`, { method: "PUT", body: JSON.stringify(data) }),
+
+  deleteGroup: (id: string) =>
+    request<{ success: boolean }>(`/groups/${id}`, { method: "DELETE" }),
+
+  addDocsToGroup: (groupId: string, documentIds: string[]) =>
+    request<{ success: boolean }>(`/groups/${groupId}/add`, {
+      method: "POST",
+      body: JSON.stringify({ documentIds }),
+    }),
+
+  removeDocsFromGroup: (groupId: string, documentIds: string[]) =>
+    request<{ success: boolean }>(`/groups/${groupId}/remove`, {
+      method: "POST",
+      body: JSON.stringify({ documentIds }),
+    }),
+
+  // AI Brain Knowledge API
+  listBrainKnowledges: () =>
+    request<{ knowledges: any[] }>("/ai/knowledge"),
+
+  createBrainKnowledge: (data: { title: string; description: string; category: string }) =>
+    request<{ knowledge: any }>("/ai/knowledge", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  updateBrainKnowledge: (id: string, data: { title?: string; description?: string; category?: string }) =>
+    request<{ knowledge: any }>(`/ai/knowledge/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
+
+  deleteBrainKnowledge: (id: string) =>
+    request<{ success: boolean }>(`/ai/knowledge/${id}`, { method: "DELETE" }),
 };

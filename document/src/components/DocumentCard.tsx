@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import { Pencil, Trash2, type LucideIcon } from "lucide-react";
+import { Pencil, Trash2, FolderInput, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useI18n } from "@/components/I18nProvider";
 
@@ -14,6 +14,7 @@ interface DocumentCardProps {
   viewMode?: "grid" | "list";
   onClick?: () => void;
   onDelete?: () => void;
+  onMoveToGroup?: () => void;
 }
 
 export function DocumentCard({
@@ -27,6 +28,7 @@ export function DocumentCard({
   viewMode = "grid",
   onClick,
   onDelete,
+  onMoveToGroup,
 }: DocumentCardProps) {
   const { t } = useI18n();
 
@@ -53,6 +55,12 @@ export function DocumentCard({
           <div className="text-[11px] text-surface-400">{date}</div>
         </div>
         <div className="flex items-center gap-0.5 opacity-0 transition-opacity duration-200 group-hover:opacity-100 shrink-0">
+          {onMoveToGroup && (
+            <Button variant="ghost" size="icon-sm" className="h-6 w-6 hover:text-brand-500" title={t("group.moveTo")}
+              onClick={(e) => { e.stopPropagation(); onMoveToGroup(); }}>
+              <FolderInput className="h-3.5 w-3.5" />
+            </Button>
+          )}
           <Button variant="ghost" size="icon-sm" className="h-6 w-6" title={t("card.edit")}
             onClick={(e) => { e.stopPropagation(); onClick?.(); }}>
             <Pencil className="h-3 w-3" />
@@ -97,6 +105,12 @@ export function DocumentCard({
           <div className="text-[11px] text-surface-400">{date}</div>
         </div>
         <div className="flex items-center gap-0.5 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+          {onMoveToGroup && (
+            <Button variant="ghost" size="icon-sm" className="h-6 w-6 hover:text-brand-500" title={t("group.moveTo")}
+              onClick={(e) => { e.stopPropagation(); onMoveToGroup(); }}>
+              <FolderInput className="h-3.5 w-3.5" />
+            </Button>
+          )}
           <Button variant="ghost" size="icon-sm" className="h-6 w-6" title={t("card.edit")}
             onClick={(e) => { e.stopPropagation(); onClick?.(); }}>
             <Pencil className="h-3 w-3" />

@@ -33,7 +33,7 @@ export async function getDocument(docId: string, userId: string): Promise<Docume
 }
 
 export async function createDocument(userId: string, data: {
-  title?: string; content?: string; preview?: string; category?: string;
+  title?: string; content?: string; preview?: string; category?: string; groupId?: string | null;
 }) {
   return prisma.document.create({
     data: {
@@ -42,12 +42,13 @@ export async function createDocument(userId: string, data: {
       preview: data.preview || "",
       category: data.category || "general",
       userId,
+      groupId: data.groupId || null,
     },
   });
 }
 
 export async function updateDocument(docId: string, userId: string, data: {
-  title?: string; content?: string; preview?: string; category?: string;
+  title?: string; content?: string; preview?: string; category?: string; groupId?: string | null;
 }): Promise<Document | null> {
   const doc = await checkOwnership(docId, userId);
   if (!doc) return null;
@@ -59,6 +60,7 @@ export async function updateDocument(docId: string, userId: string, data: {
       ...(data.content !== undefined && { content: data.content }),
       ...(data.preview !== undefined && { preview: data.preview }),
       ...(data.category !== undefined && { category: data.category }),
+      ...(data.groupId !== undefined && { groupId: data.groupId }),
     },
   });
 }
