@@ -10,7 +10,6 @@ import {
   type DragStartEvent,
 } from "@dnd-kit/core";
 import type { Modifier } from "@dnd-kit/core";
-import { restrictToBoundingRect } from "@dnd-kit/modifiers/dist/utilities";
 import {
   SortableContext,
   arrayMove,
@@ -208,11 +207,16 @@ export function BrainMemoryPage() {
     const container = categoryListRef.current;
     if (!container) return args.transform;
     const containerRect = container.getBoundingClientRect();
-    return restrictToBoundingRect(
-      args.transform,
-      args.containerNodeRect ?? containerRect,
-      containerRect
-    );
+    const elementRect = args.containerNodeRect ?? containerRect;
+
+    const minY = containerRect.top - elementRect.top;
+    const maxY = containerRect.bottom - elementRect.bottom;
+
+    return {
+      ...args.transform,
+      x: args.transform.x,
+      y: Math.max(minY, Math.min(maxY, args.transform.y)),
+    };
   };
 
   const handleCategoryDragStart = (event: DragStartEvent) => {
