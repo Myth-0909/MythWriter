@@ -16,6 +16,14 @@ const DEFAULT_BASE_URL = "http://172.16.76.112:8000/v1";
 const DEFAULT_MODEL = "google/gemma-4-31B-it";
 const DEFAULT_API_KEY_PLACEHOLDER = "sk-7d2a1b5c9e4f8a0b3c6d9e1f2a5b8c4d";
 
+function findCurrentHistoryId(histories: ApiKeyHistory[], current: { baseUrl: string; model: string; masked: string }) {
+  return histories.find((item) => (
+    item.baseUrl === current.baseUrl &&
+    item.model === current.model &&
+    item.masked === current.masked
+  ))?.id || "";
+}
+
 export function SettingsPage() {
   const { theme, themeMode, setThemeMode } = useTheme();
   const { t, lang, toggleLang } = useI18n();
@@ -52,6 +60,11 @@ export function SettingsPage() {
       setModel(res.model);
       setApiKey(res.masked);
       setApiKeyHistories(res.histories || []);
+      setSelectedHistoryId(findCurrentHistoryId(res.histories || [], {
+        baseUrl: res.baseUrl,
+        model: res.model,
+        masked: res.masked,
+      }));
       if (!res.hasKey) setKeyEditable(true);
     }).catch(() => {});
   }, []);
@@ -153,6 +166,11 @@ export function SettingsPage() {
       setModel(res.model);
       setApiKey(res.masked);
       setApiKeyHistories(res.histories || []);
+      setSelectedHistoryId(findCurrentHistoryId(res.histories || [], {
+        baseUrl: res.baseUrl,
+        model: res.model,
+        masked: res.masked,
+      }));
       setKeyEditable(false);
       setShowKey(false);
       toast(t("apikey.historyApplied"), "success");
@@ -474,7 +492,11 @@ export function SettingsPage() {
                           setBaseUrl(res.baseUrl);
                           setModel(res.model);
                           setApiKeyHistories(res.histories || []);
-                          setSelectedHistoryId("");
+                          setSelectedHistoryId(findCurrentHistoryId(res.histories || [], {
+                            baseUrl: res.baseUrl,
+                            model: res.model,
+                            masked: res.masked,
+                          }));
                           setApiKey("");
                           setKeyEditable(false);
                           toast(t("apikey.saved"), "success");
