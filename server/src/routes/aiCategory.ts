@@ -53,23 +53,30 @@ router.post("/", async (req: AuthRequest, res: Response) => {
 router.put("/reorder", async (req: AuthRequest, res: Response) => {
   try {
     const { items }: { items: { id: string; sortOrder: number }[] } = req.body;
+    console.log("[reorder] items:", JSON.stringify(items));
     if (!Array.isArray(items) || items.length === 0) {
       res.status(400).json({ error: "Items array is required" });
       return;
     }
-    const userId = req.user!.userId;
-    await prisma.$transaction(
-      items.map((item) =>
-        prisma.aIBrainCategory.updateMany({
+    if (!req.user?.userId) {
+      console.error("[reorder] Missing user ID");
+      res.status(401).json({ error: "Unauthorized" });
+      return;
+    }
+    const userId = req.user.userId;
+    await prisma.$transaction(async (tx: typeof prisma) => {
+      for (const item of items) {
+        await tx.aIBrainCategory.updateMany({
           where: { id: item.id, userId },
           data: { sortOrder: item.sortOrder },
-        })
-      )
-    );
+        });
+      }
+    });
     res.json({ success: true });
   } catch (error) {
     console.error("Reorder brain categories error:", error);
-    res.status(500).json({ error: "Failed to reorder categories" });
+    const message = error instanceof Error ? error.message : String(error);
+    res.status(500).json({ error: `Failed to reorder categories: ${message}` });
   }
 });
 

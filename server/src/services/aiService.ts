@@ -49,8 +49,8 @@ const BASE_SYSTEM_PROMPT = `Your capabilities:
 - Generate articles, stories, summaries, outlines, etc.
 - Answer writing-related questions
 
-CRITICAL RULE — How to handle content generation requests:
-When a user asks you to write content (e.g., "write an article about X"), you MUST follow this format:
+CRITICAL RULE — How to handle content GENERATION requests:
+When a user asks you to write NEW content (e.g., "write an article about X"), you MUST follow this format:
 
 <<DOC_BEGIN>>
 [your full generated content goes here — this will NOT be shown in chat]
@@ -58,9 +58,19 @@ When a user asks you to write content (e.g., "write an article about X"), you MU
 <<CREATE_DOC:title_here>>
 [your brief confirmation message to the user, e.g. "已为您生成文档「标题」，请查看~"]
 
-This way, the generated content is saved to a document automatically, and the user sees only your friendly confirmation in the chat.
+CRITICAL RULE — How to handle content MODIFICATION requests:
+When a user asks you to MODIFY or UPDATE existing content (e.g., "make it longer", "change the tone", "add more details"), you MUST follow this format:
 
-When the user is just chatting (not requesting content generation), respond normally without any special tags.
+<<DOC_BEGIN>>
+[your FULL revised content goes here — the complete updated version]
+<<DOC_END>>
+<<UPDATE_DOC:document_id_here>>
+[your brief confirmation message to the user, e.g. "已为您调整字数，请查看文档~"]
+
+You will be given referenced documents with their IDs in the conversation context. Look for entries like [doc:xxxxx] in the system notes to find the document ID to update.
+If you don't know the document ID, ask the user to provide it or use @ to reference the target document.
+
+When the user is just chatting (not requesting content generation or modification), respond normally without any special tags.
 
 Important rules:
 - EFFICIENCY: If the user's message is vague or doesn't request specific writing help
@@ -83,11 +93,33 @@ export function buildSystemPrompt(personality: Personality, memoryContext: strin
 export function parseAction(reply: string): { reply: string; action: any } {
   const docContentMatch = reply.match(/<<DOC_BEGIN>>\n?([\s\S]*?)<<DOC_END>>/);
   const titleMatch = reply.match(/<<CREATE_DOC:(.+)>>/);
+  const updateMatch = reply.match(/<<UPDATE_DOC:([^>]+)>>/);
 
-  if (!titleMatch) return { reply, action: null };
+  if (!titleMatch && !updateMatch) return { reply, action: null };
 
-  const title = titleMatch[1].trim();
   const docContent = docContentMatch ? docContentMatch[1].trim() : "";
+
+  if (updateMatch) {
+    // Modification action: update existing document
+    const docId = updateMatch[1].trim();
+    let cleanReply = reply
+      .replace(/<<DOC_BEGIN>>[\s\S]*?<<DOC_END>>\n?/g, "")
+      .replace(/<<UPDATE_DOC:[^>]+>>\n?/g, "")
+      .trim();
+
+    if (!cleanReply) {
+      cleanReply = "已为您完成修改，请查看文档~";
+    }
+
+    return {
+      reply: cleanReply,
+      action: docContent ? { type: "update_document", docId, content: docContent } : null,
+    };
+  }
+
+  // Creation action: create new document
+  if (!titleMatch) return { reply, action: null };
+  const title = titleMatch[1].trim();
 
   let cleanReply = reply
     .replace(/<<DOC_BEGIN>>[\s\S]*?<<DOC_END>>\n?/g, "")

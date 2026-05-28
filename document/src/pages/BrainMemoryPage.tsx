@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   DndContext,
   closestCenter,
@@ -6,6 +6,7 @@ import {
   useSensor,
   useSensors,
   type DragEndEvent,
+  type Modifier,
 } from "@dnd-kit/core";
 import {
   arrayMove,
@@ -101,7 +102,7 @@ function CategoryListItem({ category, index, onEdit, onDelete, t }: CategoryList
 
       <button
         type="button"
-        className="h-9 w-9 shrink-0 cursor-grab rounded-lg text-surface-400 hover:bg-surface-100 active:cursor-grabbing dark:hover:bg-surface-800"
+        className="flex h-9 w-9 shrink-0 items-center justify-center cursor-grab rounded-lg text-surface-400 hover:bg-surface-100 active:cursor-grabbing dark:hover:bg-surface-800"
         {...attributes}
         {...listeners}
       >
@@ -195,6 +196,29 @@ export function BrainMemoryPage() {
     })
   );
 
+  const categoryListRef = useRef<HTMLDivElement | null>(null);
+  const categoryOrderChanged = useRef(false);
+
+  const restrictToVertical: Modifier = (args) => {
+    const container = categoryListRef.current;
+    if (!container) return { ...args.transform, x: 0 };
+
+    const rect = container.getBoundingClientRect();
+    const overlayRect = args.overlayNodeRect;
+    if (!overlayRect) return { ...args.transform, x: 0 };
+
+    let newY = args.transform.y;
+    if (args.transform.y < 0) {
+      newY = 0;
+    }
+    const maxDrag = rect.height - overlayRect.height;
+    if (args.transform.y > maxDrag) {
+      newY = maxDrag;
+    }
+
+    return { ...args.transform, x: 0, y: newY };
+  };
+
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
@@ -203,6 +227,7 @@ export function BrainMemoryPage() {
       const oldIndex = prev.findIndex((cat) => cat.id === active.id);
       const newIndex = prev.findIndex((cat) => cat.id === over.id);
       if (oldIndex === -1 || newIndex === -1) return prev;
+      categoryOrderChanged.current = true;
       return arrayMove(prev, oldIndex, newIndex);
     });
   };
@@ -212,13 +237,16 @@ export function BrainMemoryPage() {
   };
 
   const persistCategoryOrder = async () => {
+    if (!categoryOrderChanged.current) return;
     const ordered = categories.map((cat, index) => ({
       id: cat.id,
       sortOrder: index,
     }));
     try {
       await api.reorderBrainCategories(ordered);
+      categoryOrderChanged.current = false;
     } catch (err: any) {
+      console.error("Failed to reorder categories:", err);
       toast(err.message || t("brain.persistOrderFailed"), "error");
     }
   };
@@ -685,6 +713,7 @@ export function BrainMemoryPage() {
               <DndContext
                 sensors={sensors}
                 collisionDetection={closestCenter}
+                modifiers={[restrictToVertical]}
                 onDragEnd={handleDragEnd}
                 onDragCancel={handleDragCancel}
               >
@@ -692,7 +721,7 @@ export function BrainMemoryPage() {
                   items={categories.map((cat) => cat.id)}
                   strategy={verticalListSortingStrategy}
                 >
-                  <div className="space-y-2 overflow-y-auto pr-1" style={{ maxHeight: 360 }}>
+                  <div ref={categoryListRef} className="space-y-2 overflow-y-auto pr-1" style={{ maxHeight: 360 }}>
                     {categories.map((cat, index) => (
                       <CategoryListItem
                         key={cat.id}

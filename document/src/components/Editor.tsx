@@ -64,6 +64,7 @@ export function Editor({ documentId }: EditorProps) {
   const [currentLineHeight, setCurrentLineHeight] = useState("1.5");
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadedDocumentIdRef = useRef<string | null>(null);
+  const lastSavedContentRef = useRef<string | null>(null);
   const [selectionChars, setSelectionChars] = useState(0);
   const [toolbarRevision, setToolbarRevision] = useState(0);
 
@@ -145,17 +146,30 @@ export function Editor({ documentId }: EditorProps) {
     setCharCount(len);
   }, [countBilingualWords]);
 
-  // Load document content when switching
+  // Load document content when switching or when updated externally
   useEffect(() => {
     if (!editor || !doc) return;
-    if (loadedDocumentIdRef.current === doc.id) return;
+
+    const isSameDoc = loadedDocumentIdRef.current === doc.id;
+    const isContentChangedExternally = isSameDoc && 
+      lastSavedContentRef.current !== null && 
+      lastSavedContentRef.current !== doc.content;
+
+    // If it's the same document and content hasn't changed externally,
+    // we only check if the title needs to be updated, then return early.
+    if (isSameDoc && !isContentChangedExternally) {
+      if (title !== doc.title) {
+        setTitle(doc.title);
+      }
+      return;
+    }
 
     // Flush pending changes of the PREVIOUS document before loading the new one
-    if (loadedDocumentIdRef.current && saveTimerRef.current) {
+    if (loadedDocumentIdRef.current && saveTimerRef.current && !isSameDoc) {
       const prevDocId = loadedDocumentIdRef.current;
       clearTimeout(saveTimerRef.current);
       saveTimerRef.current = null;
-      
+
       updateDocumentRef.current(prevDocId, {
         title: titleRef.current,
         content: editor.getHTML(),
@@ -167,7 +181,8 @@ export function Editor({ documentId }: EditorProps) {
     setTitle(doc.title);
     updateCounts(editor);
     loadedDocumentIdRef.current = doc.id;
-  }, [doc?.id, editor, updateCounts]);
+    lastSavedContentRef.current = doc.content;
+  }, [doc?.id, doc?.content, doc?.title, editor, updateCounts]);
 
   // Flush pending save on unmount
   useEffect(() => {
@@ -191,6 +206,7 @@ export function Editor({ documentId }: EditorProps) {
     saveTimerRef.current = setTimeout(() => {
       const content = editor.getHTML();
       const titleVal = titleRef.current;
+      lastSavedContentRef.current = content;
       updateDocumentRef.current(documentIdRef.current!, { title: titleVal, content });
       setSaveStatus("saved");
       setTimeout(() => setSaveStatus(""), 1500);

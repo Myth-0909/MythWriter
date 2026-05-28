@@ -222,7 +222,7 @@ async function streamChat(
 export function AIChatWidget() {
   const { t } = useI18n();
   const { toast } = useToast();
-  const { createDocument, documents } = useDocuments();
+  const { createDocument, documents, refreshDocuments, getDocument } = useDocuments();
   const { user } = useAuth();
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -583,12 +583,33 @@ export function AIChatWidget() {
       // Handle create_document action: create doc in background
       if (action?.type === "create_document" && action.content) {
         try {
-          await createDocument("general", action.title, markdownToHtml(action.content));
+          const docId = await createDocument("general", action.title, markdownToHtml(action.content));
           // Append a system note to memory so the model knows what was created in follow-up turns
-          const docNote = { role: "assistant" as const, content: `[系统] 已为用户创建文档「${action.title}」。内容摘要：${action.content.slice(0, 200)}...` };
+          const docNote = { role: "assistant" as const, content: `[系统] 已为用户创建文档「${action.title}」[doc:${docId}]。内容摘要：${action.content.slice(0, 200)}...` };
           memoryRef.current = [...memoryRef.current, docNote];
           saveMemory(memoryRef.current);
         } catch {
+          toast(t("ai.docCreateFailed"), "error");
+        }
+      }
+
+      // Handle update_document action: update the document specified by the model
+      if (action?.type === "update_document" && action.content) {
+        try {
+          const docId = action.docId;
+          const targetDoc = docId ? getDocument(docId) : null;
+          if (targetDoc) {
+            await api.updateDocument(targetDoc.id, {
+              title: targetDoc.title,
+              content: markdownToHtml(action.content),
+            });
+            refreshDocuments();
+            const updatedNote = { role: "assistant" as const, content: `[系统] 已为用户更新文档「${targetDoc.title}」[doc:${targetDoc.id}]。最新内容摘要：${action.content.slice(0, 200)}...` };
+            memoryRef.current = [...memoryRef.current, updatedNote];
+            saveMemory(memoryRef.current);
+          }
+        } catch (err: any) {
+          console.error("[update_doc] error:", err);
           toast(t("ai.docCreateFailed"), "error");
         }
       }
@@ -610,7 +631,7 @@ export function AIChatWidget() {
       setStreaming(false);
       setActionMode(false);
     }
-  }, [input, loading, streaming, messages, createDocument, toast, t, documents, references]);
+  }, [input, loading, streaming, messages, createDocument, toast, t, documents, references, refreshDocuments]);
 
   const handleStop = useCallback(() => {
     abortRef.current?.abort();

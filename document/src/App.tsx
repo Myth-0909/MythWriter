@@ -406,7 +406,7 @@ export default function App() {
   // Not logged in but trying to access protected pages — handled above, will show login
 
   return (
-    <div className="h-screen w-screen overflow-hidden bg-white dark:bg-surface-950">
+    <div className="h-screen min-w-[1024px] overflow-x-auto bg-white dark:bg-surface-950">
       <div className="flex h-full w-full flex-col">
         {currentPage !== "notfound" && (
           <TopAppBar

@@ -73,7 +73,7 @@ async function buildReferenceContext(userId: string, references: ChatReference[]
   return orderedDocs.map((doc) => {
     const content = stripHtml(doc.content).slice(0, MAX_REFERENCE_CHARS);
     return [
-      `[引用文档：${doc.title}]`,
+      `[引用文档：${doc.title}] [doc:${doc.id}]`,
       `更新时间：${doc.updatedAt.toISOString()}`,
       "内容：",
       content || "(空文档)",
@@ -337,6 +337,8 @@ router.post("/chat", async (req: Request, res: Response) => {
 
     // Parse final response for actions
     const { reply, action } = parseAction(finalContent);
+    console.log("[AI] parseAction result - reply:", reply.slice(0, 100));
+    console.log("[AI] parseAction result - action:", JSON.stringify(action));
 
     // Send final message with parsed action
     res.write(`data: ${JSON.stringify({ done: true, reply, action })}\n\n`);
