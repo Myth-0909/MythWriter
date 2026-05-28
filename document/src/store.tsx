@@ -120,10 +120,11 @@ export function DocumentStoreProvider({ children }: { children: ReactNode }) {
   }, [updateLocalDoc]);
 
   const createDocument = useCallback(async (category?: DocumentCategory, title?: string, content?: string) => {
+    const plainText = content ? content.replace(/<[^>]*>/g, "") : "";
     const { document: doc } = await api.createDocument({
       title: title || "无标题文档",
       content: content || "",
-      preview: content ? content.slice(0, 120) : "",
+      preview: plainText.slice(0, 80) + (plainText.length > 80 ? "..." : ""),
       category: category || "general",
     });
     setDocuments((prev) => [doc, ...prev]);
@@ -150,7 +151,11 @@ export function DocumentStoreProvider({ children }: { children: ReactNode }) {
 
       try {
         const { document: doc } = await api.updateDocument(id, updates);
-        setDocuments((prev) => prev.map((d) => (d.id === id ? { ...d, ...doc } : d)));
+        // Preserve optimistic preview - server won't update preview unless explicitly sent
+        const optimisticPreview = updates.content
+          ? updates.content.replace(/<[^>]*>/g, "").slice(0, 80) + (updates.content.replace(/<[^>]*>/g, "").length > 80 ? "..." : "")
+          : undefined;
+        setDocuments((prev) => prev.map((d) => (d.id === id ? { ...d, ...doc, ...(optimisticPreview ? { preview: optimisticPreview } : {}) } : d)));
       } catch (error) {
         console.error("Failed to update document:", error);
         // Revert on failure by refetching

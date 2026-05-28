@@ -36,14 +36,6 @@ const TEXT_COLORS = [
   { color: "#9c36b5", label: "紫红" },
 ];
 
-const FONT_SIZES = [
-  { size: "12px", label: "小" },
-  { size: "16px", label: "默认" },
-  { size: "20px", label: "中" },
-  { size: "24px", label: "大" },
-  { size: "30px", label: "特大" },
-];
-
 const LINE_HEIGHTS = [
   { value: "1.5", label: "1.5" },
   { value: "1.8", label: "1.8" },
@@ -66,8 +58,8 @@ export function Editor({ documentId }: EditorProps) {
   const charCountRef = useRef(0);
   const [saveStatus, setSaveStatus] = useState<"" | "saving" | "saved">("");
   const [showColorPicker, setShowColorPicker] = useState(false);
-  const [showFontSizePicker, setShowFontSizePicker] = useState(false);
   const [showLineHeightPicker, setShowLineHeightPicker] = useState(false);
+  const [currentFontSize, setCurrentFontSize] = useState(16);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadedDocumentIdRef = useRef<string | null>(null);
   const [selectionChars, setSelectionChars] = useState(0);
@@ -100,6 +92,8 @@ export function Editor({ documentId }: EditorProps) {
       }
       const text = ed.state.doc.textBetween(from, to, '\n\n', '\n');
       setSelectionChars(text.length);
+      const raw = ed.getAttributes("textStyle").fontSize as string | undefined;
+      setCurrentFontSize(raw ? parseInt(raw, 10) || 16 : 16);
     },
     editorProps: {
       attributes: {
@@ -264,7 +258,7 @@ export function Editor({ documentId }: EditorProps) {
         <div className="relative">
           <Tooltip content={t("editor.textColor")}>
             <Toggle size="sm" pressed={showColorPicker}
-              onPressedChange={() => { setShowColorPicker(!showColorPicker); setShowFontSizePicker(false); setShowLineHeightPicker(false); }}
+              onPressedChange={() => { setShowColorPicker(!showColorPicker); setShowLineHeightPicker(false); }}
               aria-label={t("editor.textColor")}
             >
               <Palette className="h-3.5 w-3.5" />
@@ -333,35 +327,39 @@ export function Editor({ documentId }: EditorProps) {
         <Separator orientation="vertical" className="mx-1 h-4" />
 
         {/* Font Size */}
-        <div className="relative">
-          <Tooltip content={t("editor.fontSize")}>
+        <div className="flex items-center gap-0.5">
+          <Tooltip content="减小字号">
             <button
-              onClick={() => { setShowFontSizePicker(!showFontSizePicker); setShowColorPicker(false); setShowLineHeightPicker(false); }}
-              className="h-7 px-2 rounded text-xs font-medium border border-surface-200 hover:bg-surface-100 cursor-pointer dark:border-surface-700 dark:hover:bg-surface-800"
-            >{t("editor.fontSize")}</button>
+              onClick={() => {
+                const raw = editor.getAttributes("textStyle").fontSize as string | undefined;
+                const parsed = raw ? parseInt(raw, 10) : currentFontSize;
+                const next = Math.max(12, (Number.isNaN(parsed) ? 16 : parsed) - 1);
+                setCurrentFontSize(next);
+                editor.chain().setFontSize(`${next}px`).run();
+              }}
+              className="h-7 w-7 rounded-md text-xs font-medium border border-surface-200 hover:bg-surface-100 cursor-pointer flex items-center justify-center dark:border-surface-700 dark:hover:bg-surface-800"
+            >−</button>
           </Tooltip>
-          {showFontSizePicker && (
-            <div className="absolute top-full left-0 mt-1 z-50 flex flex-col gap-0.5 rounded-lg border border-surface-200 bg-white p-1 shadow-lg dark:border-surface-700 dark:bg-surface-900 min-w-[100px]">
-              {FONT_SIZES.map((fs) => (
-                <button key={fs.size}
-                  onClick={() => { editor.chain().focus().setFontSize(fs.size).run(); setShowFontSizePicker(false); }}
-                  className="px-2 py-1 text-xs rounded hover:bg-surface-100 cursor-pointer text-left dark:hover:bg-surface-800"
-                  style={{ fontSize: fs.size }}
-                >{fs.label} ({fs.size})</button>
-              ))}
-              <button
-                onClick={() => { editor.chain().focus().unsetFontSize().run(); setShowFontSizePicker(false); }}
-                className="px-2 py-1 text-xs rounded hover:bg-surface-100 cursor-pointer text-left text-surface-500 dark:hover:bg-surface-800"
-              >{t("editor.clearFontSize")}</button>
-            </div>
-          )}
+          <span className="text-xs text-surface-500 w-8 text-center tabular-nums">{currentFontSize}px</span>
+          <Tooltip content="增大字号">
+            <button
+              onClick={() => {
+                const raw = editor.getAttributes("textStyle").fontSize as string | undefined;
+                const parsed = raw ? parseInt(raw, 10) : currentFontSize;
+                const next = Math.min(72, (Number.isNaN(parsed) ? 16 : parsed) + 1);
+                setCurrentFontSize(next);
+                editor.chain().setFontSize(`${next}px`).run();
+              }}
+              className="h-7 w-7 rounded-md text-xs font-medium border border-surface-200 hover:bg-surface-100 cursor-pointer flex items-center justify-center dark:border-surface-700 dark:hover:bg-surface-800"
+            >+</button>
+          </Tooltip>
         </div>
 
         {/* Line Height */}
         <div className="relative">
           <Tooltip content={t("editor.lineHeight")}>
             <button
-              onClick={() => { setShowLineHeightPicker(!showLineHeightPicker); setShowColorPicker(false); setShowFontSizePicker(false); }}
+              onClick={() => { setShowLineHeightPicker(!showLineHeightPicker); setShowColorPicker(false); }}
               className="h-7 px-2 rounded text-xs font-medium border border-surface-200 hover:bg-surface-100 cursor-pointer dark:border-surface-700 dark:hover:bg-surface-800"
             >{t("editor.lineHeight")}</button>
           </Tooltip>

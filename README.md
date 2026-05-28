@@ -1,4 +1,4 @@
-# MythWriter / 神话作家
+# ZNWriter / ZN智能写作
 
 A full-stack cross-platform writing application — your intelligent document workspace with rich text editing, category management, and cloud sync.
 
@@ -10,7 +10,7 @@ A full-stack cross-platform writing application — your intelligent document wo
 
 ## English
 
-### What MythWriter Can Do
+### What ZNWriter Can Do
 
 #### Document Management
 - **Create & Edit** — Rich text editor powered by Tiptap with full formatting support
@@ -54,7 +54,7 @@ A full-stack cross-platform writing application — your intelligent document wo
 - **Export to HTML** — Download document as standalone HTML file
 - **File Import** — Import TXT, MD, DOCX files as new documents
 
-#### AI Writing Assistant (MythWriter AI)
+#### AI Writing Assistant (ZNWriter AI)
 - **Smart Conversations** — Multi-turn dialogue with short-term and long-term memory
 - **Streaming Output** — Real-time typewriter effect via SSE (Server-Sent Events)
 - **5 Personalities** — Normal, Cute, Catgirl (喵~), Serious, Silly — each with distinct tone and style, instantly switchable with persistent preference
@@ -112,7 +112,7 @@ cc_figma/
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/Myth-0909/MythWriter.git
+git clone https://github.com/Myth-0909/ZNWriter.git
 cd cc_figma
 
 # 2. Configure environment
@@ -208,7 +208,7 @@ MIT
 - **导出 HTML** — 将文档下载为独立 HTML 文件
 - **文件导入** — 支持导入 TXT、MD、DOCX 文件并创建为新文档
 
-#### AI 写作助手（麦斯助手）
+#### AI 写作助手（ZN助手）
 - **智能对话** — 支持多轮对话，具备短期记忆和长期记忆
 - **流式输出** — 基于 SSE 的实时打字机效果，可随时中断生成
 - **5 种性格** — 正常、可爱、猫娘（喵~）、严肃、搞怪，每种有独特语气风格，即时切换并持久化偏好
@@ -266,7 +266,7 @@ cc_figma/
 
 ```bash
 # 1. 克隆仓库
-git clone https://github.com/Myth-0909/MythWriter.git
+git clone https://github.com/Myth-0909/ZNWriter.git
 cd cc_figma
 
 # 2. 配置 MySQL

@@ -7,6 +7,26 @@ import { useToast } from "@/components/Toast";
 
 const API_BASE = "http://localhost:3000/api";
 
+function cleanSelectionResult(text: string): string {
+  let result = text
+    .replace(/<think[^>]*>[\s\S]*?<\/think>/gi, "")
+    .replace(/<thinking[^>]*>[\s\S]*?<\/thinking>/gi, "")
+    .trim();
+
+  const firstLine = result.split("\n")[0].trim();
+  if (firstLine) {
+    return result;
+  }
+
+  const lines = result.split("\n");
+  for (const line of lines) {
+    if (line.trim()) {
+      return line.trim();
+    }
+  }
+  return result;
+}
+
 type ActionType = "rewrite" | "expand" | "summarize" | "translate" | "continue" | "toneFormal" | "toneCasual";
 
 const ACTION_PROMPTS: Record<ActionType, string> = {
@@ -128,7 +148,7 @@ export function AIBubbleMenu({ editor }: AIBubbleMenuProps) {
         controller.signal
       );
 
-      const result = (reply || accumulated).trim();
+      const result = cleanSelectionResult((reply || accumulated).trim());
       if (!result) throw new Error(t("ai.menu.emptyResult"));
 
       if (type === "continue") {

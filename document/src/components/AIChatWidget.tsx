@@ -30,8 +30,8 @@ const PERSONALITY_OPTIONS: { key: Personality; label: string; emoji: string }[] 
   { key: "silly", label: "搞怪", emoji: "🤪" },
 ];
 
-const MEMORY_KEY = "mythwriter_ai_memory";
-const PERSONALITY_KEY = "mythwriter_ai_personality";
+const MEMORY_KEY = "znwriter_ai_memory";
+const PERSONALITY_KEY = "znwriter_ai_personality";
 const MAX_MEMORY_MESSAGES = 20;
 
 interface Message {
@@ -189,6 +189,7 @@ export function AIChatWidget() {
   const [keyOk, setKeyOk] = useState(false);
   const [references, setReferences] = useState<DocumentReference[]>([]);
   const [mentionOpen, setMentionOpen] = useState(false);
+  const [mentionIndex, setMentionIndex] = useState(0);
 
   // Save conversation to DB
   const saveConversation = useCallback(async () => {
@@ -538,6 +539,23 @@ export function AIChatWidget() {
   }, [listening, toast]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (showMentionMenu && mentionMatches.length > 0) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setMentionIndex((i) => Math.min(i + 1, mentionMatches.length - 1));
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setMentionIndex((i) => Math.max(i - 1, 0));
+        return;
+      }
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        selectReference(mentionMatches[mentionIndex]);
+        return;
+      }
+    }
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSend();
@@ -903,7 +921,9 @@ export function AIChatWidget() {
                 onChange={(e) => {
                   const next = e.target.value;
                   setInput(next);
-                  setMentionOpen(!!getMentionQuery(next));
+                  const nextMention = getMentionQuery(next);
+                  setMentionOpen(!!nextMention);
+                  setMentionIndex(0);
                 }}
                 onKeyDown={handleKeyDown}
                 placeholder={isGenerating ? t("ai.replying") : `${t("ai.placeholder")} ${t("ai.mentionHint")}`}
@@ -913,13 +933,18 @@ export function AIChatWidget() {
               {showMentionMenu && (
                 <div className="absolute bottom-full left-0 z-30 mb-2 max-h-56 w-full overflow-hidden rounded-xl border border-surface-200 bg-white py-1 shadow-lg dark:border-surface-700 dark:bg-surface-900">
                   {mentionMatches.length > 0 ? (
-                    mentionMatches.map((doc) => (
+                    mentionMatches.map((doc, idx) => (
                       <button
                         key={doc.id}
                         type="button"
                         onMouseDown={(e) => e.preventDefault()}
+                        onMouseEnter={() => setMentionIndex(idx)}
                         onClick={() => selectReference(doc)}
-                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-surface-700 transition-colors hover:bg-surface-50 dark:text-surface-200 dark:hover:bg-surface-800"
+                        className={`flex w-full items-center gap-2 px-3 py-2 text-left text-xs transition-colors ${
+                          idx === mentionIndex
+                            ? "bg-brand-50 text-brand-700 dark:bg-brand-950 dark:text-brand-300"
+                            : "text-surface-700 hover:bg-surface-50 dark:text-surface-200 dark:hover:bg-surface-800"
+                        }`}
                       >
                         <FileText className="h-3.5 w-3.5 shrink-0 text-brand-500" />
                         <span className="truncate">@{doc.title}</span>

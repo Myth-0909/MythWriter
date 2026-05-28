@@ -45,6 +45,7 @@ export function SettingsPage() {
       setMaskedKey(res.masked);
       setBaseUrl(res.baseUrl);
       setModel(res.model);
+      setApiKey(res.masked);
       if (!res.hasKey) setKeyEditable(true);
     }).catch(() => {});
   }, []);
@@ -383,8 +384,14 @@ export function SettingsPage() {
                         className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-2 pr-9 text-sm text-surface-900 focus:outline-none focus:ring-2 focus:ring-brand-300 disabled:opacity-60 disabled:cursor-not-allowed dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100"
                       />
                       <button
-                        onClick={() => setShowKey(!showKey)}
-                        disabled={isLocked}
+                        onClick={() => {
+                          if (showKey) {
+                            setShowKey(false);
+                            return;
+                          }
+                          setShowKey(true);
+                        }}
+                        disabled={isLocked && !keyEditable}
                         className="absolute right-2 top-1/2 -translate-y-1/2 text-surface-400 hover:text-surface-600 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                       >
                         {showKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}

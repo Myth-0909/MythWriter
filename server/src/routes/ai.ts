@@ -157,6 +157,11 @@ router.post("/chat", async (req: Request, res: Response) => {
       ].filter(Boolean).join("\n\n")
     );
 
+    // For selection edit, enforce outputting only the processed text
+    const finalSystemPrompt = isSelectionEdit
+      ? `${systemPrompt}\n\nCRITICAL: You are editing selected text. Return ONLY the processed result. Do NOT include any explanation, greeting, thinking tags (<think>, <thinking>), or meta-commentary. The entire output will directly replace the user's selected text.`
+      : systemPrompt;
+
     const apiUrl = buildChatCompletionsUrl(apiBaseUrl);
     console.log("[AI] Sending request to:", apiUrl, "model:", aiModel);
 
@@ -175,7 +180,7 @@ router.post("/chat", async (req: Request, res: Response) => {
         body: JSON.stringify({
           model: aiModel,
           messages: [
-            { role: "system", content: systemPrompt },
+            { role: "system", content: finalSystemPrompt },
             ...messages,
           ],
           temperature: 0.7,

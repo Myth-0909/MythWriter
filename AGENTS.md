@@ -1,4 +1,4 @@
-# MythWriter - Project Guidelines
+# ZNWriter - Project Guidelines
 
 ## Always
 

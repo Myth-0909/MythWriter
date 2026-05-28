@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# MythWriter 一键启动脚本 - 同时启动后端、前端和 Redis
+# ZNWriter 一键启动脚本 - 同时启动后端、前端和 Redis
 
 ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
 FRONTEND_DIR="$ROOT_DIR/document"
@@ -58,7 +58,7 @@ has_cargo() {
 }
 
 echo "==============================="
-echo "  MythWriter 一键启动"
+echo "  ZNWriter 一键启动"
 echo "==============================="
 
 # 选择启动模式
