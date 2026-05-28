@@ -102,6 +102,34 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+function findMentionDeletionRange(
+  value: string,
+  cursor: number,
+  key: "Backspace" | "Delete",
+  refs: DocumentReference[]
+): { start: number; end: number } | null {
+  const orderedRefs = [...refs].sort((a, b) => b.title.length - a.title.length);
+  for (const ref of orderedRefs) {
+    const token = `@${ref.title}`;
+    let start = value.indexOf(token);
+    while (start !== -1) {
+      const end = start + token.length;
+      const hasValidBefore = start === 0 || /\s/.test(value[start - 1]);
+      const hasValidAfter = end === value.length || /\s/.test(value[end]);
+      if (hasValidBefore && hasValidAfter) {
+        if (key === "Backspace") {
+          if (cursor > start && cursor <= end) return { start, end };
+          if (cursor === end + 1 && /\s/.test(value[end])) return { start, end: cursor };
+        } else if (cursor >= start && cursor < end) {
+          return { start, end };
+        }
+      }
+      start = value.indexOf(token, end);
+    }
+  }
+  return null;
+}
+
 async function streamChat(
   data: { messages: Message[]; personality: string; memoryContext: string; references?: DocumentReference[] },
   onDelta: (delta: string) => void,
@@ -574,6 +602,28 @@ export function AIChatWidget() {
   }, []);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    if ((e.key === "Backspace" || e.key === "Delete") && references.length > 0) {
+      const target = e.currentTarget as HTMLTextAreaElement;
+      const selectionStart = target.selectionStart ?? 0;
+      const selectionEnd = target.selectionEnd ?? selectionStart;
+      if (selectionStart === selectionEnd) {
+        const range = findMentionDeletionRange(input, selectionStart, e.key, references);
+        if (range) {
+          e.preventDefault();
+          const next = `${input.slice(0, range.start)}${input.slice(range.end)}`;
+          setInput(next);
+          setMentionOpen(false);
+          setMentionIndex(0);
+          setReferences((prev) => prev.filter((ref) => next.includes(`@${ref.title}`)));
+          requestAnimationFrame(() => {
+            inputRef.current?.setSelectionRange(range.start, range.start);
+            resizeTextarea();
+          });
+          return;
+        }
+      }
+    }
+
     // When mention menu is open, intercept all navigation keys
     if (showMentionMenu) {
       if (e.key === "Escape") {
