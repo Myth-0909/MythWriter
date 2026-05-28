@@ -289,7 +289,6 @@ export function BrainMemoryPage() {
 
     return {
       ...args.transform,
-      x: 0,
       y: newY,
     };
   }, [categoryListHeight]);
