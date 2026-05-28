@@ -1,6 +1,14 @@
 import type { Document } from "@prisma/client";
 import prisma from "../lib/prisma";
 
+function buildPreview(content?: string | null) {
+  const text = (content || "")
+    .replace(/<[^>]*>/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return text.slice(0, 80) + (text.length > 80 ? "..." : "");
+}
+
 async function checkOwnership(docId: string, userId: string): Promise<Document | null> {
   const doc = await prisma.document.findUnique({ where: { id: docId } });
   if (!doc || doc.userId !== userId) return null;
@@ -35,11 +43,12 @@ export async function getDocument(docId: string, userId: string): Promise<Docume
 export async function createDocument(userId: string, data: {
   title?: string; content?: string; preview?: string; category?: string; groupId?: string | null;
 }) {
+  const content = data.content || "";
   return prisma.document.create({
     data: {
       title: data.title || "无标题文档",
-      content: data.content || "",
-      preview: data.preview || "",
+      content,
+      preview: data.preview !== undefined ? data.preview : buildPreview(content),
       category: data.category || "general",
       userId,
       groupId: data.groupId || null,
@@ -58,7 +67,11 @@ export async function updateDocument(docId: string, userId: string, data: {
     data: {
       ...(data.title !== undefined && { title: data.title }),
       ...(data.content !== undefined && { content: data.content }),
-      ...(data.preview !== undefined && { preview: data.preview }),
+      ...(data.preview !== undefined
+        ? { preview: data.preview }
+        : data.content !== undefined
+          ? { preview: buildPreview(data.content) }
+          : {}),
       ...(data.category !== undefined && { category: data.category }),
       ...(data.groupId !== undefined && { groupId: data.groupId }),
     },
