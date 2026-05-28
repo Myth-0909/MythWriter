@@ -47,6 +47,10 @@ interface DocumentReference {
   title: string;
 }
 
+interface AIChatWidgetProps {
+  currentDocumentId?: string;
+}
+
 interface Position {
   x: number;
   y: number;
@@ -77,7 +81,7 @@ function absoluteToAnchored(pos: Position): AnchoredPosition {
 }
 
 // Detect if user message contains action intent (create, edit, delete, etc.)
-const ACTION_KEYWORDS = /生成|创建|修改|删除|收藏|添加|编辑|写文章|新建|制作|翻译|改写|润色|扩写|总结/i;
+const ACTION_KEYWORDS = /生成|创建|修改|删除|收藏|添加|编辑|写文章|新建|制作|翻译|改写|改成|改为|优化|调整|润色|扩写|总结/i;
 
 function isActionIntent(message: string): boolean {
   return ACTION_KEYWORDS.test(message);
@@ -219,7 +223,7 @@ async function streamChat(
   return { reply: finalReply, action: finalAction };
 }
 
-export function AIChatWidget() {
+export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
   const { t } = useI18n();
   const { toast } = useToast();
   const { createDocument, documents, getDocument, loadDocument, updateDocument } = useDocuments();
@@ -506,10 +510,15 @@ export function AIChatWidget() {
     const text = input.trim();
     if (!text || loading || streaming) return;
 
+    const nextActionMode = isActionIntent(text);
+    const currentDocument = currentDocumentId ? getDocument(currentDocumentId) : undefined;
+    const currentReference = nextActionMode && currentDocument && !currentDocument.isDeleted
+      ? [{ type: "document" as const, id: currentDocument.id, title: currentDocument.title }]
+      : [];
     const referencedByText = documents
       .filter((doc) => text.includes(`@${doc.title}`))
       .map((doc) => ({ type: "document" as const, id: doc.id, title: doc.title }));
-    const requestReferences = [...references, ...referencedByText].filter(
+    const requestReferences = [...currentReference, ...references, ...referencedByText].filter(
       (ref, index, all) => all.findIndex((item) => item.id === ref.id) === index
     );
 
@@ -520,7 +529,7 @@ export function AIChatWidget() {
     setReferences([]);
     setMentionOpen(false);
     setLoading(true);
-    setActionMode(isActionIntent(text));
+    setActionMode(nextActionMode);
     api.logActivity({ action: "chat_send", detail: text.slice(0, 100) }).catch(() => {});
 
     const memory = [...memoryRef.current, userMsg];
@@ -539,7 +548,7 @@ export function AIChatWidget() {
         (delta) => {
           fullContent += delta;
           // For action intents (e.g. create_document), don't show streaming in chat
-          if (actionMode) return;
+          if (nextActionMode) return;
           if (firstDelta) {
             firstDelta = false;
             setStreaming(true);
@@ -581,11 +590,18 @@ export function AIChatWidget() {
       saveMemory(memoryRef.current);
 
       // Handle create_document action: create doc in background
-      if (action?.type === "create_document" && action.content) {
+      if (action?.type === "create_document") {
         try {
-          const docId = await createDocument("general", action.title, markdownToHtml(action.content));
+          const nextContent = typeof action.content === "string" ? action.content.trim() : "";
+          if (!nextContent) {
+            toast(t("ai.menu.emptyResult"), "error");
+            return;
+          }
+
+          const title = typeof action.title === "string" && action.title.trim() ? action.title.trim() : t("editor.untitled");
+          const docId = await createDocument("general", title, markdownToHtml(nextContent));
           // Append a system note to memory so the model knows what was created in follow-up turns
-          const docNote = { role: "assistant" as const, content: `[系统] 已为用户创建文档「${action.title}」[doc:${docId}]。内容摘要：${action.content.slice(0, 200)}...` };
+          const docNote = { role: "assistant" as const, content: `[系统] 已为用户创建文档「${title}」[doc:${docId}]。内容摘要：${nextContent.slice(0, 200)}...` };
           memoryRef.current = [...memoryRef.current, docNote];
           saveMemory(memoryRef.current);
         } catch {
@@ -594,8 +610,15 @@ export function AIChatWidget() {
       }
 
       // Handle update_document action: update the document specified by the model
-      if (action?.type === "update_document" && action.content) {
+      if (action?.type === "update_document") {
         try {
+          const nextContent = typeof action.content === "string" ? action.content.trim() : "";
+          if (!nextContent) {
+            toast(t("ai.docUpdateEmpty"), "error");
+            return;
+          }
+
+          toast(t("ai.docActionRunning"), "info");
           const actionDocId = typeof action.docId === "string" ? action.docId.trim() : "";
           const fallbackDocId = requestReferences.length === 1 ? requestReferences[0].id : "";
           const targetDocId = actionDocId && getDocument(actionDocId) ? actionDocId : fallbackDocId || actionDocId;
@@ -619,10 +642,10 @@ export function AIChatWidget() {
 
           await updateDocument(targetDoc.id, {
             title: targetDoc.title,
-            content: markdownToHtml(action.content),
+            content: markdownToHtml(nextContent),
           });
           toast(t("ai.docUpdated"), "success");
-          const updatedNote = { role: "assistant" as const, content: `[系统] 已为用户更新文档「${targetDoc.title}」[doc:${targetDoc.id}]。最新内容摘要：${action.content.slice(0, 200)}...` };
+          const updatedNote = { role: "assistant" as const, content: `[系统] 已为用户更新文档「${targetDoc.title}」[doc:${targetDoc.id}]。最新内容摘要：${nextContent.slice(0, 200)}...` };
           memoryRef.current = [...memoryRef.current, updatedNote];
           saveMemory(memoryRef.current);
         } catch (err: any) {
@@ -648,7 +671,7 @@ export function AIChatWidget() {
       setStreaming(false);
       setActionMode(false);
     }
-  }, [input, loading, streaming, messages, createDocument, toast, t, documents, references, getDocument, loadDocument, updateDocument]);
+  }, [input, loading, streaming, messages, currentDocumentId, createDocument, toast, t, documents, references, getDocument, loadDocument, updateDocument]);
 
   const handleStop = useCallback(() => {
     abortRef.current?.abort();

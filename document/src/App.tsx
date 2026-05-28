@@ -469,7 +469,9 @@ export default function App() {
         </div>
       </div>
 
-      {currentPage !== "notfound" && <AIChatWidget />}
+      {currentPage !== "notfound" && (
+        <AIChatWidget currentDocumentId={currentPage === "editor" ? editorDocId ?? undefined : undefined} />
+      )}
 
       <ShareModal open={shareOpen} onOpenChange={setShareOpen} onExport={handleExport} />
 

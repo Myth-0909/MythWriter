@@ -136,7 +136,7 @@ export const api = {
     memoryContext: string;
     references?: { type: "document"; id: string; title: string }[];
   }) =>
-    request<{ reply: string; action: { type: string; title: string; content: string } | null }>(
+    request<{ reply: string; action: { type: string; title?: string; docId?: string; content?: string } | null }>(
       "/ai/chat", { method: "POST", body: JSON.stringify(data) }
     ),
 

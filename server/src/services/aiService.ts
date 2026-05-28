@@ -50,25 +50,37 @@ const BASE_SYSTEM_PROMPT = `Your capabilities:
 - Answer writing-related questions
 
 CRITICAL RULE — How to handle content GENERATION requests:
-When a user asks you to write NEW content (e.g., "write an article about X"), you MUST follow this format:
+When a user asks you to write NEW content (e.g., "write an article about X"), you MUST return a structured action block in this exact format:
 
-<<DOC_BEGIN>>
-[your full generated content goes here — this will NOT be shown in chat]
-<<DOC_END>>
-<<CREATE_DOC:title_here>>
-[your brief confirmation message to the user, e.g. "已为您生成文档「标题」，请查看~"]
+<<ACTION_JSON>>
+{
+  "reply": "已为您生成文档「标题」，请查看~",
+  "action": {
+    "type": "create_document",
+    "title": "title_here",
+    "content": "the full generated document content in Markdown"
+  }
+}
+<<ACTION_JSON_END>>
 
 CRITICAL RULE — How to handle content MODIFICATION requests:
-When a user asks you to MODIFY or UPDATE existing content (e.g., "make it longer", "change the tone", "add more details"), you MUST follow this format:
+When a user asks you to MODIFY or UPDATE existing content (e.g., "make it longer", "change the tone", "add more details"), you MUST return a structured action block in this exact format:
 
-<<DOC_BEGIN>>
-[your FULL revised content goes here — the complete updated version]
-<<DOC_END>>
-<<UPDATE_DOC:document_id_here>>
-[your brief confirmation message to the user, e.g. "已为您调整字数，请查看文档~"]
+<<ACTION_JSON>>
+{
+  "reply": "已为您完成修改，请查看文档~",
+  "action": {
+    "type": "update_document",
+    "docId": "document_id_here",
+    "content": "the COMPLETE revised document content in Markdown"
+  }
+}
+<<ACTION_JSON_END>>
 
 You will be given referenced documents with their IDs in the conversation context. Look for entries like [doc:xxxxx] in the system notes to find the document ID to update.
 If you don't know the document ID, ask the user to provide it or use @ to reference the target document.
+For update_document, "content" must be the complete final document body, not a summary, fragment, or diff.
+Do not claim that a document has been created or updated unless you emitted a valid action block.
 
 When the user is just chatting (not requesting content generation or modification), respond normally without any special tags.
 
@@ -90,7 +102,54 @@ export function buildSystemPrompt(personality: Personality, memoryContext: strin
   return prompt;
 }
 
+function extractStructuredAction(reply: string): { reply: string; action: any } | null {
+  const blockMatch = reply.match(/<<ACTION_JSON>>\s*([\s\S]*?)\s*<<ACTION_JSON_END>>/);
+  const fenceMatch = reply.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  const jsonText = blockMatch
+    ? blockMatch[1].trim()
+    : fenceMatch && fenceMatch[1].trim().startsWith("{")
+      ? fenceMatch[1].trim()
+      : reply.trim().startsWith("{")
+      ? reply.trim()
+      : "";
+  if (!jsonText) return null;
+
+  try {
+    const payload = JSON.parse(jsonText);
+    const action = payload?.action;
+    const cleanReply = String(payload?.reply || "").trim();
+    if (!action || typeof action !== "object") {
+      return { reply: cleanReply || reply.replace(/<<ACTION_JSON>>[\s\S]*?<<ACTION_JSON_END>>/g, "").trim(), action: null };
+    }
+
+    if (action.type === "update_document") {
+      const docId = typeof action.docId === "string" ? action.docId.trim() : "";
+      const content = typeof action.content === "string" ? action.content.trim() : "";
+      return {
+        reply: cleanReply || "已为您完成修改，请查看文档~",
+        action: docId && content ? { type: "update_document", docId, content } : null,
+      };
+    }
+
+    if (action.type === "create_document") {
+      const title = typeof action.title === "string" && action.title.trim() ? action.title.trim() : "无标题文档";
+      const content = typeof action.content === "string" ? action.content.trim() : "";
+      return {
+        reply: cleanReply || `已为您生成文档「${title}」，请查看~`,
+        action: content ? { type: "create_document", title, content } : null,
+      };
+    }
+
+    return { reply: cleanReply || reply, action: null };
+  } catch {
+    return null;
+  }
+}
+
 export function parseAction(reply: string): { reply: string; action: any } {
+  const structured = extractStructuredAction(reply);
+  if (structured) return structured;
+
   const docContentMatch = reply.match(/<<DOC_BEGIN>>\n?([\s\S]*?)<<DOC_END>>/);
   const titleMatch = reply.match(/<<CREATE_DOC:(.+)>>/);
   const updateMatch = reply.match(/<<UPDATE_DOC:([^>]+)>>/);

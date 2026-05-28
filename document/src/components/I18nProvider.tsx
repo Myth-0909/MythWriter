@@ -366,6 +366,8 @@ const translations = {
   "ai.docUpdated": { zh: "文档已更新", en: "Document updated" },
   "ai.docUpdateFailed": { zh: "文档更新失败", en: "Document update failed" },
   "ai.docUpdateTargetMissing": { zh: "未找到要更新的文档，请使用 @ 引用目标文档后重试。", en: "Could not find the target document. Reference it with @ and try again." },
+  "ai.docUpdateEmpty": { zh: "AI 返回的文档内容为空，已取消更新。", en: "AI returned empty document content; update cancelled." },
+  "ai.docActionRunning": { zh: "正在执行文档操作...", en: "Applying document action..." },
   "ai.dislikeInaccurate": { zh: "回复不准确", en: "Inaccurate" },
   "ai.dislikeUnexpected": { zh: "不符合预期", en: "Not as expected" },
   "ai.dislikeIncomplete": { zh: "内容不完整", en: "Incomplete" },

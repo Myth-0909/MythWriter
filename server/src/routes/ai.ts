@@ -216,7 +216,7 @@ router.post("/chat", async (req: Request, res: Response) => {
             ...messages,
           ],
           temperature: 0.7,
-          max_tokens: 2048,
+          max_tokens: 4096,
           stream: true,
         }),
         signal: controller.signal,
