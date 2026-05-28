@@ -60,10 +60,24 @@ export function Editor({ documentId }: EditorProps) {
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [showLineHeightPicker, setShowLineHeightPicker] = useState(false);
   const [currentFontSize, setCurrentFontSize] = useState(16);
+  const [currentColor, setCurrentColor] = useState("#1a1a1a");
+  const [currentLineHeight, setCurrentLineHeight] = useState("1.5");
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadedDocumentIdRef = useRef<string | null>(null);
   const [selectionChars, setSelectionChars] = useState(0);
   const [toolbarRevision, setToolbarRevision] = useState(0);
+
+  const syncSelectionStyles = useCallback((ed: any) => {
+    if (!ed) return;
+    const fs = ed.getAttributes("textStyle").fontSize as string | undefined;
+    setCurrentFontSize(fs ? parseInt(fs, 10) || 16 : 16);
+
+    const col = ed.getAttributes("textStyle").color as string | undefined;
+    setCurrentColor(col || "#1a1a1a");
+
+    const lh = ed.getAttributes("textStyle").lineHeight as string | undefined;
+    setCurrentLineHeight(lh || "1.5");
+  }, []);
 
   const editor = useEditor({
     extensions: [
@@ -81,6 +95,7 @@ export function Editor({ documentId }: EditorProps) {
       setToolbarRevision((revision) => revision + 1);
       updateCounts(ed);
       autoSave(ed);
+      syncSelectionStyles(ed);
     },
     onSelectionUpdate: ({ editor: ed }) => {
       setToolbarRevision((revision) => revision + 1);
@@ -92,8 +107,7 @@ export function Editor({ documentId }: EditorProps) {
       }
       const text = ed.state.doc.textBetween(from, to, '\n\n', '\n');
       setSelectionChars(text.length);
-      const raw = ed.getAttributes("textStyle").fontSize as string | undefined;
-      setCurrentFontSize(raw ? parseInt(raw, 10) || 16 : 16);
+      syncSelectionStyles(ed);
     },
     editorProps: {
       attributes: {
@@ -260,8 +274,10 @@ export function Editor({ documentId }: EditorProps) {
             <Toggle size="sm" pressed={showColorPicker}
               onPressedChange={() => { setShowColorPicker(!showColorPicker); setShowLineHeightPicker(false); }}
               aria-label={t("editor.textColor")}
+              className="flex flex-col items-center justify-center p-0.5 gap-0.5"
             >
-              <Palette className="h-3.5 w-3.5" />
+              <Palette className="h-3.5 w-3.5 animate-duration-300" />
+              <div className="h-[2px] w-4 rounded-full transition-colors duration-200" style={{ backgroundColor: currentColor }} />
             </Toggle>
           </Tooltip>
           {showColorPicker && (
@@ -361,7 +377,9 @@ export function Editor({ documentId }: EditorProps) {
             <button
               onClick={() => { setShowLineHeightPicker(!showLineHeightPicker); setShowColorPicker(false); }}
               className="h-7 px-2 rounded text-xs font-medium border border-surface-200 hover:bg-surface-100 cursor-pointer dark:border-surface-700 dark:hover:bg-surface-800"
-            >{t("editor.lineHeight")}</button>
+            >
+              {t("editor.lineHeight")}: {currentLineHeight}
+            </button>
           </Tooltip>
           {showLineHeightPicker && (
             <div className="absolute top-full left-0 mt-1 z-50 flex flex-col gap-0.5 rounded-lg border border-surface-200 bg-white p-1 shadow-lg dark:border-surface-700 dark:bg-surface-900 min-w-[80px]">
