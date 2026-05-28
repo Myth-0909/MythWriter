@@ -651,17 +651,6 @@ export function BrainMemoryPage() {
           </div>
 
           <div className="px-6 py-5">
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2 text-xs text-surface-500 dark:text-surface-400">
-                <span className="font-semibold text-surface-700 dark:text-surface-200">
-                  {categories.length}
-                </span>
-                <span>{t("brain.categoryCount")}</span>
-                <span className="h-1 w-1 rounded-full bg-surface-300 dark:bg-surface-700" />
-                <span>{t("brain.categoryDragHint")}</span>
-              </div>
-            </div>
-
             <div className="mb-3 flex items-center gap-2 text-xs text-surface-500 dark:text-surface-400">
               <span className="font-semibold text-surface-700 dark:text-surface-200">
                 {categories.length}
