@@ -136,6 +136,7 @@ export function SideNavBar({ activeNav, onNavChange, collapsed = false }: SideNa
       <Dialog open={logoPreviewOpen} onOpenChange={setLogoPreviewOpen}>
         <DialogContent
           hideCloseButton
+          aria-describedby={undefined}
           className="max-w-[420px] border-0 bg-transparent p-0 shadow-none dark:bg-transparent"
         >
           <DialogTitle className="sr-only">{t("app.logoPreview")}</DialogTitle>
