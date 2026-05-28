@@ -219,6 +219,40 @@ export function Editor({ documentId }: EditorProps) {
     toast(current?.isFavorite ? t("toast.favRemoved") : t("toast.favAdded"), "success");
   };
 
+  const handleContainerMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      if (!editor) return;
+
+      const editorEl = editor.view.dom;
+      if (!editorEl) return;
+
+      const rect = editorEl.getBoundingClientRect();
+      const { clientX, clientY } = e;
+
+      // Check if the click is in the left margin (blank area to the left of the text content)
+      if (clientX < rect.left && clientY >= rect.top && clientY <= rect.bottom) {
+        // Find the document position vertically adjacent to the click at clientY
+        // We pass rect.left + 8 as the X coordinate to probe inside the text container
+        const coords = editor.view.posAtCoords({ left: rect.left + 8, top: clientY });
+        if (coords && coords.pos !== null) {
+          e.preventDefault(); // Prevent default focus/selection behavior
+          
+          const $pos = editor.state.doc.resolve(coords.pos);
+          const depth = $pos.depth;
+          if (depth > 0) {
+            const start = $pos.start(depth);
+            const end = $pos.end(depth);
+            
+            editor.chain().focus().setTextSelection({ from: start, to: end }).run();
+          } else {
+            editor.chain().focus().setTextSelection(coords.pos).run();
+          }
+        }
+      }
+    },
+    [editor]
+  );
+
   if (!editor) return null;
 
   if (documentId && !doc) {
@@ -446,35 +480,39 @@ export function Editor({ documentId }: EditorProps) {
 
       {/* Editor Area */}
       <Scrollbar className="flex-1">
-        <div className="mx-auto max-w-[720px] px-12 py-12">
-          {/* Title + Favorite */}
-          <div className="flex items-start gap-3 mb-4">
-            <input
-              type="text"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              onKeyDown={handleTitleKeyDown}
-              className="title-input flex-1 text-surface-900 dark:text-surface-100"
-              placeholder={t("editor.untitled")}
-            />
-            <button
-              onClick={handleToggleFavorite}
-              className={`mt-1.5 p-1.5 rounded-lg cursor-pointer transition-colors shrink-0 ${
-                doc?.isFavorite
-                  ? "text-amber-500 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950 dark:hover:bg-amber-900"
-                  : "text-surface-400 hover:text-amber-500 hover:bg-surface-100 dark:hover:bg-surface-800"
-              }`}
-              title={doc?.isFavorite ? t("editor.unfavorite") : t("editor.favorite")}
-            >
-              <Star className="h-5 w-5" fill={doc?.isFavorite ? "currentColor" : "none"} />
-            </button>
+        <div className="min-h-full cursor-default" onMouseDown={handleContainerMouseDown}>
+          <div className="mx-auto max-w-[720px] px-12 py-12">
+            {/* Title + Favorite */}
+            <div className="flex items-start gap-3 mb-4">
+              <input
+                type="text"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                onKeyDown={handleTitleKeyDown}
+                className="title-input flex-1 text-surface-900 dark:text-surface-100"
+                placeholder={t("editor.untitled")}
+              />
+              <button
+                onClick={handleToggleFavorite}
+                className={`mt-1.5 p-1.5 rounded-lg cursor-pointer transition-colors shrink-0 ${
+                  doc?.isFavorite
+                    ? "text-amber-500 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950 dark:hover:bg-amber-900"
+                    : "text-surface-400 hover:text-amber-500 hover:bg-surface-100 dark:hover:bg-surface-800"
+                }`}
+                title={doc?.isFavorite ? t("editor.unfavorite") : t("editor.favorite")}
+              >
+                <Star className="h-5 w-5" fill={doc?.isFavorite ? "currentColor" : "none"} />
+              </button>
+            </div>
+
+            {/* Separator between title and content */}
+            <div className="mb-8 border-b border-surface-200 dark:border-surface-800" />
+
+            <div className="cursor-text">
+              <EditorContent editor={editor} />
+            </div>
+            <AIBubbleMenu editor={editor} />
           </div>
-
-          {/* Separator between title and content */}
-          <div className="mb-8 border-b border-surface-200 dark:border-surface-800" />
-
-          <EditorContent editor={editor} />
-          <AIBubbleMenu editor={editor} />
         </div>
       </Scrollbar>
 
