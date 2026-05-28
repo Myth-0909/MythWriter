@@ -398,12 +398,12 @@ export function SettingsPage() {
                     </SelectTrigger>
                     <SelectContent>
                       {apiKeyHistories.map((item, index) => (
-                        <SelectItem key={item.id} value={item.id} index={index}>
-                          <div className="grid min-w-0 gap-1 py-0.5">
-                            <span className="truncate text-xs font-semibold leading-tight text-surface-800 dark:text-surface-100">
+                        <SelectItem key={item.id} value={item.id} index={index} className="pr-9">
+                          <div className="grid w-full min-w-0 justify-items-start gap-1 py-0.5 text-left">
+                            <span className="block max-w-full truncate text-left text-xs font-semibold leading-tight text-surface-800 dark:text-surface-100">
                               {item.model}
                             </span>
-                            <span className="truncate text-[10px] leading-tight text-surface-400">
+                            <span className="block max-w-full truncate text-left text-[10px] leading-tight text-surface-400">
                               {item.baseUrl}
                             </span>
                             <span className="w-fit rounded bg-surface-100 px-1.5 py-0.5 text-[10px] leading-none text-surface-500 dark:bg-surface-800 dark:text-surface-400">
