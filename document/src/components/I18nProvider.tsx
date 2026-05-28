@@ -68,6 +68,7 @@ const translations = {
   "brain.categorySaveFailed": { zh: "保存类别失败", en: "Failed to save category" },
   "brain.categoryDeleted": { zh: "类别已删除", en: "Category deleted" },
   "brain.categoryDeleteFailed": { zh: "删除类别失败", en: "Failed to delete category" },
+  "brain.persistOrderFailed": { zh: "保存排序失败", en: "Failed to save category order" },
   "brain.deleteSettingTitle": { zh: "确定要删除该设定项吗？", en: "Delete this setting?" },
   "brain.deleteSettingDesc": { zh: "该设定项一旦删除，将无法在AI写作时自动匹配背景，且此操作不可撤销。", en: "This setting will no longer be automatically matched during AI writing. This action cannot be undone." },
   

@@ -252,10 +252,16 @@ export const api = {
       body: JSON.stringify(data),
     }),
 
-  updateBrainCategory: (id: string, data: { name?: string; color?: string }) =>
+  updateBrainCategory: (id: string, data: { name?: string; color?: string; sortOrder?: number }) =>
     request<{ category: any }>(`/ai/categories/${id}`, {
       method: "PUT",
       body: JSON.stringify(data),
+    }),
+
+  reorderBrainCategories: (items: { id: string; sortOrder: number }[]) =>
+    request<{ success: boolean }>("/ai/categories/reorder", {
+      method: "PUT",
+      body: JSON.stringify({ items }),
     }),
 
   deleteBrainCategory: (id: string) =>

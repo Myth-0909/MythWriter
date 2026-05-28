@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import {
   DndContext,
+  DragOverlay,
   KeyboardSensor,
   PointerSensor,
   closestCenter,
@@ -23,6 +24,7 @@ import { ConfirmModal } from "@/components/ConfirmModal";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { TabGroup } from "@/components/ui/tab-group";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { useI18n, type TranslationKey } from "@/components/I18nProvider";
 import { useToast } from "@/components/Toast";
 import { api } from "@/api";
@@ -54,6 +56,7 @@ interface BrainCategory {
   id: string;
   name: string;
   color: string | null;
+  sortOrder: number;
 }
 
 const CATEGORY_COLORS = [
@@ -68,6 +71,46 @@ interface SortableCategoryItemProps {
   onEdit: (category: BrainCategory) => void;
   onDelete: (categoryId: string) => void;
   t: (key: TranslationKey) => string;
+}
+
+function CategoryItemContent({ category, index, t }: { category: BrainCategory; index: number; t: (key: TranslationKey) => string }) {
+  return (
+    <>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="h-9 w-9 cursor-grab rounded-lg text-surface-400 hover:bg-surface-100 hover:text-surface-700 active:cursor-grabbing dark:hover:bg-surface-900 dark:hover:text-surface-200"
+        aria-label={t("brain.categoryDragHint")}
+      >
+        <GripVertical className="h-4 w-4" />
+      </Button>
+
+      <span className="w-6 text-[10px] font-semibold tabular-nums text-surface-300 dark:text-surface-700">
+        {String(index + 1).padStart(2, "0")}
+      </span>
+
+      <div
+        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-xs font-bold text-white shadow-sm"
+        style={{ backgroundColor: category.color || "#94a3b8" }}
+      >
+        {category.name.charAt(0)}
+      </div>
+
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-sm font-semibold text-surface-800 dark:text-surface-100">
+          {category.name}
+        </div>
+        <div className="mt-0.5 flex items-center gap-1.5 text-[10px] font-medium text-surface-400">
+          <span
+            className="inline-block h-2 w-2 rounded-full"
+            style={{ backgroundColor: category.color || "#94a3b8" }}
+          />
+          <span>{category.color || "#94a3b8"}</span>
+        </div>
+      </div>
+    </>
+  );
 }
 
 function SortableCategoryItem({ category, index, onEdit, onDelete, t }: SortableCategoryItemProps) {
@@ -86,25 +129,26 @@ function SortableCategoryItem({ category, index, onEdit, onDelete, t }: Sortable
       style={{
         transform: CSS.Transform.toString(transform),
         transition,
+        opacity: isDragging ? 0.4 : 1,
       }}
       className={cn(
-        "group relative flex items-center gap-3 rounded-xl border bg-white px-3 py-3 transition-[background-color,border-color] duration-150 ease-out dark:bg-surface-950",
+        "group relative flex items-center gap-3 rounded-xl border bg-white px-3 py-3 transition-[background-color,border-color,opacity] duration-150 ease-out dark:bg-surface-950",
         isDragging
-          ? "z-10 border-brand-300 bg-brand-50/40 dark:border-brand-800 dark:bg-brand-950/30"
+          ? "border-brand-300 dark:border-brand-800"
           : "border-surface-200 hover:border-surface-300 hover:bg-surface-50/70 dark:border-surface-800 dark:hover:border-surface-700 dark:hover:bg-surface-900/70"
       )}
     >
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        className="h-9 w-9 cursor-grab rounded-lg text-surface-400 hover:bg-surface-100 hover:text-surface-700 active:cursor-grabbing dark:hover:bg-surface-900 dark:hover:text-surface-200"
-        aria-label={t("brain.categoryDragHint")}
-        {...attributes}
-        {...listeners}
-      >
-        <GripVertical className="h-4 w-4" />
-      </Button>
+      <div {...attributes} {...listeners} className="contents">
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="h-9 w-9 cursor-grab rounded-lg text-surface-400 hover:bg-surface-100 hover:text-surface-700 active:cursor-grabbing dark:hover:bg-surface-900 dark:hover:text-surface-200"
+          aria-label={t("brain.categoryDragHint")}
+        >
+          <GripVertical className="h-4 w-4" />
+        </Button>
+      </div>
 
       <span className="w-6 text-[10px] font-semibold tabular-nums text-surface-300 dark:text-surface-700">
         {String(index + 1).padStart(2, "0")}
@@ -192,6 +236,7 @@ export function BrainMemoryPage() {
 
   // Drag reorder state
   const [draggingCategoryId, setDraggingCategoryId] = useState<string | null>(null);
+  const categoryOrderDirty = useRef(false);
   const categoryDragSensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: { distance: 6 },
@@ -202,43 +247,41 @@ export function BrainMemoryPage() {
   );
 
   // Dynamic container height: grows as categories are added, capped at 360px.
-  // Each category item is ~52px tall. The fixed height gives the container real
-  // bounds so the drag overlay cannot drift infinitely.
+  // Includes gap spacing (8px per gap via space-y-2).
   const CATEGORY_ITEM_HEIGHT = 52;
+  const CATEGORY_GAP = 8;
   const CATEGORY_CONTAINER_MAX = 360;
-  const categoryListHeight = Math.min(
-    categories.length * CATEGORY_ITEM_HEIGHT,
-    CATEGORY_CONTAINER_MAX
-  );
+  const categoryListHeight = categories.length <= 1
+    ? categories.length * CATEGORY_ITEM_HEIGHT
+    : Math.min(
+        categories.length * CATEGORY_ITEM_HEIGHT + (categories.length - 1) * CATEGORY_GAP,
+        CATEGORY_CONTAINER_MAX
+      );
 
-  // Modifier: constrain the drag overlay within the container's visible bounds.
-  // We capture the container rect at drag-start (before the item leaves the flow)
-  // so the bounds reflect the full container height.
   const categoryListRef = useRef<HTMLDivElement | null>(null);
-  const preDragContainerTop = useRef(0);
+  const preDragContainerRect = useRef<DOMRect | null>(null);
 
   const handleCategoryDragStart = (event: DragStartEvent) => {
     setDraggingCategoryId(String(event.active.id));
     const container = categoryListRef.current;
     if (container) {
-      preDragContainerTop.current = container.getBoundingClientRect().top;
+      preDragContainerRect.current = container.getBoundingClientRect();
     }
   };
 
   const restrictToCategoryList = useCallback((args: Parameters<Modifier>[0]) => {
-    const container = categoryListRef.current;
-    if (!container) return args.transform;
-    const containerRect = container.getBoundingClientRect();
+    const rect = preDragContainerRect.current;
+    if (!rect) return args.transform;
     const overlayRect = args.overlayNodeRect;
     if (!overlayRect) return args.transform;
 
-    const visibleBottom = containerRect.top + categoryListHeight;
+    const visibleBottom = rect.top + categoryListHeight;
     const overlayTopOnScreen = overlayRect.top + args.transform.y;
     const overlayBottomOnScreen = overlayRect.bottom + args.transform.y;
 
     let newY = args.transform.y;
-    if (overlayTopOnScreen < containerRect.top) {
-      newY = containerRect.top - overlayRect.top;
+    if (overlayTopOnScreen < rect.top) {
+      newY = rect.top - overlayRect.top;
     }
     if (overlayBottomOnScreen > visibleBottom) {
       newY = visibleBottom - overlayRect.bottom;
@@ -262,6 +305,7 @@ export function BrainMemoryPage() {
       const newIndex = prev.findIndex((cat) => cat.id === over.id);
 
       if (oldIndex === -1 || newIndex === -1) return prev;
+      categoryOrderDirty.current = true;
       return arrayMove(prev, oldIndex, newIndex);
     });
   };
@@ -271,8 +315,18 @@ export function BrainMemoryPage() {
   };
 
   const persistCategoryOrder = async () => {
-    for (const cat of categories) {
-      await api.updateBrainCategory(cat.id, { name: cat.name, color: cat.color ?? undefined });
+    if (!categoryOrderDirty.current) return;
+    try {
+      const items = categories.map((cat, index) => ({
+        id: cat.id,
+        sortOrder: index,
+      }));
+      await api.reorderBrainCategories(items);
+      // Sync local sortOrder values
+      setCategories((prev) => prev.map((cat, i) => ({ ...cat, sortOrder: i })));
+      categoryOrderDirty.current = false;
+    } catch (err: any) {
+      toast(err.message || t("brain.persistOrderFailed"), "error");
     }
   };
 
@@ -756,7 +810,7 @@ export function BrainMemoryPage() {
                 >
                   <div
                     ref={categoryListRef}
-                    style={{ height: categoryListHeight }}
+                    style={{ maxHeight: categoryListHeight }}
                     className="space-y-2 overflow-y-auto pr-1"
                   >
                     {categories.map((cat, index) => (
@@ -771,6 +825,19 @@ export function BrainMemoryPage() {
                     ))}
                   </div>
                 </SortableContext>
+                <DragOverlay dropAnimation={null}>
+                  {draggingCategoryId ? (
+                    <div
+                      className="flex items-center gap-3 rounded-xl border border-brand-300 bg-white px-3 py-3 shadow-lg dark:border-brand-800 dark:bg-surface-950"
+                    >
+                      <CategoryItemContent
+                        category={categories.find((c) => c.id === draggingCategoryId)!}
+                        index={categories.findIndex((c) => c.id === draggingCategoryId)}
+                        t={t}
+                      />
+                    </div>
+                  ) : null}
+                </DragOverlay>
               </DndContext>
             )}
           </div>
@@ -787,13 +854,11 @@ export function BrainMemoryPage() {
               <label className="text-xs font-semibold text-surface-600 dark:text-surface-300">
                 {t("brain.categoryName")}
               </label>
-              <input
-                type="text"
+              <Input
                 required
                 value={categoryName}
                 onChange={(e) => setCategoryName(e.target.value)}
                 placeholder={t("brain.categoryNamePlaceholder")}
-                className="w-full px-3 py-2 text-xs border border-surface-200 bg-white rounded-lg focus:outline-none focus:ring-1 focus:ring-brand-500 dark:border-surface-800 dark:bg-surface-900 dark:text-surface-100 placeholder-surface-400"
               />
             </div>
             <div className="flex flex-col gap-1.5">
@@ -802,36 +867,42 @@ export function BrainMemoryPage() {
               </label>
               <div className="flex flex-wrap gap-2">
                 {CATEGORY_COLORS.map((color) => (
-                  <button
+                  <Button
                     key={color}
                     type="button"
+                    variant="ghost"
+                    size="icon"
                     onClick={() => setCategoryColor(color)}
-                    className="relative h-7 w-7 rounded-full transition-transform hover:scale-110 cursor-pointer"
+                    className={cn(
+                      "relative h-7 w-7 rounded-full p-0 hover:scale-110",
+                      categoryColor === color && "ring-2 ring-brand-500 ring-offset-2"
+                    )}
                     style={{ backgroundColor: color }}
                   >
                     {categoryColor === color && (
-                      <Check className="absolute inset-0 h-4 w-4 m-auto text-white" />
+                      <Check className="h-3.5 w-3.5 text-white" />
                     )}
-                  </button>
+                  </Button>
                 ))}
               </div>
             </div>
             <div className="flex items-center justify-end gap-2 mt-2">
-              <button
+              <Button
                 type="button"
+                variant="outline"
+                size="sm"
                 onClick={() => setCategoryFormOpen(false)}
-                className="px-3.5 py-1.5 text-xs font-semibold text-surface-600 hover:bg-surface-100 border border-surface-200 rounded-md cursor-pointer dark:text-surface-300 dark:hover:bg-surface-800 dark:border-surface-800"
               >
                 {t("brain.cancel")}
-              </button>
-              <button
+              </Button>
+              <Button
                 type="submit"
+                size="sm"
                 disabled={categorySaveLoading || !categoryName.trim()}
-                className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-white bg-brand-500 hover:bg-brand-600 disabled:opacity-50 rounded-md cursor-pointer transition-colors"
               >
                 {categorySaveLoading && <Loader2 className="h-3 w-3 animate-spin" />}
                 <span>{t("brain.confirm")}</span>
-              </button>
+              </Button>
             </div>
           </form>
         </DialogContent>

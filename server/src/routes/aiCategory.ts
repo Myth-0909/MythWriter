@@ -11,12 +11,12 @@ router.get("/", async (req: AuthRequest, res: Response) => {
   try {
     const categories = await prisma.aIBrainCategory.findMany({
       where: { userId: req.user!.userId },
-      orderBy: { createdAt: "asc" },
+      orderBy: { sortOrder: "asc" },
     });
     res.json({ categories });
   } catch (error) {
     console.error("List brain categories error:", error);
-    res.status(500).json({ error: "获取类别列表失败" });
+    res.status(500).json({ error: "Failed to list categories" });
   }
 });
 
@@ -25,32 +25,63 @@ router.post("/", async (req: AuthRequest, res: Response) => {
   try {
     const { name, color } = req.body;
     if (!name || typeof name !== "string" || !name.trim()) {
-      res.status(400).json({ error: "类别名称不能为空" });
+      res.status(400).json({ error: "Category name cannot be empty" });
       return;
     }
+    // Auto-assign sortOrder as the next available position
+    const maxSort = await prisma.aIBrainCategory.findFirst({
+      where: { userId: req.user!.userId },
+      orderBy: { sortOrder: "desc" },
+      select: { sortOrder: true },
+    });
     const category = await prisma.aIBrainCategory.create({
       data: {
         name: name.trim(),
         color: color || null,
+        sortOrder: (maxSort?.sortOrder ?? -1) + 1,
         userId: req.user!.userId,
       },
     });
     res.json({ category });
   } catch (error) {
     console.error("Create brain category error:", error);
-    res.status(500).json({ error: "创建类别失败" });
+    res.status(500).json({ error: "Failed to create category" });
+  }
+});
+
+// PUT /api/ai/categories/reorder - Batch update sort order (MUST be before /:id)
+router.put("/reorder", async (req: AuthRequest, res: Response) => {
+  try {
+    const { items }: { items: { id: string; sortOrder: number }[] } = req.body;
+    if (!Array.isArray(items) || items.length === 0) {
+      res.status(400).json({ error: "Items array is required" });
+      return;
+    }
+    const userId = req.user!.userId;
+    await prisma.$transaction(
+      items.map((item) =>
+        prisma.aIBrainCategory.updateMany({
+          where: { id: item.id, userId },
+          data: { sortOrder: item.sortOrder },
+        })
+      )
+    );
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Reorder brain categories error:", error);
+    res.status(500).json({ error: "Failed to reorder categories" });
   }
 });
 
 // PUT /api/ai/categories/:id - Update a category
 router.put("/:id", async (req: AuthRequest, res: Response) => {
   try {
-    const { name, color } = req.body;
+    const { name, color, sortOrder } = req.body;
     const existing = await prisma.aIBrainCategory.findFirst({
       where: { id: String(req.params.id), userId: req.user!.userId },
     });
     if (!existing) {
-      res.status(404).json({ error: "该类别不存在" });
+      res.status(404).json({ error: "Category not found" });
       return;
     }
     const updated = await prisma.aIBrainCategory.update({
@@ -58,12 +89,13 @@ router.put("/:id", async (req: AuthRequest, res: Response) => {
       data: {
         ...(name && { name: name.trim() }),
         ...(color !== undefined && { color: color || null }),
+        ...(sortOrder !== undefined && { sortOrder }),
       },
     });
     res.json({ category: updated });
   } catch (error) {
     console.error("Update brain category error:", error);
-    res.status(500).json({ error: "更新类别失败" });
+    res.status(500).json({ error: "Failed to update category" });
   }
 });
 
@@ -74,7 +106,7 @@ router.delete("/:id", async (req: AuthRequest, res: Response) => {
       where: { id: String(req.params.id), userId: req.user!.userId },
     });
     if (!existing) {
-      res.status(404).json({ error: "该类别不存在" });
+      res.status(404).json({ error: "Category not found" });
       return;
     }
     await prisma.aIBrainCategory.delete({
@@ -83,7 +115,7 @@ router.delete("/:id", async (req: AuthRequest, res: Response) => {
     res.json({ success: true });
   } catch (error) {
     console.error("Delete brain category error:", error);
-    res.status(500).json({ error: "删除类别失败" });
+    res.status(500).json({ error: "Failed to delete category" });
   }
 });
 

@@ -143,6 +143,7 @@ model AIBrainCategory {
   id          String   @id @default(uuid())
   name        String   // e.g. "角色", "势力", "世界观"
   color       String?  // optional hex color for the tab pill
+  sortOrder   Int      @default(0) @map("sort_order")
   userId      String   @map("user_id")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
