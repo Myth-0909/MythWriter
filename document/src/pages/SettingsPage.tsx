@@ -381,10 +381,15 @@ export function SettingsPage() {
                     <SelectContent>
                       {apiKeyHistories.map((item, index) => (
                         <SelectItem key={item.id} value={item.id} index={index}>
-                          <div className="flex min-w-0 flex-col gap-0.5">
-                            <span className="truncate text-xs font-medium">{item.model}</span>
-                            <span className="truncate text-[10px] text-surface-400">
-                              {item.baseUrl} · {item.masked}
+                          <div className="grid min-w-0 gap-1 py-0.5">
+                            <span className="truncate text-xs font-semibold leading-tight text-surface-800 dark:text-surface-100">
+                              {item.model}
+                            </span>
+                            <span className="truncate text-[10px] leading-tight text-surface-400">
+                              {item.baseUrl}
+                            </span>
+                            <span className="w-fit rounded bg-surface-100 px-1.5 py-0.5 text-[10px] leading-none text-surface-500 dark:bg-surface-800 dark:text-surface-400">
+                              {item.masked}
                             </span>
                           </div>
                         </SelectItem>
@@ -418,7 +423,8 @@ export function SettingsPage() {
                     value={model}
                     onChange={(e) => setModel(e.target.value)}
                     placeholder={t("apikey.modelPlaceholder")}
-                    className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-2 text-sm text-surface-900 focus:outline-none focus:ring-2 focus:ring-brand-300 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100"
+                    disabled={isLocked}
+                    className="w-full rounded-lg border border-surface-200 bg-surface-50 px-3 py-2 text-sm text-surface-900 focus:outline-none focus:ring-2 focus:ring-brand-300 disabled:opacity-60 disabled:cursor-not-allowed dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100"
                   />
                   <p className="mt-1 text-xs text-surface-500">{t("apikey.modelDesc")}</p>
                 </div>
