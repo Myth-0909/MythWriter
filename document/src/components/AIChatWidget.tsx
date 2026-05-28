@@ -222,7 +222,7 @@ async function streamChat(
 export function AIChatWidget() {
   const { t } = useI18n();
   const { toast } = useToast();
-  const { createDocument, documents, refreshDocuments, getDocument } = useDocuments();
+  const { createDocument, documents, getDocument, loadDocument, updateDocument } = useDocuments();
   const { user } = useAuth();
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -596,21 +596,38 @@ export function AIChatWidget() {
       // Handle update_document action: update the document specified by the model
       if (action?.type === "update_document" && action.content) {
         try {
-          const docId = action.docId;
-          const targetDoc = docId ? getDocument(docId) : null;
-          if (targetDoc) {
-            await api.updateDocument(targetDoc.id, {
-              title: targetDoc.title,
-              content: markdownToHtml(action.content),
+          const actionDocId = typeof action.docId === "string" ? action.docId.trim() : "";
+          const fallbackDocId = requestReferences.length === 1 ? requestReferences[0].id : "";
+          const targetDocId = actionDocId && getDocument(actionDocId) ? actionDocId : fallbackDocId || actionDocId;
+          const targetDoc = targetDocId ? getDocument(targetDocId) || await loadDocument(targetDocId) : null;
+
+          if (!targetDoc) {
+            const message = t("ai.docUpdateTargetMissing");
+            setMessages((prev) => {
+              const next = [...prev];
+              const last = next[next.length - 1];
+              if (last && last.role === "assistant") {
+                next[next.length - 1] = { ...last, content: message };
+              } else {
+                next.push({ role: "assistant", content: message });
+              }
+              return next;
             });
-            refreshDocuments();
-            const updatedNote = { role: "assistant" as const, content: `[系统] 已为用户更新文档「${targetDoc.title}」[doc:${targetDoc.id}]。最新内容摘要：${action.content.slice(0, 200)}...` };
-            memoryRef.current = [...memoryRef.current, updatedNote];
-            saveMemory(memoryRef.current);
+            toast(message, "error");
+            return;
           }
+
+          await updateDocument(targetDoc.id, {
+            title: targetDoc.title,
+            content: markdownToHtml(action.content),
+          });
+          toast(t("ai.docUpdated"), "success");
+          const updatedNote = { role: "assistant" as const, content: `[系统] 已为用户更新文档「${targetDoc.title}」[doc:${targetDoc.id}]。最新内容摘要：${action.content.slice(0, 200)}...` };
+          memoryRef.current = [...memoryRef.current, updatedNote];
+          saveMemory(memoryRef.current);
         } catch (err: any) {
           console.error("[update_doc] error:", err);
-          toast(t("ai.docCreateFailed"), "error");
+          toast(t("ai.docUpdateFailed"), "error");
         }
       }
     } catch (error: any) {
@@ -631,7 +648,7 @@ export function AIChatWidget() {
       setStreaming(false);
       setActionMode(false);
     }
-  }, [input, loading, streaming, messages, createDocument, toast, t, documents, references, refreshDocuments]);
+  }, [input, loading, streaming, messages, createDocument, toast, t, documents, references, getDocument, loadDocument, updateDocument]);
 
   const handleStop = useCallback(() => {
     abortRef.current?.abort();

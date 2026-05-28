@@ -162,7 +162,8 @@ export function DocumentStoreProvider({ children }: { children: ReactNode }) {
       } catch (error) {
         console.error("Failed to update document:", error);
         // Revert on failure by refetching
-        refreshDocuments();
+        await refreshDocuments();
+        throw error;
       }
     },
     [refreshDocuments]
