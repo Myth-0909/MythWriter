@@ -138,17 +138,17 @@ function SortableCategoryItem({ category, index, onEdit, onDelete, t }: Sortable
           : "border-surface-200 hover:border-surface-300 hover:bg-surface-50/70 dark:border-surface-800 dark:hover:border-surface-700 dark:hover:bg-surface-900/70"
       )}
     >
-      <div {...attributes} {...listeners} className="contents">
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="h-9 w-9 cursor-grab rounded-lg text-surface-400 hover:bg-surface-100 hover:text-surface-700 active:cursor-grabbing dark:hover:bg-surface-900 dark:hover:text-surface-200"
-          aria-label={t("brain.categoryDragHint")}
-        >
-          <GripVertical className="h-4 w-4" />
-        </Button>
-      </div>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="h-9 w-9 shrink-0 cursor-grab rounded-lg text-surface-400 hover:bg-surface-100 hover:text-surface-700 active:cursor-grabbing dark:hover:bg-surface-900 dark:hover:text-surface-200"
+        aria-label={t("brain.categoryDragHint")}
+        {...attributes}
+        {...listeners}
+      >
+        <GripVertical className="h-4 w-4" />
+      </Button>
 
       <span className="w-6 text-[10px] font-semibold tabular-nums text-surface-300 dark:text-surface-700">
         {String(index + 1).padStart(2, "0")}
@@ -259,19 +259,15 @@ export function BrainMemoryPage() {
       );
 
   const categoryListRef = useRef<HTMLDivElement | null>(null);
-  const preDragContainerRect = useRef<DOMRect | null>(null);
 
   const handleCategoryDragStart = (event: DragStartEvent) => {
     setDraggingCategoryId(String(event.active.id));
-    const container = categoryListRef.current;
-    if (container) {
-      preDragContainerRect.current = container.getBoundingClientRect();
-    }
   };
 
   const restrictToCategoryList = useCallback((args: Parameters<Modifier>[0]) => {
-    const rect = preDragContainerRect.current;
-    if (!rect) return args.transform;
+    const container = categoryListRef.current;
+    if (!container) return args.transform;
+    const rect = container.getBoundingClientRect();
     const overlayRect = args.overlayNodeRect;
     if (!overlayRect) return args.transform;
 
@@ -825,17 +821,30 @@ export function BrainMemoryPage() {
                   </div>
                 </SortableContext>
                 <DragOverlay dropAnimation={null}>
-                  {draggingCategoryId ? (
-                    <div
-                      className="flex items-center gap-3 rounded-xl border border-brand-300 bg-white px-3 py-3 shadow-lg dark:border-brand-800 dark:bg-surface-950"
-                    >
-                      <CategoryItemContent
-                        category={categories.find((c) => c.id === draggingCategoryId)!}
-                        index={categories.findIndex((c) => c.id === draggingCategoryId)}
-                        t={t}
-                      />
-                    </div>
-                  ) : null}
+                  {draggingCategoryId ? (() => {
+                    const cat = categories.find((c) => c.id === draggingCategoryId);
+                    const idx = categories.findIndex((c) => c.id === draggingCategoryId);
+                    if (!cat) return null;
+                    return (
+                      <div
+                        className="flex items-center gap-3 rounded-xl border border-brand-300 bg-white px-3 py-3 shadow-lg dark:border-brand-800 dark:bg-surface-950"
+                      >
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          className="h-9 w-9 shrink-0 cursor-grabbing rounded-lg text-surface-400 dark:hover:bg-surface-900 dark:hover:text-surface-200"
+                        >
+                          <GripVertical className="h-4 w-4" />
+                        </Button>
+                        <CategoryItemContent
+                          category={cat}
+                          index={idx}
+                          t={t}
+                        />
+                      </div>
+                    );
+                  })() : null}
                 </DragOverlay>
               </DndContext>
             )}
