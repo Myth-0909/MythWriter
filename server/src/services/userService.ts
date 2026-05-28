@@ -84,6 +84,14 @@ const DEFAULT_AI_MODEL = "google/gemma-4-31B-it";
 const LEGACY_API_BASE_URL = "https://api.deepseek.com/v1";
 const LEGACY_AI_MODEL = "deepseek-chat";
 
+type ApiKeyHistoryRecord = {
+  id: string;
+  apiKey: string;
+  apiBaseUrl: string;
+  aiModel: string;
+  updatedAt: Date;
+};
+
 function buildModelsUrl(baseUrl: string): string {
   const trimmed = baseUrl.trim().replace(/\/+$/, "");
   if (trimmed.endsWith("/models")) return trimmed;
@@ -107,6 +115,7 @@ export async function getApiKey(userId: string): Promise<{
   masked: string;
   baseUrl: string;
   model: string;
+  histories: Array<{ id: string; masked: string; baseUrl: string; model: string; updatedAt: Date }>;
 }> {
   const user = await prisma.user.findUnique({
     where: { id: userId },
@@ -127,11 +136,19 @@ export async function getApiKey(userId: string): Promise<{
   }
 
   const key = user?.apiKey || DEFAULT_API_KEY;
+  await saveApiKeyHistory(userId, {
+    apiKey: key,
+    baseUrl,
+    model,
+  });
+
+  const histories = await listApiKeyHistories(userId);
   return {
     hasKey: !!key,
     masked: key ? key.slice(0, 3) + "****" + key.slice(-4) : "",
     baseUrl,
     model,
+    histories,
   };
 }
 
@@ -140,14 +157,100 @@ export async function saveApiKey(userId: string, data: {
   baseUrl?: string;
   model?: string;
 }) {
+  const current = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { apiKey: true, apiBaseUrl: true, aiModel: true },
+  });
+  const nextApiKey = data.apiKey !== undefined ? data.apiKey.trim() || DEFAULT_API_KEY : current?.apiKey || DEFAULT_API_KEY;
+  const nextBaseUrl = data.baseUrl !== undefined ? data.baseUrl.trim() || DEFAULT_API_BASE_URL : defaultBaseUrl(current?.apiBaseUrl);
+  const nextModel = data.model !== undefined ? data.model.trim() || DEFAULT_AI_MODEL : defaultModel(current?.aiModel);
+
   await prisma.user.update({
     where: { id: userId },
     data: {
-      ...(data.apiKey !== undefined && { apiKey: data.apiKey.trim() || DEFAULT_API_KEY }),
-      ...(data.baseUrl !== undefined && { apiBaseUrl: data.baseUrl.trim() || DEFAULT_API_BASE_URL }),
-      ...(data.model !== undefined && { aiModel: data.model.trim() || DEFAULT_AI_MODEL }),
+      apiKey: nextApiKey,
+      apiBaseUrl: nextBaseUrl,
+      aiModel: nextModel,
     },
   });
+  await saveApiKeyHistory(userId, {
+    apiKey: nextApiKey,
+    baseUrl: nextBaseUrl,
+    model: nextModel,
+  });
+}
+
+function maskApiKey(key: string) {
+  return key ? key.slice(0, 3) + "****" + key.slice(-4) : "";
+}
+
+async function saveApiKeyHistory(userId: string, data: { apiKey: string; baseUrl: string; model: string }) {
+  const existing = await prisma.apiKeyConfigHistory.findFirst({
+    where: {
+      userId,
+      apiKey: data.apiKey,
+      apiBaseUrl: data.baseUrl,
+      aiModel: data.model,
+    },
+  });
+
+  if (existing) {
+    await prisma.apiKeyConfigHistory.update({
+      where: { id: existing.id },
+      data: { updatedAt: new Date() },
+    });
+    return;
+  }
+
+  await prisma.apiKeyConfigHistory.create({
+    data: {
+      userId,
+      apiKey: data.apiKey,
+      apiBaseUrl: data.baseUrl,
+      aiModel: data.model,
+    },
+  });
+}
+
+export async function listApiKeyHistories(userId: string) {
+  const histories: ApiKeyHistoryRecord[] = await prisma.apiKeyConfigHistory.findMany({
+    where: { userId },
+    orderBy: { updatedAt: "desc" },
+    take: 20,
+    select: { id: true, apiKey: true, apiBaseUrl: true, aiModel: true, updatedAt: true },
+  });
+
+  return histories.map((item: ApiKeyHistoryRecord) => ({
+    id: item.id,
+    masked: maskApiKey(item.apiKey),
+    baseUrl: item.apiBaseUrl,
+    model: item.aiModel,
+    updatedAt: item.updatedAt,
+  }));
+}
+
+export async function applyApiKeyHistory(userId: string, historyId: string) {
+  const history = await prisma.apiKeyConfigHistory.findFirst({
+    where: { id: historyId, userId },
+    select: { apiKey: true, apiBaseUrl: true, aiModel: true },
+  });
+  if (!history) return null;
+
+  await prisma.user.update({
+    where: { id: userId },
+    data: {
+      apiKey: history.apiKey,
+      apiBaseUrl: history.apiBaseUrl,
+      aiModel: history.aiModel,
+    },
+  });
+  await saveApiKeyHistory(userId, {
+    apiKey: history.apiKey,
+    baseUrl: history.apiBaseUrl,
+    model: history.aiModel,
+  });
+
+  return getApiKey(userId);
 }
 
 export async function getApiKeySecret(userId: string): Promise<string> {

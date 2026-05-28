@@ -2,12 +2,14 @@ import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Scrollbar } from "@/components/ui/scrollbar";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { useTheme } from "@/components/ThemeProvider";
 import { useI18n } from "@/components/I18nProvider";
 import { useToast } from "@/components/Toast";
 import { useAuth } from "@/auth";
 import { api } from "@/api";
+import type { ApiKeyHistory } from "@/api";
 import { Sun, Moon, Monitor, Languages, User, Camera, Info, Loader2, Key, Eye, EyeOff, Pencil, X } from "lucide-react";
 
 const DEFAULT_BASE_URL = "http://172.16.76.112:8000/v1";
@@ -32,7 +34,10 @@ export function SettingsPage() {
   const [maskedKey, setMaskedKey] = useState("");
   const [showKey, setShowKey] = useState(false);
   const [savingKey, setSavingKey] = useState(false);
+  const [applyingHistory, setApplyingHistory] = useState(false);
   const [keyEditable, setKeyEditable] = useState(false);
+  const [apiKeyHistories, setApiKeyHistories] = useState<ApiKeyHistory[]>([]);
+  const [selectedHistoryId, setSelectedHistoryId] = useState("");
   const [verifyDialogOpen, setVerifyDialogOpen] = useState(false);
   const [verifyPassword, setVerifyPassword] = useState("");
   const [verifying, setVerifying] = useState(false);
@@ -46,6 +51,7 @@ export function SettingsPage() {
       setBaseUrl(res.baseUrl);
       setModel(res.model);
       setApiKey(res.masked);
+      setApiKeyHistories(res.histories || []);
       if (!res.hasKey) setKeyEditable(true);
     }).catch(() => {});
   }, []);
@@ -135,6 +141,27 @@ export function SettingsPage() {
 
   const isLocked = !!maskedKey && !keyEditable;
   const themeModeIndex = { system: 0, light: 1, dark: 2 }[themeMode];
+
+  const handleApplyHistory = async (historyId: string) => {
+    if (!historyId) return;
+    setSelectedHistoryId(historyId);
+    setApplyingHistory(true);
+    try {
+      const res = await api.applyApiKeyHistory(historyId);
+      setMaskedKey(res.masked);
+      setBaseUrl(res.baseUrl);
+      setModel(res.model);
+      setApiKey(res.masked);
+      setApiKeyHistories(res.histories || []);
+      setKeyEditable(false);
+      setShowKey(false);
+      toast(t("apikey.historyApplied"), "success");
+    } catch {
+      toast(t("apikey.historyApplyFailed"), "error");
+    } finally {
+      setApplyingHistory(false);
+    }
+  };
 
   return (
     <Scrollbar className="flex-1 bg-surface-50 dark:bg-surface-950">
@@ -338,6 +365,34 @@ export function SettingsPage() {
 
               {/* Config inputs */}
               <div className="flex flex-col gap-4">
+                {/* Saved configs */}
+                <div>
+                  <label className="text-xs font-medium text-surface-500 mb-1 block">
+                    {t("apikey.history")}
+                  </label>
+                  <Select
+                    value={selectedHistoryId}
+                    onValueChange={handleApplyHistory}
+                    disabled={applyingHistory || apiKeyHistories.length === 0}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder={apiKeyHistories.length > 0 ? t("apikey.historyPlaceholder") : t("apikey.noHistory")} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {apiKeyHistories.map((item, index) => (
+                        <SelectItem key={item.id} value={item.id} index={index}>
+                          <div className="flex min-w-0 flex-col gap-0.5">
+                            <span className="truncate text-xs font-medium">{item.model}</span>
+                            <span className="truncate text-[10px] text-surface-400">
+                              {item.baseUrl} · {item.masked}
+                            </span>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
                 {/* Base URL */}
                 <div>
                   <label className="text-xs font-medium text-surface-500 mb-1 block">
@@ -412,6 +467,8 @@ export function SettingsPage() {
                           setMaskedKey(res.masked);
                           setBaseUrl(res.baseUrl);
                           setModel(res.model);
+                          setApiKeyHistories(res.histories || []);
+                          setSelectedHistoryId("");
                           setApiKey("");
                           setKeyEditable(false);
                           toast(t("apikey.saved"), "success");

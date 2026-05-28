@@ -28,8 +28,24 @@ model User {
   activityLogs    ActivityLog[]
   brainKnowledges AIBrainKnowledge[]
   documentGroups  DocumentGroup[]
+  apiKeyHistories  ApiKeyConfigHistory[]
 
   @@map("users")
+}
+
+model ApiKeyConfigHistory {
+  id         String   @id @default(uuid())
+  userId     String   @map("user_id")
+  apiKey     String   @map("api_key")
+  apiBaseUrl String   @map("api_base_url")
+  aiModel    String   @map("ai_model")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("api_key_config_histories")
 }
 
 model Document {

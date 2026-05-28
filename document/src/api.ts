@@ -2,6 +2,14 @@ import type { Document } from "@/types";
 
 const API_BASE = "http://localhost:3000/api";
 
+export interface ApiKeyHistory {
+  id: string;
+  masked: string;
+  baseUrl: string;
+  model: string;
+  updatedAt: string;
+}
+
 function getToken(): string | null {
   return localStorage.getItem("token");
 }
@@ -158,7 +166,7 @@ export const api = {
     ),
 
   getApiKey: () =>
-    request<{ hasKey: boolean; masked: string; baseUrl: string; model: string }>(
+    request<{ hasKey: boolean; masked: string; baseUrl: string; model: string; histories: ApiKeyHistory[] }>(
       "/users/me/apikey"
     ),
 
@@ -170,6 +178,14 @@ export const api = {
   fetchModels: (data: { baseUrl: string; apiKey?: string }) =>
     request<{ models: string[] }>(
       "/users/me/models", { method: "POST", body: JSON.stringify(data) }
+    ),
+
+  listApiKeyHistories: () =>
+    request<{ histories: ApiKeyHistory[] }>("/users/me/apikey/history"),
+
+  applyApiKeyHistory: (id: string) =>
+    request<{ hasKey: boolean; masked: string; baseUrl: string; model: string; histories: ApiKeyHistory[] }>(
+      `/users/me/apikey/history/${id}/apply`, { method: "POST" }
     ),
 
   verifyPassword: (password: string) =>
