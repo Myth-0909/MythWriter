@@ -1,20 +1,16 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect } from "react";
 import {
   DndContext,
-  DragOverlay,
-  KeyboardSensor,
-  PointerSensor,
   closestCenter,
+  PointerSensor,
   useSensor,
   useSensors,
   type DragEndEvent,
-  type DragStartEvent,
 } from "@dnd-kit/core";
 import {
-  SortableContext,
   arrayMove,
-  sortableKeyboardCoordinates,
   useSortable,
+  SortableContext,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -64,7 +60,7 @@ const CATEGORY_COLORS = [
   "#f97316", "#84cc16", "#a855f7", "#06b6d4",
 ];
 
-interface SortableCategoryItemProps {
+interface CategoryListItemProps {
   category: BrainCategory;
   index: number;
   onEdit: (category: BrainCategory) => void;
@@ -72,47 +68,7 @@ interface SortableCategoryItemProps {
   t: (key: TranslationKey) => string;
 }
 
-function CategoryItemContent({ category, index, t }: { category: BrainCategory; index: number; t: (key: TranslationKey) => string }) {
-  return (
-    <>
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon"
-        className="h-9 w-9 cursor-grab rounded-lg text-surface-400 hover:bg-surface-100 hover:text-surface-700 active:cursor-grabbing dark:hover:bg-surface-900 dark:hover:text-surface-200"
-        aria-label={t("brain.categoryDragHint")}
-      >
-        <GripVertical className="h-4 w-4" />
-      </Button>
-
-      <span className="w-6 text-[10px] font-semibold tabular-nums text-surface-300 dark:text-surface-700">
-        {String(index + 1).padStart(2, "0")}
-      </span>
-
-      <div
-        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-xs font-bold text-white shadow-sm"
-        style={{ backgroundColor: category.color || "#94a3b8" }}
-      >
-        {category.name.charAt(0)}
-      </div>
-
-      <div className="min-w-0 flex-1">
-        <div className="truncate text-sm font-semibold text-surface-800 dark:text-surface-100">
-          {category.name}
-        </div>
-        <div className="mt-0.5 flex items-center gap-1.5 text-[10px] font-medium text-surface-400">
-          <span
-            className="inline-block h-2 w-2 rounded-full"
-            style={{ backgroundColor: category.color || "#94a3b8" }}
-          />
-          <span>{category.color || "#94a3b8"}</span>
-        </div>
-      </div>
-    </>
-  );
-}
-
-function SortableCategoryItem({ category, index, onEdit, onDelete, t }: SortableCategoryItemProps) {
+function CategoryListItem({ category, index, onEdit, onDelete, t }: CategoryListItemProps) {
   const {
     attributes,
     listeners,
@@ -122,39 +78,38 @@ function SortableCategoryItem({ category, index, onEdit, onDelete, t }: Sortable
     isDragging,
   } = useSortable({ id: category.id });
 
+  const style = {
+    transform: CSS.Translate.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
   return (
     <div
       ref={setNodeRef}
-      style={{
-        transform: CSS.Transform.toString(transform),
-        transition,
-        opacity: isDragging ? 0.4 : 1,
-      }}
+      style={style}
       className={cn(
-        "group relative flex items-center gap-3 rounded-xl border bg-white px-3 py-3 transition-[background-color,border-color,opacity] duration-150 ease-out dark:bg-surface-950",
+        "flex items-center gap-3 rounded-xl border bg-white px-3 py-3 transition-colors",
         isDragging
-          ? "border-brand-300 dark:border-brand-800"
-          : "border-surface-200 hover:border-surface-300 hover:bg-surface-50/70 dark:border-surface-800 dark:hover:border-surface-700 dark:hover:bg-surface-900/70"
+          ? "border-brand-400 bg-brand-50 shadow-sm dark:border-brand-700 dark:bg-brand-950/40"
+          : "border-surface-200 hover:bg-surface-50/70 dark:border-surface-800 dark:hover:bg-surface-900/70"
       )}
     >
-      <Button
+      <span className="flex h-6 w-6 shrink-0 items-center justify-center text-[11px] font-semibold tabular-nums text-surface-400">
+        {String(index + 1).padStart(2, "0")}
+      </span>
+
+      <button
         type="button"
-        variant="ghost"
-        size="icon"
-        className="h-9 w-9 shrink-0 cursor-grab rounded-lg text-surface-400 hover:bg-surface-100 hover:text-surface-700 active:cursor-grabbing dark:hover:bg-surface-900 dark:hover:text-surface-200"
-        aria-label={t("brain.categoryDragHint")}
+        className="h-9 w-9 shrink-0 cursor-grab rounded-lg text-surface-400 hover:bg-surface-100 active:cursor-grabbing dark:hover:bg-surface-800"
         {...attributes}
         {...listeners}
       >
         <GripVertical className="h-4 w-4" />
-      </Button>
-
-      <span className="w-6 text-[10px] font-semibold tabular-nums text-surface-300 dark:text-surface-700">
-        {String(index + 1).padStart(2, "0")}
-      </span>
+      </button>
 
       <div
-        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-xs font-bold text-white shadow-sm"
+        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-xs font-bold text-white"
         style={{ backgroundColor: category.color || "#94a3b8" }}
       >
         {category.name.charAt(0)}
@@ -164,7 +119,7 @@ function SortableCategoryItem({ category, index, onEdit, onDelete, t }: Sortable
         <div className="truncate text-sm font-semibold text-surface-800 dark:text-surface-100">
           {category.name}
         </div>
-        <div className="mt-0.5 flex items-center gap-1.5 text-[10px] font-medium text-surface-400">
+        <div className="mt-0.5 flex items-center gap-1.5 text-[10px] text-surface-400">
           <span
             className="inline-block h-2 w-2 rounded-full"
             style={{ backgroundColor: category.color || "#94a3b8" }}
@@ -173,7 +128,7 @@ function SortableCategoryItem({ category, index, onEdit, onDelete, t }: Sortable
         </div>
       </div>
 
-      <div className="flex items-center gap-1 opacity-70 transition-opacity group-hover:opacity-100">
+      <div className="flex items-center gap-1">
         <Tooltip content={t("brain.edit")} delay={150}>
           <Button
             type="button"
@@ -233,67 +188,36 @@ export function BrainMemoryPage() {
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
   const [deleteCategoryTargetId, setDeleteCategoryTargetId] = useState<string | null>(null);
 
-  // Drag reorder state
-  const [draggingCategoryId, setDraggingCategoryId] = useState<string | null>(null);
-  const categoryOrderDirty = useRef(false);
-  const categoryDragSensors = useSensors(
+  // Drag reorder
+  const sensors = useSensors(
     useSensor(PointerSensor, {
-      activationConstraint: { distance: 6 },
-    }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
+      activationConstraint: { distance: 8 },
     })
   );
 
-  // Dynamic container height: grows as categories are added, capped at 360px.
-  // Includes gap spacing (8px per gap via space-y-2).
-  const CATEGORY_ITEM_HEIGHT = 52;
-  const CATEGORY_GAP = 8;
-  const CATEGORY_CONTAINER_MAX = 360;
-  const categoryListHeight = categories.length <= 1
-    ? categories.length * CATEGORY_ITEM_HEIGHT
-    : Math.min(
-        categories.length * CATEGORY_ITEM_HEIGHT + (categories.length - 1) * CATEGORY_GAP,
-        CATEGORY_CONTAINER_MAX
-      );
-
-  const categoryListRef = useRef<HTMLDivElement | null>(null);
-
-  const handleCategoryDragStart = (event: DragStartEvent) => {
-    setDraggingCategoryId(String(event.active.id));
-  };
-
-  const handleCategoryDragEnd = (event: DragEndEvent) => {
+  const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
-    setDraggingCategoryId(null);
-
     if (!over || active.id === over.id) return;
 
     setCategories((prev) => {
       const oldIndex = prev.findIndex((cat) => cat.id === active.id);
       const newIndex = prev.findIndex((cat) => cat.id === over.id);
-
       if (oldIndex === -1 || newIndex === -1) return prev;
-      categoryOrderDirty.current = true;
       return arrayMove(prev, oldIndex, newIndex);
     });
   };
 
-  const handleCategoryDragCancel = () => {
-    setDraggingCategoryId(null);
+  const handleDragCancel = () => {
+    // Drag was cancelled, do nothing
   };
 
   const persistCategoryOrder = async () => {
-    if (!categoryOrderDirty.current) return;
+    const ordered = categories.map((cat, index) => ({
+      id: cat.id,
+      sortOrder: index,
+    }));
     try {
-      const items = categories.map((cat, index) => ({
-        id: cat.id,
-        sortOrder: index,
-      }));
-      await api.reorderBrainCategories(items);
-      // Sync local sortOrder values
-      setCategories((prev) => prev.map((cat, i) => ({ ...cat, sortOrder: i })));
-      categoryOrderDirty.current = false;
+      await api.reorderBrainCategories(ordered);
     } catch (err: any) {
       toast(err.message || t("brain.persistOrderFailed"), "error");
     }
@@ -736,11 +660,15 @@ export function BrainMemoryPage() {
                 <span className="h-1 w-1 rounded-full bg-surface-300 dark:bg-surface-700" />
                 <span>{t("brain.categoryDragHint")}</span>
               </div>
-              {draggingCategoryId && (
-                <span className="rounded-full bg-brand-50 px-2.5 py-1 text-[10px] font-semibold text-brand-600 dark:bg-brand-950/70 dark:text-brand-300">
-                  {t("brain.categoryOrderHint")}
-                </span>
-              )}
+            </div>
+
+            <div className="mb-3 flex items-center gap-2 text-xs text-surface-500 dark:text-surface-400">
+              <span className="font-semibold text-surface-700 dark:text-surface-200">
+                {categories.length}
+              </span>
+              <span>{t("brain.categoryCount")}</span>
+              <span className="h-1 w-1 rounded-full bg-surface-300 dark:bg-surface-700" />
+              <span>{t("brain.categoryDragHint")}</span>
             </div>
 
             {categories.length === 0 ? (
@@ -766,23 +694,18 @@ export function BrainMemoryPage() {
               </div>
             ) : (
               <DndContext
-                sensors={categoryDragSensors}
+                sensors={sensors}
                 collisionDetection={closestCenter}
-                onDragStart={handleCategoryDragStart}
-                onDragEnd={handleCategoryDragEnd}
-                onDragCancel={handleCategoryDragCancel}
+                onDragEnd={handleDragEnd}
+                onDragCancel={handleDragCancel}
               >
                 <SortableContext
                   items={categories.map((cat) => cat.id)}
                   strategy={verticalListSortingStrategy}
                 >
-                  <div
-                    ref={categoryListRef}
-                    style={{ maxHeight: categoryListHeight }}
-                    className="space-y-2 overflow-y-auto pr-1"
-                  >
+                  <div className="space-y-2 overflow-y-auto pr-1" style={{ maxHeight: 360 }}>
                     {categories.map((cat, index) => (
-                      <SortableCategoryItem
+                      <CategoryListItem
                         key={cat.id}
                         category={cat}
                         index={index}
@@ -793,32 +716,6 @@ export function BrainMemoryPage() {
                     ))}
                   </div>
                 </SortableContext>
-                <DragOverlay dropAnimation={null}>
-                  {draggingCategoryId ? (() => {
-                    const cat = categories.find((c) => c.id === draggingCategoryId);
-                    const idx = categories.findIndex((c) => c.id === draggingCategoryId);
-                    if (!cat) return null;
-                    return (
-                      <div
-                        className="flex items-center gap-3 rounded-xl border border-brand-300 bg-white px-3 py-3 shadow-lg dark:border-brand-800 dark:bg-surface-950"
-                      >
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="h-9 w-9 shrink-0 cursor-grabbing rounded-lg text-surface-400 dark:hover:bg-surface-900 dark:hover:text-surface-200"
-                        >
-                          <GripVertical className="h-4 w-4" />
-                        </Button>
-                        <CategoryItemContent
-                          category={cat}
-                          index={idx}
-                          t={t}
-                        />
-                      </div>
-                    );
-                  })() : null}
-                </DragOverlay>
               </DndContext>
             )}
           </div>
