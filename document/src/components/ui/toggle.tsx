@@ -32,7 +32,10 @@ const Toggle = React.forwardRef<
 >(({ className, variant, size, ...props }, ref) => (
   <TogglePrimitive.Root
     ref={ref}
-    className={cn(toggleVariants({ variant, size, className }))}
+    className={cn(
+      toggleVariants({ variant, size, className }),
+      props.pressed && "bg-surface-200 text-surface-900 dark:bg-surface-700 dark:text-surface-100"
+    )}
     {...props}
   />
 ));
