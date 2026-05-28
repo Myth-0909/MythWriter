@@ -10,6 +10,14 @@ import {
   User, MapPin, Zap, Layers, Loader2,
   type LucideIcon,
 } from "lucide-react";
+import { Tooltip } from "@/components/ui/tooltip";
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from "@/components/ui/select";
 
 type Category = "character" | "location" | "concept" | "other";
 
@@ -252,20 +260,22 @@ export function BrainMemoryPage() {
 
                   {/* Footer Actions */}
                   <div className="flex items-center justify-end gap-1.5 border-t border-surface-100 pt-3 dark:border-surface-800">
-                    <button
-                      onClick={() => handleOpenEdit(card)}
-                      className="p-1.5 text-surface-400 hover:text-brand-500 hover:bg-surface-100 rounded-md transition-colors cursor-pointer dark:hover:bg-surface-800"
-                      title="编辑"
-                    >
-                      <Edit2 className="h-3.5 w-3.5" />
-                    </button>
-                    <button
-                      onClick={() => setDeleteTargetId(card.id)}
-                      className="p-1.5 text-surface-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors cursor-pointer dark:hover:bg-red-950/30"
-                      title="删除"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
+                    <Tooltip content="编辑" delay={150}>
+                      <button
+                        onClick={() => handleOpenEdit(card)}
+                        className="p-1.5 text-surface-400 hover:text-brand-500 hover:bg-surface-100 rounded-md transition-colors cursor-pointer dark:hover:bg-surface-800"
+                      >
+                        <Edit2 className="h-3.5 w-3.5" />
+                      </button>
+                    </Tooltip>
+                    <Tooltip content="删除" delay={150}>
+                      <button
+                        onClick={() => setDeleteTargetId(card.id)}
+                        className="p-1.5 text-surface-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors cursor-pointer dark:hover:bg-red-950/30"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </Tooltip>
                   </div>
                 </div>
               );
@@ -317,16 +327,17 @@ export function BrainMemoryPage() {
               <label className="text-xs font-semibold text-surface-600 dark:text-surface-300">
                 {t("brain.cardCategory")}
               </label>
-              <select
-                value={formCategory}
-                onChange={(e) => setFormCategory(e.target.value as Category)}
-                className="w-full px-3 py-2 text-xs border border-surface-200 bg-white rounded-lg focus:outline-none focus:ring-1 focus:ring-brand-500 dark:border-surface-800 dark:bg-surface-900 dark:text-surface-100 cursor-pointer"
-              >
-                <option value="character">{t("brain.cardCategory.character")}</option>
-                <option value="location">{t("brain.cardCategory.location")}</option>
-                <option value="concept">{t("brain.cardCategory.concept")}</option>
-                <option value="other">{t("brain.cardCategory.other")}</option>
-              </select>
+              <Select value={formCategory} onValueChange={(val) => setFormCategory(val as Category)}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder={t("brain.cardCategory")} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="character">{t("brain.cardCategory.character")}</SelectItem>
+                  <SelectItem value="location">{t("brain.cardCategory.location")}</SelectItem>
+                  <SelectItem value="concept">{t("brain.cardCategory.concept")}</SelectItem>
+                  <SelectItem value="other">{t("brain.cardCategory.other")}</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
             {/* Description */}

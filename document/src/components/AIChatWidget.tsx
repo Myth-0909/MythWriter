@@ -10,6 +10,7 @@ import { useDocuments } from "@/store";
 import { useAuth } from "@/auth";
 import { api } from "@/api";
 import { markdownToHtml } from "@/lib/markdown";
+import { Tooltip } from "@/components/ui/tooltip";
 
 const API_BASE = "http://localhost:3000/api";
 
@@ -190,6 +191,19 @@ export function AIChatWidget() {
   const [references, setReferences] = useState<DocumentReference[]>([]);
   const [mentionOpen, setMentionOpen] = useState(false);
   const [mentionIndex, setMentionIndex] = useState(0);
+
+  // Automatically clear references when the corresponding document is deleted/removed
+  useEffect(() => {
+    if (references.length === 0) return;
+    setReferences((prev) => {
+      const activeIds = new Set(documents.map((d) => d.id));
+      const next = prev.filter((ref) => activeIds.has(ref.id));
+      if (next.length !== prev.length) {
+        return next;
+      }
+      return prev;
+    });
+  }, [documents, references]);
 
   // Save conversation to DB
   const saveConversation = useCallback(async () => {
@@ -626,15 +640,21 @@ export function AIChatWidget() {
                 </div>
               </div>
               <div className="flex items-center gap-1">
-                <Button variant="ghost" size="icon" onClick={() => { setEditMode(!editMode); setSelectedMsgs(new Set()); }} className={cn("h-8 w-8", editMode && "bg-brand-100 text-brand-600 dark:bg-brand-900 dark:text-brand-400")} title="编辑">
-                  <Pencil className="h-4 w-4" />
-                </Button>
-                <Button variant="ghost" size="icon" onClick={() => setDeleteConfirm(true)} className="h-8 w-8" title={t("ai.clearHistory")}>
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-                <Button variant="ghost" size="icon" onClick={() => { abortRef.current?.abort(); saveConversation(); setOpen(false); }} className="h-8 w-8">
-                  <X className="h-4 w-4" />
-                </Button>
+                <Tooltip content={t("card.edit")} delay={150}>
+                  <Button variant="ghost" size="icon" onClick={() => { setEditMode(!editMode); setSelectedMsgs(new Set()); }} className={cn("h-8 w-8", editMode && "bg-brand-100 text-brand-600 dark:bg-brand-900 dark:text-brand-400")}>
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                </Tooltip>
+                <Tooltip content={t("ai.clearHistory")} delay={150}>
+                  <Button variant="ghost" size="icon" onClick={() => setDeleteConfirm(true)} className="h-8 w-8">
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </Tooltip>
+                <Tooltip content="关闭" delay={150}>
+                  <Button variant="ghost" size="icon" onClick={() => { abortRef.current?.abort(); saveConversation(); setOpen(false); }} className="h-8 w-8">
+                    <X className="h-4 w-4" />
+                  </Button>
+                </Tooltip>
               </div>
             </div>
 
@@ -737,36 +757,38 @@ export function AIChatWidget() {
                         {/* Feedback buttons: centered vertically, appear on hover */}
                         {!isUser && !streaming && msg.content && !feedbackDoneRef.current.has(i) && (
                           <div className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-full pl-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex flex-col gap-0.5">
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                if (showRating && feedbackMsgIdx === i) {
-                                  setClosingRating(true);
-                                  setTimeout(() => { setShowRating(false); setFeedbackMsgIdx(null); setClosingRating(false); }, 180);
-                                } else {
-                                  setFeedbackMsgIdx(i); setShowRating(true); setShowDislikeOpts(false);
-                                }
-                              }}
-                              className="p-0.5 rounded text-surface-300 hover:text-amber-500 hover:bg-surface-100 transition-colors"
-                              title={t("ai.like")}
-                            >
-                              <ThumbsUp className="h-3 w-3" />
-                            </button>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                if (showDislikeOpts && feedbackMsgIdx === i) {
-                                  setClosingDislike(true);
-                                  setTimeout(() => { setShowDislikeOpts(false); setFeedbackMsgIdx(null); setClosingDislike(false); }, 180);
-                                } else {
-                                  setFeedbackMsgIdx(i); setShowDislikeOpts(true); setShowRating(false);
-                                }
-                              }}
-                              className="p-0.5 rounded text-surface-300 hover:text-red-500 hover:bg-surface-100 transition-colors"
-                              title={t("ai.dislike")}
-                            >
-                              <ThumbsDown className="h-3 w-3" />
-                            </button>
+                            <Tooltip content={t("ai.like")} delay={150} side="right">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (showRating && feedbackMsgIdx === i) {
+                                    setClosingRating(true);
+                                    setTimeout(() => { setShowRating(false); setFeedbackMsgIdx(null); setClosingRating(false); }, 180);
+                                  } else {
+                                    setFeedbackMsgIdx(i); setShowRating(true); setShowDislikeOpts(false);
+                                  }
+                                }}
+                                className="p-0.5 rounded text-surface-300 hover:text-amber-500 hover:bg-surface-100 transition-colors"
+                              >
+                                <ThumbsUp className="h-3 w-3" />
+                              </button>
+                            </Tooltip>
+                            <Tooltip content={t("ai.dislike")} delay={150} side="right">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (showDislikeOpts && feedbackMsgIdx === i) {
+                                    setClosingDislike(true);
+                                    setTimeout(() => { setShowDislikeOpts(false); setFeedbackMsgIdx(null); setClosingDislike(false); }, 180);
+                                  } else {
+                                    setFeedbackMsgIdx(i); setShowDislikeOpts(true); setShowRating(false);
+                                  }
+                                }}
+                                className="p-0.5 rounded text-surface-300 hover:text-red-500 hover:bg-surface-100 transition-colors"
+                              >
+                                <ThumbsDown className="h-3 w-3" />
+                              </button>
+                            </Tooltip>
                             {/* Star rating popover */}
                             {showRating && feedbackMsgIdx === i && (
                               <div className={cn(
@@ -956,28 +978,34 @@ export function AIChatWidget() {
                 </div>
               )}
               </div>
-              <Button
-                size="icon"
-                variant="ghost"
-                onClick={toggleVoice}
-                disabled={isGenerating}
-                className={cn(
-                  "h-9 w-9 shrink-0 rounded-xl transition-colors",
-                  listening
-                    ? "text-red-500 bg-red-50 hover:bg-red-100 animate-pulse"
-                    : "text-surface-400 hover:text-surface-600 hover:bg-surface-100 dark:hover:bg-surface-800"
-                )}
-              >
-                {listening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
-              </Button>
+              <Tooltip content={listening ? "停止录音" : "语音输入"} delay={150}>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={toggleVoice}
+                  disabled={isGenerating}
+                  className={cn(
+                    "h-9 w-9 shrink-0 rounded-xl transition-colors",
+                    listening
+                      ? "text-red-500 bg-red-50 hover:bg-red-100 animate-pulse"
+                      : "text-surface-400 hover:text-surface-600 hover:bg-surface-100 dark:hover:bg-surface-800"
+                  )}
+                >
+                  {listening ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+                </Button>
+              </Tooltip>
               {isGenerating ? (
-                <Button size="icon" onClick={handleStop} className="h-9 w-9 shrink-0 rounded-xl bg-red-500 hover:bg-red-600">
-                  <Square className="h-3.5 w-3.5 text-white" fill="white" />
-                </Button>
+                <Tooltip content="停止生成" delay={150}>
+                  <Button size="icon" onClick={handleStop} className="h-9 w-9 shrink-0 rounded-xl bg-red-500 hover:bg-red-600">
+                    <Square className="h-3.5 w-3.5 text-white" fill="white" />
+                  </Button>
+                </Tooltip>
               ) : (
-                <Button size="icon" onClick={handleSend} disabled={!input.trim()} className="h-9 w-9 shrink-0 rounded-xl">
-                  <Send className="h-4 w-4" />
-                </Button>
+                <Tooltip content="发送" delay={150}>
+                  <Button size="icon" onClick={handleSend} disabled={!input.trim()} className="h-9 w-9 shrink-0 rounded-xl">
+                    <Send className="h-4 w-4" />
+                  </Button>
+                </Tooltip>
               )}
             </div>
           </div>

@@ -17,7 +17,7 @@ const translations = {
   "nav.followSystem": { zh: "跟随系统", en: "Follow System" },
   "nav.expand": { zh: "展开菜单", en: "Expand Menu" },
   "nav.collapse": { zh: "收起菜单", en: "Collapse Menu" },
-  "nav.brain": { zh: "设定脑库", en: "AI Brain Base" },
+  "nav.brain": { zh: "AI设定脑库", en: "AI Brain Base" },
 
   // AI Brain / Knowledge Base
   "brain.title": { zh: "AI 设定脑库", en: "AI Brain Memory Base" },

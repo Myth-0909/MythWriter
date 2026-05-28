@@ -1,7 +1,8 @@
 import { cn } from "@/lib/utils";
-import { Pencil, Trash2, FolderInput, type LucideIcon } from "lucide-react";
+import { Trash2, FolderInput, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useI18n } from "@/components/I18nProvider";
+import { Tooltip } from "@/components/ui/tooltip";
 
 interface DocumentCardProps {
   title: string;
@@ -56,19 +57,19 @@ export function DocumentCard({
         </div>
         <div className="flex items-center gap-0.5 opacity-0 transition-opacity duration-200 group-hover:opacity-100 shrink-0">
           {onMoveToGroup && (
-            <Button variant="ghost" size="icon-sm" className="h-6 w-6 hover:text-brand-500" title={t("group.moveTo")}
-              onClick={(e) => { e.stopPropagation(); onMoveToGroup(); }}>
-              <FolderInput className="h-3.5 w-3.5" />
-            </Button>
+            <Tooltip content={t("group.moveTo")} delay={150}>
+              <Button variant="ghost" size="icon-sm" className="h-6 w-6 hover:text-brand-500"
+                onClick={(e) => { e.stopPropagation(); onMoveToGroup(); }}>
+                <FolderInput className="h-3.5 w-3.5" />
+              </Button>
+            </Tooltip>
           )}
-          <Button variant="ghost" size="icon-sm" className="h-6 w-6" title={t("card.edit")}
-            onClick={(e) => { e.stopPropagation(); onClick?.(); }}>
-            <Pencil className="h-3 w-3" />
-          </Button>
-          <Button variant="ghost" size="icon-sm" className="h-6 w-6 hover:text-red-500" title={t("card.delete")}
-            onClick={(e) => { e.stopPropagation(); onDelete?.(); }}>
-            <Trash2 className="h-3 w-3" />
-          </Button>
+          <Tooltip content={t("card.delete")} delay={150}>
+            <Button variant="ghost" size="icon-sm" className="h-6 w-6 hover:text-red-500"
+              onClick={(e) => { e.stopPropagation(); onDelete?.(); }}>
+              <Trash2 className="h-3 w-3" />
+            </Button>
+          </Tooltip>
         </div>
       </div>
     );
@@ -80,7 +81,7 @@ export function DocumentCard({
       onClick={onClick}
       className={cn(
         "group relative flex flex-col rounded-xl border border-surface-200 bg-white p-5 transition-all duration-200",
-        "dark:border-surface-800 dark:bg-surface-900 dark:hover:border-surface-700 dark:hover:shadow-lg dark:hover:shadow-surface-900/50",
+        "dark:border-surface-850 dark:bg-surface-900 dark:hover:border-surface-700 dark:hover:shadow-lg dark:hover:shadow-surface-900/50",
         onClick ? "hover:shadow-md hover:border-surface-300 active:scale-[0.98] cursor-pointer" : ""
       )}
     >
@@ -106,19 +107,19 @@ export function DocumentCard({
         </div>
         <div className="flex items-center gap-0.5 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
           {onMoveToGroup && (
-            <Button variant="ghost" size="icon-sm" className="h-6 w-6 hover:text-brand-500" title={t("group.moveTo")}
-              onClick={(e) => { e.stopPropagation(); onMoveToGroup(); }}>
-              <FolderInput className="h-3.5 w-3.5" />
-            </Button>
+            <Tooltip content={t("group.moveTo")} delay={150}>
+              <Button variant="ghost" size="icon-sm" className="h-6 w-6 hover:text-brand-500"
+                onClick={(e) => { e.stopPropagation(); onMoveToGroup(); }}>
+                <FolderInput className="h-3.5 w-3.5" />
+              </Button>
+            </Tooltip>
           )}
-          <Button variant="ghost" size="icon-sm" className="h-6 w-6" title={t("card.edit")}
-            onClick={(e) => { e.stopPropagation(); onClick?.(); }}>
-            <Pencil className="h-3 w-3" />
-          </Button>
-          <Button variant="ghost" size="icon-sm" className="h-6 w-6 hover:text-red-500" title={t("card.delete")}
-            onClick={(e) => { e.stopPropagation(); onDelete?.(); }}>
-            <Trash2 className="h-3 w-3" />
-          </Button>
+          <Tooltip content={t("card.delete")} delay={150}>
+            <Button variant="ghost" size="icon-sm" className="h-6 w-6 hover:text-red-500"
+              onClick={(e) => { e.stopPropagation(); onDelete?.(); }}>
+              <Trash2 className="h-3 w-3" />
+            </Button>
+          </Tooltip>
         </div>
       </div>
     </div>
