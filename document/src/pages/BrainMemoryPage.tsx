@@ -201,21 +201,30 @@ export function BrainMemoryPage() {
     })
   );
 
-  // Constrain drag overlay within the list container bounds
+  // Constrain drag overlay to container bounds (vertical only, no horizontal scroll)
   const categoryListRef = useRef<HTMLDivElement | null>(null);
   const restrictToCategoryList: Modifier = (args) => {
     const container = categoryListRef.current;
-    if (!container) return args.transform;
+    if (!container || !args.containerNodeRect) return args.transform;
     const containerRect = container.getBoundingClientRect();
-    const elementRect = args.containerNodeRect ?? containerRect;
+    const overlayRect = args.containerNodeRect;
 
-    const minY = containerRect.top - elementRect.top;
-    const maxY = containerRect.bottom - elementRect.bottom;
+    // Overlay position on screen = rect + transform delta
+    const overlayTopOnScreen = overlayRect.top + args.transform.y;
+    const overlayBottomOnScreen = overlayRect.bottom + args.transform.y;
+
+    let newY = args.transform.y;
+    if (overlayTopOnScreen < containerRect.top) {
+      newY = containerRect.top - overlayRect.top;
+    }
+    if (overlayBottomOnScreen > containerRect.bottom) {
+      newY = containerRect.bottom - overlayRect.bottom;
+    }
 
     return {
       ...args.transform,
-      x: args.transform.x,
-      y: Math.max(minY, Math.min(maxY, args.transform.y)),
+      x: 0,
+      y: newY,
     };
   };
 
