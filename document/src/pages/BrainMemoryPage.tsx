@@ -1,11 +1,13 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Scrollbar } from "@/components/ui/scrollbar";
 import { ConfirmModal } from "@/components/ConfirmModal";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { TabGroup } from "@/components/ui/tab-group";
+import { Button } from "@/components/ui/button";
 import { useI18n } from "@/components/I18nProvider";
 import { useToast } from "@/components/Toast";
 import { api } from "@/api";
+import { cn } from "@/lib/utils";
 import {
   Brain, Sparkles, Plus, Search, Edit2, Trash2, X, GripVertical,
   Layers, Loader2, Check,
@@ -74,24 +76,74 @@ export function BrainMemoryPage() {
   const [deleteCategoryTargetId, setDeleteCategoryTargetId] = useState<string | null>(null);
 
   // Drag reorder state
-  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const categoryRowRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const [draggingCategoryId, setDraggingCategoryId] = useState<string | null>(null);
+  const [dragOverCategoryId, setDragOverCategoryId] = useState<string | null>(null);
 
-  const handleDragStart = (index: number) => setDragIndex(index);
+  const animateCategoryRows = (orderedCategories: BrainCategory[]) => {
+    const firstRects = new Map(
+      orderedCategories.map((cat) => [
+        cat.id,
+        categoryRowRefs.current[cat.id]?.getBoundingClientRect(),
+      ])
+    );
 
-  const handleDragOver = (e: React.DragEvent, index: number) => {
-    e.preventDefault();
-    if (dragIndex === null || dragIndex === index) return;
+    requestAnimationFrame(() => {
+      orderedCategories.forEach((cat) => {
+        const row = categoryRowRefs.current[cat.id];
+        const firstRect = firstRects.get(cat.id);
+        if (!row || !firstRect) return;
+
+        const deltaY = firstRect.top - row.getBoundingClientRect().top;
+        if (Math.abs(deltaY) < 1) return;
+
+        row.getAnimations().forEach((animation) => animation.cancel());
+        row.animate(
+          [
+            { transform: `translateY(${deltaY}px)` },
+            { transform: "translateY(0)" },
+          ],
+          {
+            duration: 220,
+            easing: "cubic-bezier(0.22, 1, 0.36, 1)",
+          }
+        );
+      });
+    });
+  };
+
+  const moveCategoryTo = (targetId: string) => {
+    if (!draggingCategoryId || draggingCategoryId === targetId) return;
+    setDragOverCategoryId(targetId);
     setCategories((prev) => {
+      const from = prev.findIndex((cat) => cat.id === draggingCategoryId);
+      const to = prev.findIndex((cat) => cat.id === targetId);
+      if (from === -1 || to === -1 || from === to) return prev;
+
+      animateCategoryRows(prev);
       const next = [...prev];
-      const [moved] = next.splice(dragIndex, 1);
-      next.splice(index, 0, moved);
-      setDragIndex(index);
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
       return next;
     });
   };
 
-  const handleDragEnd = () => {
-    setDragIndex(null);
+  const handleCategoryDragStart = (event: React.PointerEvent<HTMLButtonElement>, categoryId: string) => {
+    event.preventDefault();
+    setDraggingCategoryId(categoryId);
+    setDragOverCategoryId(categoryId);
+  };
+
+  const handleCategoryDragMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!draggingCategoryId) return;
+    const target = (event.target as HTMLElement).closest<HTMLElement>("[data-category-id]");
+    const targetId = target?.dataset.categoryId;
+    if (targetId) moveCategoryTo(targetId);
+  };
+
+  const handleCategoryDragEnd = () => {
+    setDraggingCategoryId(null);
+    setDragOverCategoryId(null);
   };
 
   const persistCategoryOrder = async () => {
@@ -120,6 +172,24 @@ export function BrainMemoryPage() {
   useEffect(() => {
     fetchData();
   }, []);
+
+  useEffect(() => {
+    if (!draggingCategoryId) return;
+
+    const previousCursor = document.body.style.cursor;
+    const previousUserSelect = document.body.style.userSelect;
+    document.body.style.cursor = "grabbing";
+    document.body.style.userSelect = "none";
+    window.addEventListener("pointerup", handleCategoryDragEnd);
+    window.addEventListener("pointercancel", handleCategoryDragEnd);
+
+    return () => {
+      document.body.style.cursor = previousCursor;
+      document.body.style.userSelect = previousUserSelect;
+      window.removeEventListener("pointerup", handleCategoryDragEnd);
+      window.removeEventListener("pointercancel", handleCategoryDragEnd);
+    };
+  }, [draggingCategoryId]);
 
   const handleOpenAdd = () => {
     setIsEditing(false);
@@ -499,60 +569,158 @@ export function BrainMemoryPage() {
         if (!open) persistCategoryOrder();
         setManageDialogOpen(open);
       }}>
-        <DialogContent className="max-w-[480px]">
-          <div className="flex flex-col gap-4">
-            <div className="flex items-center justify-start gap-3 pr-8">
-              <DialogTitle>{t("brain.manageCategories")}</DialogTitle>
-              <button
+        <DialogContent className="max-w-[560px] overflow-hidden p-0">
+          <div className="border-b border-surface-200 bg-surface-50/80 px-6 py-5 dark:border-surface-800 dark:bg-surface-900/95">
+            <div className="flex items-start justify-between gap-4 pr-8">
+              <div className="min-w-0">
+                <div className="mb-1.5 flex items-center gap-2.5">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-50 text-brand-600 shadow-sm ring-1 ring-brand-100 dark:bg-brand-950/70 dark:text-brand-300 dark:ring-brand-900">
+                    <Layers className="h-4.5 w-4.5" />
+                  </div>
+                  <DialogTitle className="text-base font-bold text-surface-900 dark:text-surface-100">
+                    {t("brain.manageCategories")}
+                  </DialogTitle>
+                </div>
+                <DialogDescription className="text-xs leading-relaxed text-surface-500 dark:text-surface-400">
+                  {t("brain.manageCategoriesDesc")}
+                </DialogDescription>
+              </div>
+              <Button
+                type="button"
+                size="sm"
                 onClick={handleOpenAddCategory}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-brand-500 hover:bg-brand-600 rounded-md cursor-pointer transition-colors shrink-0"
+                className="shrink-0 bg-brand-500 text-white shadow-sm hover:bg-brand-600"
               >
                 <Plus className="h-3.5 w-3.5" />
                 <span>{t("brain.createCategory")}</span>
-              </button>
+              </Button>
             </div>
-            <DialogDescription className="sr-only">Manage AI brain categories</DialogDescription>
+          </div>
+
+          <div className="px-6 py-5">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2 text-xs text-surface-500 dark:text-surface-400">
+                <span className="font-semibold text-surface-700 dark:text-surface-200">
+                  {categories.length}
+                </span>
+                <span>{t("brain.categoryCount")}</span>
+                <span className="h-1 w-1 rounded-full bg-surface-300 dark:bg-surface-700" />
+                <span>{t("brain.categoryDragHint")}</span>
+              </div>
+              {draggingCategoryId && (
+                <span className="rounded-full bg-brand-50 px-2.5 py-1 text-[10px] font-semibold text-brand-600 dark:bg-brand-950/70 dark:text-brand-300">
+                  {t("brain.categoryOrderHint")}
+                </span>
+              )}
+            </div>
+
             {categories.length === 0 ? (
-              <p className="text-sm text-surface-400 text-center py-8">{t("brain.noCategories")}</p>
+              <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-surface-200 bg-white px-6 py-10 text-center dark:border-surface-800 dark:bg-surface-950">
+                <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-50 text-brand-500 dark:bg-brand-950/70 dark:text-brand-300">
+                  <Layers className="h-5 w-5" />
+                </div>
+                <h3 className="text-sm font-semibold text-surface-800 dark:text-surface-100">
+                  {t("brain.noCategoriesTitle")}
+                </h3>
+                <p className="mt-1 text-xs text-surface-400">
+                  {t("brain.noCategories")}
+                </p>
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={handleOpenAddCategory}
+                  className="mt-5 bg-brand-500 text-white hover:bg-brand-600"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  <span>{t("brain.createCategory")}</span>
+                </Button>
+              </div>
             ) : (
-              <div className="flex flex-col gap-2 max-h-64 overflow-y-auto pr-2">
-                {categories.map((cat, index) => (
-                  <div
-                    key={cat.id}
-                    draggable
-                    onDragStart={() => handleDragStart(index)}
-                    onDragOver={(e) => handleDragOver(e, index)}
-                    onDragEnd={handleDragEnd}
-                    className={`flex items-center gap-2 rounded-lg border py-2.5 transition-all duration-200 dark:border-surface-800 border-surface-200 ${
-                      dragIndex === index
-                        ? "opacity-40 scale-[0.98]"
-                        : "opacity-100 hover:bg-surface-50 dark:hover:bg-surface-800/50"
-                    }`}
-                  >
-                    <GripVertical className="h-4 w-4 shrink-0 cursor-grab text-surface-400 active:cursor-grabbing" />
-                    <span
-                      className="inline-block h-3 w-3 rounded-full shrink-0"
-                      style={{ backgroundColor: cat.color || "#94a3b8" }}
-                    />
-                    <span className="flex-1 text-sm font-medium text-surface-800 dark:text-surface-200 truncate">
-                      {cat.name}
-                    </span>
-                    <div className="flex items-center gap-1 shrink-0">
-                      <button
-                        onClick={() => handleOpenEditCategory(cat)}
-                        className="p-1 text-surface-400 hover:text-brand-500 rounded cursor-pointer"
+              <div
+                className="max-h-[360px] space-y-2 overflow-y-auto pr-1"
+                onPointerMove={handleCategoryDragMove}
+              >
+                {categories.map((cat, index) => {
+                  const isDragging = draggingCategoryId === cat.id;
+                  const isDropTarget = dragOverCategoryId === cat.id && draggingCategoryId !== cat.id;
+
+                  return (
+                    <div
+                      key={cat.id}
+                      ref={(node) => {
+                        categoryRowRefs.current[cat.id] = node;
+                      }}
+                      data-category-id={cat.id}
+                      className={cn(
+                        "group relative flex items-center gap-3 rounded-xl border bg-white px-3 py-3 shadow-sm transition-[transform,box-shadow,border-color,background-color] duration-200 ease-out dark:bg-surface-950",
+                        isDragging
+                          ? "z-10 scale-[1.015] border-brand-300 bg-brand-50/70 shadow-lg ring-2 ring-brand-100 dark:border-brand-700 dark:bg-brand-950/60 dark:ring-brand-900"
+                          : "border-surface-200 hover:-translate-y-0.5 hover:border-surface-300 hover:shadow-md dark:border-surface-800 dark:hover:border-surface-700",
+                        isDropTarget && "border-brand-300 bg-brand-50/50 dark:border-brand-800 dark:bg-brand-950/40"
+                      )}
+                    >
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onPointerDown={(event) => handleCategoryDragStart(event, cat.id)}
+                        className="h-9 w-9 cursor-grab rounded-lg text-surface-400 hover:bg-surface-100 hover:text-surface-700 active:cursor-grabbing dark:hover:bg-surface-900 dark:hover:text-surface-200"
+                        aria-label={t("brain.categoryDragHint")}
                       >
-                        <Edit2 className="h-3.5 w-3.5" />
-                      </button>
-                      <button
-                        onClick={() => setDeleteCategoryTargetId(cat.id)}
-                        className="p-1 text-surface-400 hover:text-red-500 rounded cursor-pointer"
+                        <GripVertical className="h-4 w-4" />
+                      </Button>
+
+                      <span className="w-6 text-[10px] font-semibold tabular-nums text-surface-300 dark:text-surface-700">
+                        {String(index + 1).padStart(2, "0")}
+                      </span>
+
+                      <div
+                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-xs font-bold text-white shadow-sm"
+                        style={{ backgroundColor: cat.color || "#94a3b8" }}
                       >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
+                        {cat.name.charAt(0)}
+                      </div>
+
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-sm font-semibold text-surface-800 dark:text-surface-100">
+                          {cat.name}
+                        </div>
+                        <div className="mt-0.5 flex items-center gap-1.5 text-[10px] font-medium text-surface-400">
+                          <span
+                            className="inline-block h-2 w-2 rounded-full"
+                            style={{ backgroundColor: cat.color || "#94a3b8" }}
+                          />
+                          <span>{cat.color || "#94a3b8"}</span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1 opacity-70 transition-opacity group-hover:opacity-100">
+                        <Tooltip content={t("brain.edit")} delay={150}>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleOpenEditCategory(cat)}
+                            className="h-8 w-8 text-surface-400 hover:bg-brand-50 hover:text-brand-600 dark:hover:bg-brand-950/60 dark:hover:text-brand-300"
+                          >
+                            <Edit2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </Tooltip>
+                        <Tooltip content={t("brain.delete")} delay={150}>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => setDeleteCategoryTargetId(cat.id)}
+                            className="h-8 w-8 text-surface-400 hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-950/30"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </Tooltip>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -563,7 +731,7 @@ export function BrainMemoryPage() {
       <Dialog open={categoryFormOpen} onOpenChange={setCategoryFormOpen}>
         <DialogContent className="max-w-[400px]">
           <DialogTitle>{editingCategoryId ? t("brain.editCategory") : t("brain.createCategory")}</DialogTitle>
-          <DialogDescription className="sr-only">Category form</DialogDescription>
+          <DialogDescription className="sr-only">{t("brain.categoryFormDesc")}</DialogDescription>
           <form onSubmit={handleSaveCategory} className="flex flex-col gap-4 mt-3">
             <div className="flex flex-col gap-1.5">
               <label className="text-xs font-semibold text-surface-600 dark:text-surface-300">
