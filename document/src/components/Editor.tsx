@@ -67,6 +67,14 @@ export function Editor({ documentId }: EditorProps) {
   const [selectionChars, setSelectionChars] = useState(0);
   const [toolbarRevision, setToolbarRevision] = useState(0);
 
+  const titleRef = useRef(title);
+  const documentIdRef = useRef(documentId);
+  const updateDocumentRef = useRef(updateDocument);
+
+  titleRef.current = title;
+  documentIdRef.current = documentId;
+  updateDocumentRef.current = updateDocument;
+
   const syncSelectionStyles = useCallback((ed: any) => {
     if (!ed) return;
     const fs = ed.getAttributes("textStyle").fontSize as string | undefined;
@@ -127,6 +135,19 @@ export function Editor({ documentId }: EditorProps) {
   useEffect(() => {
     if (!editor || !doc) return;
     if (loadedDocumentIdRef.current === doc.id) return;
+
+    // Flush pending changes of the PREVIOUS document before loading the new one
+    if (loadedDocumentIdRef.current && saveTimerRef.current) {
+      const prevDocId = loadedDocumentIdRef.current;
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+      
+      updateDocumentRef.current(prevDocId, {
+        title: titleRef.current,
+        content: editor.getHTML(),
+      });
+    }
+
     editor.chain().setContent(doc.content).setTextSelection(0).run();
     setSelectionChars(0);
     setTitle(doc.title);
@@ -134,33 +155,48 @@ export function Editor({ documentId }: EditorProps) {
     loadedDocumentIdRef.current = doc.id;
   }, [doc?.id, editor, updateCounts]);
 
+  // Flush pending save on unmount
+  useEffect(() => {
+    return () => {
+      if (saveTimerRef.current && loadedDocumentIdRef.current) {
+        clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = null;
+        updateDocumentRef.current(loadedDocumentIdRef.current, {
+          title: titleRef.current,
+          content: editor?.getHTML() || "",
+        });
+      }
+    };
+  }, [editor]);
+
   const autoSave = useCallback(
     (ed: typeof editor) => {
-      if (!documentId || !ed) return;
+      if (!documentIdRef.current || !ed) return;
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
 
       setSaveStatus("saving");
       saveTimerRef.current = setTimeout(() => {
         const content = ed.getHTML();
-        updateDocument(documentId, { title, content });
+        updateDocumentRef.current(documentIdRef.current!, { title: titleRef.current, content });
         setSaveStatus("saved");
         setTimeout(() => setSaveStatus(""), 1500);
       }, 1500);
     },
-    [documentId, title, updateDocument]
+    []
   );
 
   // Auto-save on title change
   useEffect(() => {
-    if (title && editor && documentId) {
-      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-      setSaveStatus("saving");
-      saveTimerRef.current = setTimeout(() => {
-        updateDocument(documentId, { title, content: editor.getHTML() });
-        setSaveStatus("saved");
-        setTimeout(() => setSaveStatus(""), 1500);
-      }, 1500);
-    }
+    if (!documentId || !editor || !doc) return;
+    if (title === doc.title) return; // Prevent initial load/switch auto-save trigger
+
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    setSaveStatus("saving");
+    saveTimerRef.current = setTimeout(() => {
+      updateDocumentRef.current(documentId, { title, content: editor.getHTML() });
+      setSaveStatus("saved");
+      setTimeout(() => setSaveStatus(""), 1500);
+    }, 1500);
   }, [title]);
 
   const handleTitleKeyDown = (e: React.KeyboardEvent) => {
