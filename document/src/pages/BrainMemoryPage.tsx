@@ -104,8 +104,8 @@ export function BrainMemoryPage() {
             { transform: "translateY(0)" },
           ],
           {
-            duration: 220,
-            easing: "cubic-bezier(0.22, 1, 0.36, 1)",
+            duration: 160,
+            easing: "ease-out",
           }
         );
       });
@@ -569,7 +569,7 @@ export function BrainMemoryPage() {
         if (!open) persistCategoryOrder();
         setManageDialogOpen(open);
       }}>
-        <DialogContent className="max-w-[560px] overflow-hidden p-0">
+        <DialogContent className="max-w-[560px] overflow-hidden p-0 [&>button.absolute]:top-7">
           <div className="border-b border-surface-200 bg-surface-50/80 px-6 py-5 dark:border-surface-800 dark:bg-surface-900/95">
             <div className="flex items-start justify-between gap-4 pr-8">
               <div className="min-w-0">
@@ -652,11 +652,11 @@ export function BrainMemoryPage() {
                       }}
                       data-category-id={cat.id}
                       className={cn(
-                        "group relative flex items-center gap-3 rounded-xl border bg-white px-3 py-3 shadow-sm transition-[transform,box-shadow,border-color,background-color] duration-200 ease-out dark:bg-surface-950",
+                        "group relative flex items-center gap-3 rounded-xl border bg-white px-3 py-3 transition-[background-color,border-color] duration-150 ease-out dark:bg-surface-950",
                         isDragging
-                          ? "z-10 scale-[1.015] border-brand-300 bg-brand-50/70 shadow-lg ring-2 ring-brand-100 dark:border-brand-700 dark:bg-brand-950/60 dark:ring-brand-900"
-                          : "border-surface-200 hover:-translate-y-0.5 hover:border-surface-300 hover:shadow-md dark:border-surface-800 dark:hover:border-surface-700",
-                        isDropTarget && "border-brand-300 bg-brand-50/50 dark:border-brand-800 dark:bg-brand-950/40"
+                          ? "border-brand-300 bg-brand-50/40 dark:border-brand-800 dark:bg-brand-950/30"
+                          : "border-surface-200 hover:border-surface-300 hover:bg-surface-50/70 dark:border-surface-800 dark:hover:border-surface-700 dark:hover:bg-surface-900/70",
+                        isDropTarget && "border-brand-200 bg-brand-50/30 dark:border-brand-900 dark:bg-brand-950/20"
                       )}
                     >
                       <Button
