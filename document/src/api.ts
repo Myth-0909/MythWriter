@@ -188,6 +188,11 @@ export const api = {
       `/users/me/apikey/history/${id}/apply`, { method: "POST" }
     ),
 
+  deleteApiKeyHistory: (id: string) =>
+    request<{ success: boolean; histories: ApiKeyHistory[] }>(
+      `/users/me/apikey/history/${id}`, { method: "DELETE" }
+    ),
+
   verifyPassword: (password: string) =>
     request<{ verified: boolean }>(
       "/auth/verify-password", { method: "POST", body: JSON.stringify({ password }) }

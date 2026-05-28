@@ -1,7 +1,7 @@
 import { Router, Response } from "express";
 import { AuthRequest, authMiddleware } from "../middleware/auth";
 import { t } from "../lib/i18n";
-import { getProfile, updateProfile, uploadAvatar, getApiKey, saveApiKey, fetchModels, getApiKeySecret, listApiKeyHistories, applyApiKeyHistory } from "../services/userService";
+import { getProfile, updateProfile, uploadAvatar, getApiKey, saveApiKey, fetchModels, getApiKeySecret, listApiKeyHistories, applyApiKeyHistory, deleteApiKeyHistory } from "../services/userService";
 
 const router = Router();
 
@@ -90,6 +90,21 @@ router.post("/me/apikey/history/:id/apply", async (req: AuthRequest, res: Respon
     res.json(result);
   } catch (error) {
     res.status(500).json({ error: t("zh", "切换历史配置失败", "Failed to apply saved configuration") });
+  }
+});
+
+// DELETE /api/users/me/apikey/history/:id - Delete a saved AI service configuration
+router.delete("/me/apikey/history/:id", async (req: AuthRequest, res: Response) => {
+  try {
+    const deleted = await deleteApiKeyHistory(req.user!.userId, String(req.params.id));
+    if (!deleted) {
+      res.status(404).json({ error: t("zh", "历史配置不存在", "Saved configuration not found") });
+      return;
+    }
+    const histories = await listApiKeyHistories(req.user!.userId);
+    res.json({ success: true, histories });
+  } catch (error) {
+    res.status(500).json({ error: t("zh", "删除历史配置失败", "Failed to delete saved configuration") });
   }
 });
 

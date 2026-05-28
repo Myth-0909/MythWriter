@@ -81,8 +81,6 @@ export async function uploadAvatar(userId: string, image: string): Promise<
 const DEFAULT_API_KEY = "sk-7d2a5b1c9e4f8a0b3c6d9e1f2a5b8c4d";
 const DEFAULT_API_BASE_URL = "http://172.16.76.112:8000/v1";
 const DEFAULT_AI_MODEL = "google/gemma-4-31B-it";
-const LEGACY_API_BASE_URL = "https://api.deepseek.com/v1";
-const LEGACY_AI_MODEL = "deepseek-chat";
 
 type ApiKeyHistoryRecord = {
   id: string;
@@ -103,11 +101,11 @@ function buildModelsUrl(baseUrl: string): string {
 }
 
 function defaultBaseUrl(value?: string | null) {
-  return !value || value === LEGACY_API_BASE_URL ? DEFAULT_API_BASE_URL : value;
+  return value?.trim() || DEFAULT_API_BASE_URL;
 }
 
 function defaultModel(value?: string | null) {
-  return !value || value === LEGACY_AI_MODEL ? DEFAULT_AI_MODEL : value;
+  return value?.trim() || DEFAULT_AI_MODEL;
 }
 
 export async function getApiKey(userId: string): Promise<{
@@ -251,6 +249,20 @@ export async function applyApiKeyHistory(userId: string, historyId: string) {
   });
 
   return getApiKey(userId);
+}
+
+export async function deleteApiKeyHistory(userId: string, historyId: string) {
+  const history = await prisma.apiKeyConfigHistory.findFirst({
+    where: { id: historyId, userId },
+    select: { id: true },
+  });
+  if (!history) return false;
+
+  await prisma.apiKeyConfigHistory.delete({
+    where: { id: history.id },
+  });
+
+  return true;
 }
 
 export async function getApiKeySecret(userId: string): Promise<string> {

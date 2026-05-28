@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Scrollbar } from "@/components/ui/scrollbar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tooltip } from "@/components/ui/tooltip";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { useTheme } from "@/components/ThemeProvider";
 import { useI18n } from "@/components/I18nProvider";
@@ -10,7 +11,7 @@ import { useToast } from "@/components/Toast";
 import { useAuth } from "@/auth";
 import { api } from "@/api";
 import type { ApiKeyHistory } from "@/api";
-import { Sun, Moon, Monitor, Languages, User, Camera, Info, Loader2, Key, Eye, EyeOff, Pencil, X } from "lucide-react";
+import { Sun, Moon, Monitor, Languages, User, Camera, Info, Loader2, Key, Eye, EyeOff, Pencil, Trash2, X } from "lucide-react";
 
 const DEFAULT_BASE_URL = "http://172.16.76.112:8000/v1";
 const DEFAULT_MODEL = "google/gemma-4-31B-it";
@@ -43,6 +44,7 @@ export function SettingsPage() {
   const [showKey, setShowKey] = useState(false);
   const [savingKey, setSavingKey] = useState(false);
   const [applyingHistory, setApplyingHistory] = useState(false);
+  const [deletingHistoryId, setDeletingHistoryId] = useState<string | null>(null);
   const [keyEditable, setKeyEditable] = useState(false);
   const [apiKeyHistories, setApiKeyHistories] = useState<ApiKeyHistory[]>([]);
   const [selectedHistoryId, setSelectedHistoryId] = useState("");
@@ -178,6 +180,25 @@ export function SettingsPage() {
       toast(t("apikey.historyApplyFailed"), "error");
     } finally {
       setApplyingHistory(false);
+    }
+  };
+
+  const handleDeleteHistory = async (historyId: string) => {
+    if (!historyId || deletingHistoryId) return;
+    if (historyId === selectedHistoryId) {
+      toast(t("apikey.historyCurrentCannotDelete"), "info");
+      return;
+    }
+
+    setDeletingHistoryId(historyId);
+    try {
+      const res = await api.deleteApiKeyHistory(historyId);
+      setApiKeyHistories(res.histories || []);
+      toast(t("apikey.historyDeleted"), "success");
+    } catch {
+      toast(t("apikey.historyDeleteFailed"), "error");
+    } finally {
+      setDeletingHistoryId(null);
     }
   };
 
@@ -391,7 +412,7 @@ export function SettingsPage() {
                   <Select
                     value={selectedHistoryId}
                     onValueChange={handleApplyHistory}
-                    disabled={isLocked || applyingHistory || apiKeyHistories.length === 0}
+                    disabled={isLocked || applyingHistory || !!deletingHistoryId || apiKeyHistories.length === 0}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder={apiKeyHistories.length > 0 ? t("apikey.historyPlaceholder") : t("apikey.noHistory")} />
@@ -414,6 +435,52 @@ export function SettingsPage() {
                       ))}
                     </SelectContent>
                   </Select>
+                  {apiKeyHistories.length > 0 && (
+                    <div className="mt-2 flex max-h-40 flex-col gap-1.5 overflow-y-auto rounded-lg border border-surface-200 bg-surface-50 p-1.5 dark:border-surface-800 dark:bg-surface-900/60">
+                      {apiKeyHistories.map((item) => {
+                        const isCurrent = item.id === selectedHistoryId;
+                        const isDeleting = deletingHistoryId === item.id;
+                        return (
+                          <div
+                            key={item.id}
+                            className="flex items-center gap-2 rounded-md bg-white px-2.5 py-2 dark:bg-surface-950"
+                          >
+                            <div className="min-w-0 flex-1">
+                              <div className="truncate text-xs font-semibold text-surface-800 dark:text-surface-100">
+                                {item.model}
+                              </div>
+                              <div className="mt-0.5 truncate text-[10px] text-surface-400">
+                                {item.baseUrl}
+                              </div>
+                            </div>
+                            <span className="shrink-0 rounded bg-surface-100 px-1.5 py-0.5 text-[10px] leading-none text-surface-500 dark:bg-surface-800 dark:text-surface-400">
+                              {item.masked}
+                            </span>
+                            <Tooltip
+                              content={isCurrent ? t("apikey.historyCurrentCannotDelete") : t("apikey.deleteHistory")}
+                              delay={150}
+                            >
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon-sm"
+                                disabled={isLocked || isDeleting}
+                                onClick={() => handleDeleteHistory(item.id)}
+                                className="shrink-0 text-surface-400 hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-950/30"
+                                aria-label={t("apikey.deleteHistory")}
+                              >
+                                {isDeleting ? (
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                ) : (
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                )}
+                              </Button>
+                            </Tooltip>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
 
                 {/* Base URL */}
