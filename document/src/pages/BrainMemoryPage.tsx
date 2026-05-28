@@ -1,10 +1,28 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
+import {
+  DndContext,
+  KeyboardSensor,
+  PointerSensor,
+  closestCenter,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type DragStartEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  arrayMove,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { Scrollbar } from "@/components/ui/scrollbar";
 import { ConfirmModal } from "@/components/ConfirmModal";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { TabGroup } from "@/components/ui/tab-group";
 import { Button } from "@/components/ui/button";
-import { useI18n } from "@/components/I18nProvider";
+import { useI18n, type TranslationKey } from "@/components/I18nProvider";
 import { useToast } from "@/components/Toast";
 import { api } from "@/api";
 import { cn } from "@/lib/utils";
@@ -43,6 +61,102 @@ const CATEGORY_COLORS = [
   "#f97316", "#84cc16", "#a855f7", "#06b6d4",
 ];
 
+interface SortableCategoryItemProps {
+  category: BrainCategory;
+  index: number;
+  onEdit: (category: BrainCategory) => void;
+  onDelete: (categoryId: string) => void;
+  t: (key: TranslationKey) => string;
+}
+
+function SortableCategoryItem({ category, index, onEdit, onDelete, t }: SortableCategoryItemProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: category.id });
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={{
+        transform: CSS.Transform.toString(transform),
+        transition,
+      }}
+      className={cn(
+        "group relative flex items-center gap-3 rounded-xl border bg-white px-3 py-3 transition-[background-color,border-color] duration-150 ease-out dark:bg-surface-950",
+        isDragging
+          ? "z-10 border-brand-300 bg-brand-50/40 dark:border-brand-800 dark:bg-brand-950/30"
+          : "border-surface-200 hover:border-surface-300 hover:bg-surface-50/70 dark:border-surface-800 dark:hover:border-surface-700 dark:hover:bg-surface-900/70"
+      )}
+    >
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        className="h-9 w-9 cursor-grab rounded-lg text-surface-400 hover:bg-surface-100 hover:text-surface-700 active:cursor-grabbing dark:hover:bg-surface-900 dark:hover:text-surface-200"
+        aria-label={t("brain.categoryDragHint")}
+        {...attributes}
+        {...listeners}
+      >
+        <GripVertical className="h-4 w-4" />
+      </Button>
+
+      <span className="w-6 text-[10px] font-semibold tabular-nums text-surface-300 dark:text-surface-700">
+        {String(index + 1).padStart(2, "0")}
+      </span>
+
+      <div
+        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-xs font-bold text-white shadow-sm"
+        style={{ backgroundColor: category.color || "#94a3b8" }}
+      >
+        {category.name.charAt(0)}
+      </div>
+
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-sm font-semibold text-surface-800 dark:text-surface-100">
+          {category.name}
+        </div>
+        <div className="mt-0.5 flex items-center gap-1.5 text-[10px] font-medium text-surface-400">
+          <span
+            className="inline-block h-2 w-2 rounded-full"
+            style={{ backgroundColor: category.color || "#94a3b8" }}
+          />
+          <span>{category.color || "#94a3b8"}</span>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-1 opacity-70 transition-opacity group-hover:opacity-100">
+        <Tooltip content={t("brain.edit")} delay={150}>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={() => onEdit(category)}
+            className="h-8 w-8 text-surface-400 hover:bg-brand-50 hover:text-brand-600 dark:hover:bg-brand-950/60 dark:hover:text-brand-300"
+          >
+            <Edit2 className="h-3.5 w-3.5" />
+          </Button>
+        </Tooltip>
+        <Tooltip content={t("brain.delete")} delay={150}>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            onClick={() => onDelete(category.id)}
+            className="h-8 w-8 text-surface-400 hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-950/30"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        </Tooltip>
+      </div>
+    </div>
+  );
+}
+
 export function BrainMemoryPage() {
   const { t } = useI18n();
   const { toast } = useToast();
@@ -76,52 +190,36 @@ export function BrainMemoryPage() {
   const [deleteCategoryTargetId, setDeleteCategoryTargetId] = useState<string | null>(null);
 
   // Drag reorder state
-  const categoryRowRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const [draggingCategoryId, setDraggingCategoryId] = useState<string | null>(null);
+  const categoryDragSensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 6 },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
 
-  const moveCategoryByPointer = (pointerY: number) => {
-    if (!draggingCategoryId) return;
+  const handleCategoryDragStart = (event: DragStartEvent) => {
+    setDraggingCategoryId(String(event.active.id));
+  };
+
+  const handleCategoryDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    setDraggingCategoryId(null);
+
+    if (!over || active.id === over.id) return;
 
     setCategories((prev) => {
-      const from = prev.findIndex((cat) => cat.id === draggingCategoryId);
-      if (from === -1) return prev;
+      const oldIndex = prev.findIndex((cat) => cat.id === active.id);
+      const newIndex = prev.findIndex((cat) => cat.id === over.id);
 
-      const movingCategory = prev[from];
-      const restCategories = prev.filter((cat) => cat.id !== draggingCategoryId);
-      let insertIndex = restCategories.length;
-
-      for (let index = 0; index < restCategories.length; index += 1) {
-        const rect = categoryRowRefs.current[restCategories[index].id]?.getBoundingClientRect();
-        if (!rect) continue;
-
-        if (pointerY < rect.top + rect.height / 2) {
-          insertIndex = index;
-          break;
-        }
-      }
-
-      const next = [...restCategories];
-      next.splice(insertIndex, 0, movingCategory);
-
-      if (next.every((cat, index) => cat.id === prev[index]?.id)) {
-        return prev;
-      }
-
-      return next;
+      if (oldIndex === -1 || newIndex === -1) return prev;
+      return arrayMove(prev, oldIndex, newIndex);
     });
   };
 
-  const handleCategoryDragStart = (event: React.PointerEvent<HTMLButtonElement>, categoryId: string) => {
-    event.preventDefault();
-    setDraggingCategoryId(categoryId);
-  };
-
-  const handleCategoryDragMove = (event: React.PointerEvent<HTMLDivElement>) => {
-    if (!draggingCategoryId) return;
-    moveCategoryByPointer(event.clientY);
-  };
-
-  const handleCategoryDragEnd = () => {
+  const handleCategoryDragCancel = () => {
     setDraggingCategoryId(null);
   };
 
@@ -151,24 +249,6 @@ export function BrainMemoryPage() {
   useEffect(() => {
     fetchData();
   }, []);
-
-  useEffect(() => {
-    if (!draggingCategoryId) return;
-
-    const previousCursor = document.body.style.cursor;
-    const previousUserSelect = document.body.style.userSelect;
-    document.body.style.cursor = "grabbing";
-    document.body.style.userSelect = "none";
-    window.addEventListener("pointerup", handleCategoryDragEnd);
-    window.addEventListener("pointercancel", handleCategoryDragEnd);
-
-    return () => {
-      document.body.style.cursor = previousCursor;
-      document.body.style.userSelect = previousUserSelect;
-      window.removeEventListener("pointerup", handleCategoryDragEnd);
-      window.removeEventListener("pointercancel", handleCategoryDragEnd);
-    };
-  }, [draggingCategoryId]);
 
   const handleOpenAdd = () => {
     setIsEditing(false);
@@ -615,90 +695,31 @@ export function BrainMemoryPage() {
                 </Button>
               </div>
             ) : (
-              <div
-                className="max-h-[360px] space-y-2 overflow-y-auto pr-1"
-                onPointerMove={handleCategoryDragMove}
+              <DndContext
+                sensors={categoryDragSensors}
+                collisionDetection={closestCenter}
+                onDragStart={handleCategoryDragStart}
+                onDragEnd={handleCategoryDragEnd}
+                onDragCancel={handleCategoryDragCancel}
               >
-                {categories.map((cat, index) => {
-                  const isDragging = draggingCategoryId === cat.id;
-
-                  return (
-                    <div
-                      key={cat.id}
-                      ref={(node) => {
-                        categoryRowRefs.current[cat.id] = node;
-                      }}
-                      data-category-id={cat.id}
-                      className={cn(
-                        "group relative flex items-center gap-3 rounded-xl border bg-white px-3 py-3 transition-[background-color,border-color] duration-150 ease-out dark:bg-surface-950",
-                        isDragging
-                          ? "border-brand-300 bg-brand-50/40 dark:border-brand-800 dark:bg-brand-950/30"
-                          : "border-surface-200 hover:border-surface-300 hover:bg-surface-50/70 dark:border-surface-800 dark:hover:border-surface-700 dark:hover:bg-surface-900/70"
-                      )}
-                    >
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        onPointerDown={(event) => handleCategoryDragStart(event, cat.id)}
-                        className="h-9 w-9 cursor-grab rounded-lg text-surface-400 hover:bg-surface-100 hover:text-surface-700 active:cursor-grabbing dark:hover:bg-surface-900 dark:hover:text-surface-200"
-                        aria-label={t("brain.categoryDragHint")}
-                      >
-                        <GripVertical className="h-4 w-4" />
-                      </Button>
-
-                      <span className="w-6 text-[10px] font-semibold tabular-nums text-surface-300 dark:text-surface-700">
-                        {String(index + 1).padStart(2, "0")}
-                      </span>
-
-                      <div
-                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-xs font-bold text-white shadow-sm"
-                        style={{ backgroundColor: cat.color || "#94a3b8" }}
-                      >
-                        {cat.name.charAt(0)}
-                      </div>
-
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate text-sm font-semibold text-surface-800 dark:text-surface-100">
-                          {cat.name}
-                        </div>
-                        <div className="mt-0.5 flex items-center gap-1.5 text-[10px] font-medium text-surface-400">
-                          <span
-                            className="inline-block h-2 w-2 rounded-full"
-                            style={{ backgroundColor: cat.color || "#94a3b8" }}
-                          />
-                          <span>{cat.color || "#94a3b8"}</span>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-1 opacity-70 transition-opacity group-hover:opacity-100">
-                        <Tooltip content={t("brain.edit")} delay={150}>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleOpenEditCategory(cat)}
-                            className="h-8 w-8 text-surface-400 hover:bg-brand-50 hover:text-brand-600 dark:hover:bg-brand-950/60 dark:hover:text-brand-300"
-                          >
-                            <Edit2 className="h-3.5 w-3.5" />
-                          </Button>
-                        </Tooltip>
-                        <Tooltip content={t("brain.delete")} delay={150}>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => setDeleteCategoryTargetId(cat.id)}
-                            className="h-8 w-8 text-surface-400 hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-950/30"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </Button>
-                        </Tooltip>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+                <SortableContext
+                  items={categories.map((cat) => cat.id)}
+                  strategy={verticalListSortingStrategy}
+                >
+                  <div className="max-h-[360px] space-y-2 overflow-y-auto pr-1">
+                    {categories.map((cat, index) => (
+                      <SortableCategoryItem
+                        key={cat.id}
+                        category={cat}
+                        index={index}
+                        onEdit={handleOpenEditCategory}
+                        onDelete={setDeleteCategoryTargetId}
+                        t={t}
+                      />
+                    ))}
+                  </div>
+                </SortableContext>
+              </DndContext>
             )}
           </div>
         </DialogContent>
