@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import {
   DndContext,
   KeyboardSensor,
@@ -8,8 +8,8 @@ import {
   useSensors,
   type DragEndEvent,
   type DragStartEvent,
+  type Modifier,
 } from "@dnd-kit/core";
-import type { Modifier } from "@dnd-kit/core";
 import {
   SortableContext,
   arrayMove,
@@ -201,15 +201,38 @@ export function BrainMemoryPage() {
     })
   );
 
-  // Constrain drag overlay to container bounds (vertical only, no horizontal scroll)
-  const categoryListRef = useRef<HTMLDivElement | null>(null);
-  const restrictToCategoryList: Modifier = (args) => {
-    const container = categoryListRef.current;
-    if (!container || !args.containerNodeRect) return args.transform;
-    const containerRect = container.getBoundingClientRect();
-    const overlayRect = args.containerNodeRect;
+  // Dynamic container height: grows as categories are added, capped at 360px.
+  // Each category item is ~52px tall. The fixed height gives the container real
+  // bounds so the drag overlay cannot drift infinitely.
+  const CATEGORY_ITEM_HEIGHT = 52;
+  const CATEGORY_CONTAINER_MAX = 360;
+  const categoryListHeight = Math.min(
+    categories.length * CATEGORY_ITEM_HEIGHT,
+    CATEGORY_CONTAINER_MAX
+  );
 
-    // Overlay position on screen = rect + transform delta
+  // Modifier: constrain the drag overlay within the container's visible bounds.
+  // We capture the container rect at drag-start (before the item leaves the flow)
+  // so the bounds reflect the full container height.
+  const categoryListRef = useRef<HTMLDivElement | null>(null);
+  const preDragContainerTop = useRef(0);
+
+  const handleCategoryDragStart = (event: DragStartEvent) => {
+    setDraggingCategoryId(String(event.active.id));
+    const container = categoryListRef.current;
+    if (container) {
+      preDragContainerTop.current = container.getBoundingClientRect().top;
+    }
+  };
+
+  const restrictToCategoryList = useCallback((args: Parameters<Modifier>[0]) => {
+    const container = categoryListRef.current;
+    if (!container) return args.transform;
+    const containerRect = container.getBoundingClientRect();
+    const overlayRect = args.overlayNodeRect;
+    if (!overlayRect) return args.transform;
+
+    const visibleBottom = containerRect.top + categoryListHeight;
     const overlayTopOnScreen = overlayRect.top + args.transform.y;
     const overlayBottomOnScreen = overlayRect.bottom + args.transform.y;
 
@@ -217,8 +240,8 @@ export function BrainMemoryPage() {
     if (overlayTopOnScreen < containerRect.top) {
       newY = containerRect.top - overlayRect.top;
     }
-    if (overlayBottomOnScreen > containerRect.bottom) {
-      newY = containerRect.bottom - overlayRect.bottom;
+    if (overlayBottomOnScreen > visibleBottom) {
+      newY = visibleBottom - overlayRect.bottom;
     }
 
     return {
@@ -226,11 +249,7 @@ export function BrainMemoryPage() {
       x: 0,
       y: newY,
     };
-  };
-
-  const handleCategoryDragStart = (event: DragStartEvent) => {
-    setDraggingCategoryId(String(event.active.id));
-  };
+  }, [categoryListHeight]);
 
   const handleCategoryDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
@@ -737,7 +756,8 @@ export function BrainMemoryPage() {
                 >
                   <div
                     ref={categoryListRef}
-                    className="max-h-[360px] space-y-2 overflow-y-auto pr-1"
+                    style={{ height: categoryListHeight }}
+                    className="space-y-2 overflow-y-auto pr-1"
                   >
                     {categories.map((cat, index) => (
                       <SortableCategoryItem
