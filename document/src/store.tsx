@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from "react";
 import type { Document, DocumentCategory } from "@/types";
 import { api, isLoggedIn } from "@/api";
+import { useI18n } from "@/components/I18nProvider";
 
 interface DocumentStore {
   documents: Document[];
@@ -43,6 +44,7 @@ export function useDocuments() {
 }
 
 export function DocumentStoreProvider({ children }: { children: ReactNode }) {
+  const { t } = useI18n();
   const [documents, setDocuments] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -122,14 +124,14 @@ export function DocumentStoreProvider({ children }: { children: ReactNode }) {
   const createDocument = useCallback(async (category?: DocumentCategory, title?: string, content?: string) => {
     const plainText = content ? content.replace(/<[^>]*>/g, "") : "";
     const { document: doc } = await api.createDocument({
-      title: title || "无标题文档",
+      title: title || t("editor.untitled"),
       content: content || "",
       preview: plainText.slice(0, 80) + (plainText.length > 80 ? "..." : ""),
       category: category || "general",
     });
     setDocuments((prev) => [doc, ...prev]);
     return doc.id;
-  }, []);
+  }, [t]);
 
   const updateDocument = useCallback(
     async (id: string, updates: Partial<Pick<Document, "title" | "content" | "category">>) => {

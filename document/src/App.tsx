@@ -72,6 +72,37 @@ function buildExportHtml(title: string, meta: string, content: string): string {
 </html>`;
 }
 
+function buildExportWordHtml(title: string, meta: string, content: string): string {
+  const safeTitle = escapeHtml(title);
+  const safeMeta = escapeHtml(meta);
+  const safeContent = sanitizeHtml(content);
+  return `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
+<head>
+  <meta charset="UTF-8">
+  <title>${safeTitle}</title>
+  <!--[if gte mso 9]>
+  <xml>
+    <w:WordDocument>
+      <w:View>Print</w:View>
+      <w:Zoom>100</w:Zoom>
+      <w:DoNotOptimizeForBrowser/>
+    </w:WordDocument>
+  </xml>
+  <![endif]-->
+  <style>
+    body { max-width: 720px; margin: 40px auto; padding: 0 20px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 16px; line-height: 1.8; color: #333; }
+    h1 { font-size: 28px; margin-bottom: 8px; }
+    .meta { color: #999; font-size: 13px; margin-bottom: 24px; }
+  </style>
+</head>
+<body>
+  <h1>${safeTitle}</h1>
+  <div class="meta">${safeMeta}</div>
+  ${safeContent}
+</body>
+</html>`;
+}
+
 function EditorPageContent({ activeDocId, onSelectDoc }: { activeDocId: string; onSelectDoc: (id: string) => void }) {
   return (
     <>
@@ -257,7 +288,7 @@ export default function App() {
       mime = "text/markdown;charset=utf-8";
       ext = "md";
     } else if (format === "word") {
-      content = buildExportHtml(title, meta, doc.content);
+      content = buildExportWordHtml(title, meta, doc.content);
       mime = "application/msword;charset=utf-8";
       ext = "doc";
     } else {

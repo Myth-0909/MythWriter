@@ -127,10 +127,15 @@ export function detectInjection(content: string): boolean {
   return INJECTION_PATTERNS.some((pattern) => pattern.test(content));
 }
 
-const DELETE_KEYWORDS = ["删除", "删掉", "移除", "清空", "delete", "remove", "clear", "erase", "trash"];
+const DELETE_PATTERNS = [
+  // Chinese: 帮我/代我/请/替我/帮我把/帮我将 + 删除/删掉/移除/清空/清除
+  /(?:帮我|代我|请(?:你)?|替我|帮我将|帮我把)(?:删除|删掉|移除|清空|清除)/,
+  // English: delete/remove/clear/erase + my/this/the/all/these/those + document/file/db/database/account/history/conversation/record/data
+  /\b(?:delete|remove|clear|erase)\s+(?:my|this|the|all|these|those)?\s*(?:document|file|db|database|account|history|conversation|record|data)\b/i
+];
 
 export function detectDeleteCommand(content: string): boolean {
-  return DELETE_KEYWORDS.some((kw) => content.includes(kw));
+  return DELETE_PATTERNS.some((pattern) => pattern.test(content));
 }
 
 // --- Database operations ---
@@ -177,7 +182,21 @@ export async function listConversations(userId: string) {
 }
 
 export async function saveConversation(userId: string, messages: any[], personality: string) {
-  const firstUserMsg = (messages as any[]).find((m: any) => m.role === "user");
+  const lastConversation = await prisma.conversation.findFirst({
+    where: { userId },
+    orderBy: { updatedAt: "desc" },
+  });
+
+  if (lastConversation) {
+    return prisma.conversation.update({
+      where: { id: lastConversation.id },
+      data: {
+        messages,
+        personality: personality || "normal",
+      },
+    });
+  }
+
   return prisma.conversation.create({
     data: {
       userId,
