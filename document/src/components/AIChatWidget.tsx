@@ -10,6 +10,7 @@ import { useDocuments } from "@/store";
 import { useAuth } from "@/auth";
 import { api } from "@/api";
 import { markdownToHtml } from "@/lib/markdown";
+import { sanitizeHtml } from "@/lib/html";
 import { Tooltip } from "@/components/ui/tooltip";
 
 const API_BASE = "http://localhost:3000/api";
@@ -49,6 +50,30 @@ interface DocumentReference {
 interface Position {
   x: number;
   y: number;
+}
+
+interface AnchoredPosition {
+  side: "left" | "right";
+  yPercent: number; // 0-100, percentage from top
+}
+
+function anchoredToAbsolute(anchor: AnchoredPosition): Position {
+  const MARGIN = 16;
+  const btnSize = 56;
+  const x = anchor.side === "left" ? MARGIN : window.innerWidth - btnSize - MARGIN;
+  const maxY = window.innerHeight - btnSize - MARGIN;
+  const y = Math.max(MARGIN, Math.min(maxY, MARGIN + (maxY - MARGIN) * (anchor.yPercent / 100)));
+  return { x, y };
+}
+
+function absoluteToAnchored(pos: Position): AnchoredPosition {
+  const MARGIN = 16;
+  const btnSize = 56;
+  const maxX = window.innerWidth - btnSize - MARGIN;
+  const side: "left" | "right" = pos.x < maxX / 2 ? "left" : "right";
+  const maxY = window.innerHeight - btnSize - MARGIN;
+  const yPercent = Math.max(0, Math.min(100, ((pos.y - MARGIN) / (maxY - MARGIN)) * 100));
+  return { side, yPercent };
 }
 
 function loadMemory(): Message[] {
@@ -142,7 +167,7 @@ async function streamChat(
           finalAction = parsed.action;
         }
       } catch (e: any) {
-        if (e.message && !e.message.includes("JSON")) throw e;
+        if (!(e instanceof SyntaxError)) throw e;
       }
     }
   }
@@ -219,15 +244,25 @@ export function AIChatWidget() {
   const [pos, setPos] = useState<Position>(() => {
     try {
       const saved = localStorage.getItem("chat-btn-pos");
-      if (saved) return JSON.parse(saved);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        // Support new edge-anchored format
+        if (parsed.side && typeof parsed.yPercent === "number") {
+          return anchoredToAbsolute(parsed as AnchoredPosition);
+        }
+        // Legacy absolute format fallback
+        return { x: parsed.x, y: parsed.y };
+      }
     } catch {}
-    return { x: 16, y: window.innerHeight - 56 - 16 };
+    return anchoredToAbsolute({ side: "left", yPercent: 90 });
   });
   const [dragging, setDragging] = useState(false);
   const dragStart = useRef({ x: 0, y: 0 });
   const posStart = useRef({ x: 0, y: 0 });
   const hasMoved = useRef(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const userScrolledUpRef = useRef(false);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   // User avatar
   const avatarUrl = user?.avatar ? `http://localhost:3000/uploads/${user.avatar}` : null;
@@ -235,13 +270,20 @@ export function AIChatWidget() {
     ? user.name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)
     : "?";
 
-  useEffect(() => {
-    setPos({ x: 16, y: window.innerHeight - 80 });
-  }, []);
-
-  // Resize handler
+  // Resize handler: recalculate position from stored anchor
   useEffect(() => {
     const updatePos = () => {
+      try {
+        const saved = localStorage.getItem("chat-btn-pos");
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (parsed.side && typeof parsed.yPercent === "number") {
+            setPos(anchoredToAbsolute(parsed as AnchoredPosition));
+            return;
+          }
+        }
+      } catch {}
+      // Fallback: clamp to viewport
       setPos((prev) => ({
         x: Math.min(prev.x, window.innerWidth - 60),
         y: Math.min(prev.y, window.innerHeight - 60),
@@ -262,6 +304,11 @@ export function AIChatWidget() {
       // Abort any ongoing stream when closing
       if (abortRef.current) {
         abortRef.current.abort();
+      }
+      // Stop microphone recording on close to prevent background leak
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+        setListening(false);
       }
       return;
     }
@@ -333,10 +380,34 @@ export function AIChatWidget() {
       });
   }, [user?.name]);
 
-  // Auto-scroll
+  // Smart auto-scroll: only scroll to bottom if user is near the bottom
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (userScrolledUpRef.current) return;
+    chatEndRef.current?.scrollIntoView({ behavior: "auto" });
   }, [messages]);
+
+  // Reset scroll lock when user sends a new message
+  useEffect(() => {
+    if (loading) userScrolledUpRef.current = false;
+  }, [loading]);
+
+  // Handle scroll events for smart scroll detection
+  const handleScrollEvent = useCallback((_instance: any, event: Event) => {
+    const target = event.target as HTMLElement;
+    if (!target) return;
+    const { scrollTop, scrollHeight, clientHeight } = target;
+    const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
+    userScrolledUpRef.current = distanceFromBottom > 80;
+  }, []);
+
+  // Auto-resize textarea helper
+  const resizeTextarea = useCallback(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    const maxHeight = 96; // ~4 lines
+    el.style.height = `${Math.min(el.scrollHeight, maxHeight)}px`;
+  }, []);
 
   const changePersonality = useCallback((p: Personality) => {
     personalityRef.current = p;
@@ -382,7 +453,9 @@ export function AIChatWidget() {
         const snapY = Math.max(MARGIN, Math.min(maxY, currentY));
         const snapped = { x: snapX, y: snapY };
         setPos(snapped);
-        try { localStorage.setItem("chat-btn-pos", JSON.stringify(snapped)); } catch {}
+        // Store as edge-anchored responsive format
+        const anchored = absoluteToAnchored(snapped);
+        try { localStorage.setItem("chat-btn-pos", JSON.stringify(anchored)); } catch {}
       }
     };
     window.addEventListener("mousemove", mm);
@@ -553,20 +626,32 @@ export function AIChatWidget() {
   }, [listening, toast]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (showMentionMenu && mentionMatches.length > 0) {
-      if (e.key === "ArrowDown") {
+    // When mention menu is open, intercept all navigation keys
+    if (showMentionMenu) {
+      if (e.key === "Escape") {
         e.preventDefault();
-        setMentionIndex((i) => Math.min(i + 1, mentionMatches.length - 1));
+        setMentionOpen(false);
         return;
       }
-      if (e.key === "ArrowUp") {
+      if (mentionMatches.length > 0) {
+        if (e.key === "ArrowDown") {
+          e.preventDefault();
+          setMentionIndex((i) => Math.min(i + 1, mentionMatches.length - 1));
+          return;
+        }
+        if (e.key === "ArrowUp") {
+          e.preventDefault();
+          setMentionIndex((i) => Math.max(i - 1, 0));
+          return;
+        }
+        if (e.key === "Enter" && !e.shiftKey) {
+          e.preventDefault();
+          selectReference(mentionMatches[mentionIndex]);
+          return;
+        }
+      } else if (e.key === "Enter") {
+        // Block Enter when mention menu is open but no matches
         e.preventDefault();
-        setMentionIndex((i) => Math.max(i - 1, 0));
-        return;
-      }
-      if (e.key === "Enter" && !e.shiftKey) {
-        e.preventDefault();
-        selectReference(mentionMatches[mentionIndex]);
         return;
       }
     }
@@ -694,7 +779,7 @@ export function AIChatWidget() {
           </div>
 
           {/* Messages */}
-          <Scrollbar className="flex-1 px-4 py-4" options={{ scrollbars: { autoHide: "leave" } }}>
+          <Scrollbar className="flex-1 px-4 py-4" options={{ scrollbars: { autoHide: "leave" } }} events={{ scroll: handleScrollEvent }}>
             {messages.length === 0 ? (
               <div className="flex h-full flex-col items-center justify-center text-center px-4">
                 <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-brand-50 dark:bg-brand-950">
@@ -745,12 +830,19 @@ export function AIChatWidget() {
 
                       {/* Message bubble */}
                       <div className={cn(
-                        "max-w-[75%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap relative",
+                        "max-w-[75%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed relative",
                         isUser
-                          ? "bg-brand-500 text-white rounded-br-md"
+                          ? "bg-brand-500 text-white rounded-br-md whitespace-pre-wrap"
                           : "bg-surface-100 text-surface-800 rounded-bl-md dark:bg-surface-800 dark:text-surface-200 group"
                       )}>
-                        {msg.content}
+                        {isUser ? (
+                          msg.content
+                        ) : (
+                          <div
+                            className="ai-chat-markdown prose prose-sm max-w-none dark:prose-invert"
+                            dangerouslySetInnerHTML={{ __html: sanitizeHtml(markdownToHtml(msg.content)) }}
+                          />
+                        )}
                         {streaming && isLastAssistant && (
                           <span className="inline-block w-1.5 h-4 ml-0.5 bg-brand-500 animate-pulse rounded-sm align-middle" />
                         )}
@@ -937,8 +1029,8 @@ export function AIChatWidget() {
             )}
             <div className="flex items-center gap-2">
               <div className="relative flex-1">
-              <input
-                type="text"
+              <textarea
+                ref={inputRef}
                 value={input}
                 onChange={(e) => {
                   const next = e.target.value;
@@ -946,11 +1038,15 @@ export function AIChatWidget() {
                   const nextMention = getMentionQuery(next);
                   setMentionOpen(!!nextMention);
                   setMentionIndex(0);
+                  // Auto-resize textarea
+                  requestAnimationFrame(resizeTextarea);
                 }}
                 onKeyDown={handleKeyDown}
                 placeholder={isGenerating ? t("ai.replying") : `${t("ai.placeholder")} ${t("ai.mentionHint")}`}
                 disabled={isGenerating}
-                className="w-full rounded-xl border border-surface-200 bg-surface-50 px-4 py-2 text-sm text-surface-900 outline-none transition-all duration-200 hover:border-surface-300 hover:bg-surface-100 focus:border-brand-300 focus:ring-1 focus:ring-brand-300 focus:bg-white disabled:opacity-50 disabled:cursor-not-allowed dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 dark:hover:border-surface-600 dark:hover:bg-surface-700 dark:focus:border-brand-700 dark:focus:bg-surface-800"
+                rows={1}
+                className="w-full resize-none rounded-xl border border-surface-200 bg-surface-50 px-4 py-2 text-sm text-surface-900 outline-none transition-all duration-200 hover:border-surface-300 hover:bg-surface-100 focus:border-brand-300 focus:ring-1 focus:ring-brand-300 focus:bg-white disabled:opacity-50 disabled:cursor-not-allowed dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 dark:hover:border-surface-600 dark:hover:bg-surface-700 dark:focus:border-brand-700 dark:focus:bg-surface-800"
+                style={{ maxHeight: "96px" }}
               />
               {showMentionMenu && (
                 <div className="absolute bottom-full left-0 z-30 mb-2 max-h-56 w-full overflow-hidden rounded-xl border border-surface-200 bg-white py-1 shadow-lg dark:border-surface-700 dark:bg-surface-900">

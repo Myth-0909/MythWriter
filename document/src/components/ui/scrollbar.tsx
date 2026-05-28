@@ -7,7 +7,7 @@ interface ScrollbarProps extends OverlayScrollbarsComponentProps {
   className?: string;
 }
 
-export function Scrollbar({ className, children, options, ...props }: ScrollbarProps) {
+export function Scrollbar({ className, children, options, events, ...props }: ScrollbarProps) {
   const { theme } = useTheme();
   const themeName = theme === "dark" ? "os-theme-znwriter-dark" : "os-theme-znwriter-light";
 
@@ -29,6 +29,7 @@ export function Scrollbar({ className, children, options, ...props }: ScrollbarP
   return (
     <OverlayScrollbarsComponent
       options={mergedOptions}
+      events={events}
       className={cn("os-host-flex", className)}
       {...props}
     >
@@ -36,3 +37,4 @@ export function Scrollbar({ className, children, options, ...props }: ScrollbarP
     </OverlayScrollbarsComponent>
   );
 }
+
