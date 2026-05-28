@@ -78,52 +78,35 @@ export function BrainMemoryPage() {
   // Drag reorder state
   const categoryRowRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const [draggingCategoryId, setDraggingCategoryId] = useState<string | null>(null);
-  const [dragOverCategoryId, setDragOverCategoryId] = useState<string | null>(null);
 
-  const animateCategoryRows = (orderedCategories: BrainCategory[]) => {
-    const firstRects = new Map(
-      orderedCategories.map((cat) => [
-        cat.id,
-        categoryRowRefs.current[cat.id]?.getBoundingClientRect(),
-      ])
-    );
+  const moveCategoryByPointer = (pointerY: number) => {
+    if (!draggingCategoryId) return;
 
-    requestAnimationFrame(() => {
-      orderedCategories.forEach((cat) => {
-        const row = categoryRowRefs.current[cat.id];
-        const firstRect = firstRects.get(cat.id);
-        if (!row || !firstRect) return;
-
-        const deltaY = firstRect.top - row.getBoundingClientRect().top;
-        if (Math.abs(deltaY) < 1) return;
-
-        row.getAnimations().forEach((animation) => animation.cancel());
-        row.animate(
-          [
-            { transform: `translateY(${deltaY}px)` },
-            { transform: "translateY(0)" },
-          ],
-          {
-            duration: 160,
-            easing: "ease-out",
-          }
-        );
-      });
-    });
-  };
-
-  const moveCategoryTo = (targetId: string) => {
-    if (!draggingCategoryId || draggingCategoryId === targetId) return;
-    setDragOverCategoryId(targetId);
     setCategories((prev) => {
       const from = prev.findIndex((cat) => cat.id === draggingCategoryId);
-      const to = prev.findIndex((cat) => cat.id === targetId);
-      if (from === -1 || to === -1 || from === to) return prev;
+      if (from === -1) return prev;
 
-      animateCategoryRows(prev);
-      const next = [...prev];
-      const [moved] = next.splice(from, 1);
-      next.splice(to, 0, moved);
+      const movingCategory = prev[from];
+      const restCategories = prev.filter((cat) => cat.id !== draggingCategoryId);
+      let insertIndex = restCategories.length;
+
+      for (let index = 0; index < restCategories.length; index += 1) {
+        const rect = categoryRowRefs.current[restCategories[index].id]?.getBoundingClientRect();
+        if (!rect) continue;
+
+        if (pointerY < rect.top + rect.height / 2) {
+          insertIndex = index;
+          break;
+        }
+      }
+
+      const next = [...restCategories];
+      next.splice(insertIndex, 0, movingCategory);
+
+      if (next.every((cat, index) => cat.id === prev[index]?.id)) {
+        return prev;
+      }
+
       return next;
     });
   };
@@ -131,19 +114,15 @@ export function BrainMemoryPage() {
   const handleCategoryDragStart = (event: React.PointerEvent<HTMLButtonElement>, categoryId: string) => {
     event.preventDefault();
     setDraggingCategoryId(categoryId);
-    setDragOverCategoryId(categoryId);
   };
 
   const handleCategoryDragMove = (event: React.PointerEvent<HTMLDivElement>) => {
     if (!draggingCategoryId) return;
-    const target = (event.target as HTMLElement).closest<HTMLElement>("[data-category-id]");
-    const targetId = target?.dataset.categoryId;
-    if (targetId) moveCategoryTo(targetId);
+    moveCategoryByPointer(event.clientY);
   };
 
   const handleCategoryDragEnd = () => {
     setDraggingCategoryId(null);
-    setDragOverCategoryId(null);
   };
 
   const persistCategoryOrder = async () => {
@@ -642,7 +621,6 @@ export function BrainMemoryPage() {
               >
                 {categories.map((cat, index) => {
                   const isDragging = draggingCategoryId === cat.id;
-                  const isDropTarget = dragOverCategoryId === cat.id && draggingCategoryId !== cat.id;
 
                   return (
                     <div
@@ -655,8 +633,7 @@ export function BrainMemoryPage() {
                         "group relative flex items-center gap-3 rounded-xl border bg-white px-3 py-3 transition-[background-color,border-color] duration-150 ease-out dark:bg-surface-950",
                         isDragging
                           ? "border-brand-300 bg-brand-50/40 dark:border-brand-800 dark:bg-brand-950/30"
-                          : "border-surface-200 hover:border-surface-300 hover:bg-surface-50/70 dark:border-surface-800 dark:hover:border-surface-700 dark:hover:bg-surface-900/70",
-                        isDropTarget && "border-brand-200 bg-brand-50/30 dark:border-brand-900 dark:bg-brand-950/20"
+                          : "border-surface-200 hover:border-surface-300 hover:bg-surface-50/70 dark:border-surface-800 dark:hover:border-surface-700 dark:hover:bg-surface-900/70"
                       )}
                     >
                       <Button
