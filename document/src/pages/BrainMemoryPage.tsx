@@ -9,7 +9,6 @@ import {
   useSensors,
   type DragEndEvent,
   type DragStartEvent,
-  type Modifier,
 } from "@dnd-kit/core";
 import {
   SortableContext,
@@ -263,31 +262,6 @@ export function BrainMemoryPage() {
   const handleCategoryDragStart = (event: DragStartEvent) => {
     setDraggingCategoryId(String(event.active.id));
   };
-
-  const restrictToCategoryList = useCallback((args: Parameters<Modifier>[0]) => {
-    const container = categoryListRef.current;
-    if (!container) return args.transform;
-    const rect = container.getBoundingClientRect();
-    const overlayRect = args.overlayNodeRect;
-    if (!overlayRect) return args.transform;
-
-    const visibleBottom = rect.top + categoryListHeight;
-    const overlayTopOnScreen = overlayRect.top + args.transform.y;
-    const overlayBottomOnScreen = overlayRect.bottom + args.transform.y;
-
-    let newY = args.transform.y;
-    if (overlayTopOnScreen < rect.top) {
-      newY = rect.top - overlayRect.top;
-    }
-    if (overlayBottomOnScreen > visibleBottom) {
-      newY = visibleBottom - overlayRect.bottom;
-    }
-
-    return {
-      ...args.transform,
-      y: newY,
-    };
-  }, [categoryListHeight]);
 
   const handleCategoryDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
@@ -794,7 +768,6 @@ export function BrainMemoryPage() {
               <DndContext
                 sensors={categoryDragSensors}
                 collisionDetection={closestCenter}
-                modifiers={[restrictToCategoryList]}
                 onDragStart={handleCategoryDragStart}
                 onDragEnd={handleCategoryDragEnd}
                 onDragCancel={handleCategoryDragCancel}
