@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 import { Bot, X, Send, Sparkles, Smile, ChevronDown, ThumbsUp, ThumbsDown, Star, Trash2, Check, Pencil, Square, FileText } from "lucide-react";
 import { ConfirmModal } from "@/components/ConfirmModal";
 import { Scrollbar } from "@/components/ui/scrollbar";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { useI18n } from "@/components/I18nProvider";
 import { useToast } from "@/components/Toast";
 import { useDocuments } from "@/store";
@@ -51,6 +52,24 @@ interface AIChatWidgetProps {
   currentDocumentId?: string;
 }
 
+type DiffLine = {
+  type: "added" | "removed" | "unchanged";
+  text: string;
+};
+
+type PendingDocumentUpdate = {
+  docId: string;
+  title: string;
+  nextMarkdown: string;
+  nextHtml: string;
+  diffLines: DiffLine[];
+  stats: {
+    added: number;
+    removed: number;
+    unchanged: number;
+  };
+};
+
 interface Position {
   x: number;
   y: number;
@@ -93,6 +112,89 @@ function loadMemory(): Message[] {
 
 function saveMemory(messages: Message[]) {
   localStorage.setItem(MEMORY_KEY, JSON.stringify(messages.slice(-MAX_MEMORY_MESSAGES)));
+}
+
+function htmlToPlainText(html: string): string {
+  const withLineBreaks = html
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(p|div|h[1-6]|li|blockquote)>/gi, "\n");
+  if (typeof window === "undefined") return withLineBreaks.replace(/<[^>]*>/g, "");
+  const container = window.document.createElement("div");
+  container.innerHTML = withLineBreaks;
+  return container.textContent || "";
+}
+
+function splitComparableLines(value: string): string[] {
+  const lines = value
+    .replace(/\r\n/g, "\n")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  return lines.length > 0 ? lines : [value.trim()].filter(Boolean);
+}
+
+function buildDiffLines(beforeText: string, afterText: string): PendingDocumentUpdate["diffLines"] {
+  const before = splitComparableLines(beforeText);
+  const after = splitComparableLines(afterText);
+  if (before.length === 0 && after.length === 0) return [];
+
+  // Keep the preview lightweight for very long documents.
+  if (before.length * after.length > 40000) {
+    const rows: DiffLine[] = [];
+    const max = Math.max(before.length, after.length);
+    for (let i = 0; i < max; i += 1) {
+      if (before[i] === after[i]) {
+        rows.push({ type: "unchanged", text: before[i] });
+      } else {
+        if (before[i]) rows.push({ type: "removed", text: before[i] });
+        if (after[i]) rows.push({ type: "added", text: after[i] });
+      }
+    }
+    return rows;
+  }
+
+  const dp = Array.from({ length: before.length + 1 }, () => Array(after.length + 1).fill(0));
+  for (let i = before.length - 1; i >= 0; i -= 1) {
+    for (let j = after.length - 1; j >= 0; j -= 1) {
+      dp[i][j] = before[i] === after[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+    }
+  }
+
+  const rows: DiffLine[] = [];
+  let i = 0;
+  let j = 0;
+  while (i < before.length && j < after.length) {
+    if (before[i] === after[j]) {
+      rows.push({ type: "unchanged", text: before[i] });
+      i += 1;
+      j += 1;
+    } else if (dp[i + 1][j] >= dp[i][j + 1]) {
+      rows.push({ type: "removed", text: before[i] });
+      i += 1;
+    } else {
+      rows.push({ type: "added", text: after[j] });
+      j += 1;
+    }
+  }
+  while (i < before.length) {
+    rows.push({ type: "removed", text: before[i] });
+    i += 1;
+  }
+  while (j < after.length) {
+    rows.push({ type: "added", text: after[j] });
+    j += 1;
+  }
+  return rows;
+}
+
+function summarizeDiff(lines: DiffLine[]) {
+  return lines.reduce(
+    (stats, line) => {
+      stats[line.type] += 1;
+      return stats;
+    },
+    { added: 0, removed: 0, unchanged: 0 }
+  );
 }
 
 function buildMemoryContext(memory: Message[]): string {
@@ -258,6 +360,8 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
   const [references, setReferences] = useState<DocumentReference[]>([]);
   const [mentionOpen, setMentionOpen] = useState(false);
   const [mentionIndex, setMentionIndex] = useState(0);
+  const [pendingUpdate, setPendingUpdate] = useState<PendingDocumentUpdate | null>(null);
+  const [applyingUpdate, setApplyingUpdate] = useState(false);
 
   // Automatically clear references when the corresponding document is deleted/removed
   useEffect(() => {
@@ -618,7 +722,6 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
             return;
           }
 
-          toast(t("ai.docActionRunning"), "info");
           const actionDocId = typeof action.docId === "string" ? action.docId.trim() : "";
           const fallbackDocId = requestReferences.length === 1 ? requestReferences[0].id : "";
           const targetDocId = actionDocId && getDocument(actionDocId) ? actionDocId : fallbackDocId || actionDocId;
@@ -640,14 +743,22 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
             return;
           }
 
-          await updateDocument(targetDoc.id, {
+          const nextHtml = markdownToHtml(nextContent);
+          const diffLines = buildDiffLines(htmlToPlainText(targetDoc.content), htmlToPlainText(nextHtml));
+          const stats = summarizeDiff(diffLines);
+          if (stats.added === 0 && stats.removed === 0) {
+            toast(t("ai.diffNoChanges"), "info");
+          }
+
+          setPendingUpdate({
+            docId: targetDoc.id,
             title: targetDoc.title,
-            content: markdownToHtml(nextContent),
+            nextMarkdown: nextContent,
+            nextHtml,
+            diffLines,
+            stats,
           });
-          toast(t("ai.docUpdated"), "success");
-          const updatedNote = { role: "assistant" as const, content: `[系统] 已为用户更新文档「${targetDoc.title}」[doc:${targetDoc.id}]。最新内容摘要：${nextContent.slice(0, 200)}...` };
-          memoryRef.current = [...memoryRef.current, updatedNote];
-          saveMemory(memoryRef.current);
+          toast(t("ai.diffReady"), "info");
         } catch (err: any) {
           console.error("[update_doc] error:", err);
           toast(t("ai.docUpdateFailed"), "error");
@@ -679,6 +790,30 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
     setStreaming(false);
     setActionMode(false);
   }, []);
+
+  const applyPendingUpdate = useCallback(async () => {
+    if (!pendingUpdate || applyingUpdate) return;
+    setApplyingUpdate(true);
+    try {
+      await updateDocument(pendingUpdate.docId, {
+        title: pendingUpdate.title,
+        content: pendingUpdate.nextHtml,
+      });
+      toast(t("ai.docUpdated"), "success");
+      const updatedNote = {
+        role: "assistant" as const,
+        content: `[系统] 已为用户更新文档「${pendingUpdate.title}」[doc:${pendingUpdate.docId}]。最新内容摘要：${pendingUpdate.nextMarkdown.slice(0, 200)}...`,
+      };
+      memoryRef.current = [...memoryRef.current, updatedNote];
+      saveMemory(memoryRef.current);
+      setPendingUpdate(null);
+    } catch (err: any) {
+      console.error("[apply_update] error:", err);
+      toast(t("ai.docUpdateFailed"), "error");
+    } finally {
+      setApplyingUpdate(false);
+    }
+  }, [applyingUpdate, pendingUpdate, t, toast, updateDocument]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if ((e.key === "Backspace" || e.key === "Delete") && references.length > 0) {
@@ -1149,6 +1284,79 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
           </div>
         </div>
       )}
+
+      <Dialog open={!!pendingUpdate} onOpenChange={(open) => {
+        if (!open && !applyingUpdate) setPendingUpdate(null);
+      }}>
+        <DialogContent className="max-h-[86vh] max-w-[880px] overflow-hidden p-0">
+          <div className="border-b border-surface-200 px-6 py-5 dark:border-surface-700">
+            <div className="flex items-start justify-between gap-4 pr-8">
+              <div>
+                <DialogTitle className="text-base font-bold text-surface-900 dark:text-surface-100">
+                  {t("ai.diffTitle")}
+                </DialogTitle>
+                <DialogDescription className="mt-1 text-xs leading-relaxed">
+                  {t("ai.diffDesc")}
+                </DialogDescription>
+              </div>
+              {pendingUpdate && (
+                <div className="flex shrink-0 items-center gap-2">
+                  <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+                    +{pendingUpdate.stats.added} {t("ai.diffAdded")}
+                  </span>
+                  <span className="rounded-full bg-red-50 px-2.5 py-1 text-xs font-semibold text-red-700 dark:bg-red-950 dark:text-red-300">
+                    -{pendingUpdate.stats.removed} {t("ai.diffRemoved")}
+                  </span>
+                </div>
+              )}
+            </div>
+            {pendingUpdate && (
+              <div className="mt-4 flex items-center gap-2 rounded-lg border border-surface-200 bg-surface-50 px-3 py-2 dark:border-surface-700 dark:bg-surface-800">
+                <FileText className="h-4 w-4 shrink-0 text-brand-500" />
+                <span className="text-xs font-medium text-surface-500 dark:text-surface-400">{t("ai.diffDocument")}</span>
+                <span className="truncate text-sm font-semibold text-surface-900 dark:text-surface-100">{pendingUpdate.title}</span>
+              </div>
+            )}
+          </div>
+
+          {pendingUpdate && (
+            <div className="grid min-h-0 grid-cols-[96px_1fr] border-b border-surface-200 bg-surface-50 text-xs font-semibold text-surface-500 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-400">
+              <div className="border-r border-surface-200 px-4 py-2 dark:border-surface-700">{t("ai.diffOld")} / {t("ai.diffNew")}</div>
+              <div className="px-4 py-2">{pendingUpdate.stats.unchanged} {t("ai.diffUnchanged")}</div>
+            </div>
+          )}
+
+          <Scrollbar className="max-h-[52vh] min-h-[260px]">
+            <div className="divide-y divide-surface-100 dark:divide-surface-800">
+              {(pendingUpdate?.diffLines || []).map((line, index) => (
+                <div
+                  key={`${line.type}-${index}`}
+                  className={cn(
+                    "grid grid-cols-[96px_1fr] text-sm leading-relaxed",
+                    line.type === "added" && "bg-emerald-50/70 text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100",
+                    line.type === "removed" && "bg-red-50/70 text-red-900 dark:bg-red-950/40 dark:text-red-100",
+                    line.type === "unchanged" && "text-surface-600 dark:text-surface-300"
+                  )}
+                >
+                  <div className="select-none border-r border-surface-100 px-4 py-2 font-mono text-xs dark:border-surface-800">
+                    {line.type === "added" ? `+ ${t("ai.diffNew")}` : line.type === "removed" ? `- ${t("ai.diffOld")}` : " "}
+                  </div>
+                  <div className="whitespace-pre-wrap px-4 py-2">{line.text}</div>
+                </div>
+              ))}
+            </div>
+          </Scrollbar>
+
+          <div className="flex items-center justify-end gap-2 bg-white px-6 py-4 dark:bg-surface-900">
+            <Button variant="outline" onClick={() => setPendingUpdate(null)} disabled={applyingUpdate}>
+              {t("ai.diffCancel")}
+            </Button>
+            <Button onClick={applyPendingUpdate} disabled={applyingUpdate}>
+              {applyingUpdate ? t("ai.docActionRunning") : t("ai.diffApply")}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Delete selected messages confirmation */}
       <ConfirmModal
