@@ -24,7 +24,7 @@ router.get("/", async (req: AuthRequest, res: Response) => {
 // POST /api/ai/knowledge - Create a new knowledge entry
 router.post("/", async (req: AuthRequest, res: Response) => {
   try {
-    const { title, description, category } = req.body;
+    const { title, description, category, categoryId } = req.body;
     if (!title || typeof title !== "string") {
       res.status(400).json({ error: "设定名称不能为空" });
       return;
@@ -34,11 +34,18 @@ router.post("/", async (req: AuthRequest, res: Response) => {
       return;
     }
 
+    const categoryRef = categoryId
+      ? await prisma.aIBrainCategory.findFirst({
+          where: { id: String(categoryId), userId: req.user!.userId },
+        })
+      : null;
+
     const knowledge = await prisma.aIBrainKnowledge.create({
       data: {
         title,
         description,
-        category: category || "character",
+        category: categoryRef?.name || category || "",
+        categoryId: categoryRef?.id || null,
         userId: req.user!.userId,
       },
     });
@@ -53,7 +60,7 @@ router.post("/", async (req: AuthRequest, res: Response) => {
 // PUT /api/ai/knowledge/:id - Update a knowledge entry
 router.put("/:id", async (req: AuthRequest, res: Response) => {
   try {
-    const { title, description, category } = req.body;
+    const { title, description, category, categoryId } = req.body;
     
     const knowledge = await prisma.aIBrainKnowledge.findFirst({
       where: { id: String(req.params.id), userId: req.user!.userId },
@@ -64,12 +71,22 @@ router.put("/:id", async (req: AuthRequest, res: Response) => {
       return;
     }
 
+    const categoryRef = categoryId
+      ? await prisma.aIBrainCategory.findFirst({
+          where: { id: String(categoryId), userId: req.user!.userId },
+        })
+      : null;
+
     const updated = await prisma.aIBrainKnowledge.update({
       where: { id: knowledge.id },
       data: {
         title: title !== undefined ? title : knowledge.title,
         description: description !== undefined ? description : knowledge.description,
-        category: category !== undefined ? category : knowledge.category,
+        ...(categoryId !== undefined
+          ? { category: categoryRef?.name || "", categoryId: categoryRef?.id || null }
+          : category !== undefined
+            ? { category }
+            : {}),
       },
     });
 

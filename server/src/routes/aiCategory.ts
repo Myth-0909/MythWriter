@@ -91,14 +91,30 @@ router.put("/:id", async (req: AuthRequest, res: Response) => {
       res.status(404).json({ error: "Category not found" });
       return;
     }
-    const updated = await prisma.aIBrainCategory.update({
-      where: { id: existing.id },
-      data: {
-        ...(name && { name: name.trim() }),
-        ...(color !== undefined && { color: color || null }),
-        ...(sortOrder !== undefined && { sortOrder }),
-      },
-    });
+    const nextName = typeof name === "string" && name.trim() ? name.trim() : existing.name;
+    const [updated] = await prisma.$transaction([
+      prisma.aIBrainCategory.update({
+        where: { id: existing.id },
+        data: {
+          ...(name && { name: nextName }),
+          ...(color !== undefined && { color: color || null }),
+          ...(sortOrder !== undefined && { sortOrder }),
+        },
+      }),
+      prisma.aIBrainKnowledge.updateMany({
+        where: {
+          userId: req.user!.userId,
+          OR: [
+            { categoryId: existing.id },
+            { category: existing.name },
+          ],
+        },
+        data: {
+          category: nextName,
+          categoryId: existing.id,
+        },
+      }),
+    ]);
     res.json({ category: updated });
   } catch (error) {
     console.error("Update brain category error:", error);

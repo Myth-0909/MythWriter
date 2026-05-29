@@ -285,7 +285,7 @@ export function BrainMemoryPage() {
     setIsEditing(true);
     setEditingCardId(card.id);
     setFormTitle(card.title);
-    const cat = categories.find((c) => c.name === card.category);
+    const cat = categories.find((c) => c.id === card.categoryId) || categories.find((c) => c.name === card.category);
     setFormCategoryId(cat?.id || "");
     setFormDesc(card.description);
     setDialogOpen(true);
@@ -303,12 +303,15 @@ export function BrainMemoryPage() {
       if (isEditing && editingCardId) {
         await api.updateBrainKnowledge(editingCardId, {
           title: formTitle,
+          description: formDesc,
           category: cat?.name || "",
+          categoryId: cat?.id || null,
         });
       } else {
         await api.createBrainKnowledge({
           title: formTitle,
           category: cat?.name || "",
+          categoryId: cat?.id || null,
           description: formDesc,
         });
       }
@@ -355,15 +358,22 @@ export function BrainMemoryPage() {
     try {
       setCategorySaveLoading(true);
       if (editingCategoryId) {
+        const previousCategory = categories.find((cat) => cat.id === editingCategoryId);
+        const nextCategoryName = categoryName.trim();
         await api.updateBrainCategory(editingCategoryId, {
-          name: categoryName.trim(),
+          name: nextCategoryName,
           color: categoryColor,
         });
+        if (previousCategory && selectedCategory === previousCategory.name) {
+          setSelectedCategory(nextCategoryName);
+        }
+        toast(t("brain.categoryUpdated"), "success");
       } else {
         await api.createBrainCategory({
           name: categoryName.trim(),
           color: categoryColor,
         });
+        toast(t("brain.categoryCreated"), "success");
       }
       setCategoryFormOpen(false);
       fetchData();

@@ -246,13 +246,13 @@ export const api = {
   listBrainKnowledges: () =>
     request<{ knowledges: any[] }>("/ai/knowledge"),
 
-  createBrainKnowledge: (data: { title: string; description: string; category: string }) =>
+  createBrainKnowledge: (data: { title: string; description: string; category: string; categoryId?: string | null }) =>
     request<{ knowledge: any }>("/ai/knowledge", {
       method: "POST",
       body: JSON.stringify(data),
     }),
 
-  updateBrainKnowledge: (id: string, data: { title?: string; description?: string; category?: string }) =>
+  updateBrainKnowledge: (id: string, data: { title?: string; description?: string; category?: string; categoryId?: string | null }) =>
     request<{ knowledge: any }>(`/ai/knowledge/${id}`, {
       method: "PUT",
       body: JSON.stringify(data),
