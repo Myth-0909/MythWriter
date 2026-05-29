@@ -376,6 +376,7 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [streaming, setStreaming] = useState(false);
+  const [isActing, setIsActing] = useState(false);
   const [personality, setPersonality] = useState<Personality>(() =>
     safePersonality(localStorage.getItem(PERSONALITY_KEY))
   );
@@ -729,6 +730,10 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
         { messages: withUser, personality: personalityRef.current, memoryContext, references: requestReferences },
         (delta) => {
           fullContent += delta;
+          // Detect action markers in streaming content to switch indicator
+          if (/<<ACTION_JSON>>|<<DOC_BEGIN>>|<<UPDATE_DOC:/.test(fullContent)) {
+            setIsActing(true);
+          }
           if (firstDelta) {
             firstDelta = false;
             setStreaming(true);
@@ -746,6 +751,10 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
         },
         abort.signal
       );
+
+      // Determine final acting state from parsed action
+      const hasAction = !!(action && (action.type === "create_document" || action.type === "update_document"));
+      setIsActing(hasAction);
 
       // Finalize with parsed reply
       const finalContent = reply || fullContent;
@@ -856,6 +865,7 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
     } finally {
       setLoading(false);
       setStreaming(false);
+      setIsActing(false);
       setTaskStage((stage) => (stage === "preview" ? stage : "idle"));
     }
   }, [input, loading, streaming, messages, currentDocumentId, createDocument, toast, t, documents, references, brainReferences, brainKnowledges, getDocument, loadDocument, updateDocument]);
@@ -864,6 +874,7 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
     abortRef.current?.abort();
     setLoading(false);
     setStreaming(false);
+    setIsActing(false);
   }, []);
 
   const applyPendingUpdate = useCallback(async () => {
@@ -1570,7 +1581,7 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
                     </div>
                     <div className="flex items-center gap-1.5 rounded-2xl rounded-bl-md bg-surface-100 px-4 py-3 dark:bg-surface-800">
                       <span className="text-xs text-surface-500">
-                        {t("ai.thinking").split("").map((char, ci) => (
+                        {(isActing ? t("ai.action") : t("ai.thinking")).split("").map((char, ci) => (
                           <span
                             key={ci}
                             className="inline-block animate-bounce"
