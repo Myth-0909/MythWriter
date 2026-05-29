@@ -52,6 +52,38 @@ function stripHtml(value: string): string {
     .trim();
 }
 
+function extractJsonObject(value: string): any | null {
+  const trimmed = value.trim();
+  const fence = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  const candidate = fence?.[1]?.trim() || trimmed;
+  const objectMatch = candidate.match(/\{[\s\S]*\}/);
+  if (!objectMatch) return null;
+  try {
+    return JSON.parse(objectMatch[0]);
+  } catch {
+    return null;
+  }
+}
+
+function getRequestLang(req: Request): "zh" | "en" {
+  return String(req.headers["accept-language"] || "").toLowerCase().startsWith("en") ? "en" : "zh";
+}
+
+function normalizeWritingReview(raw: any, fallbackTitle = "Suggestion") {
+  const suggestions = Array.isArray(raw?.suggestions) ? raw.suggestions : [];
+  return {
+    score: Math.max(0, Math.min(100, Number(raw?.score) || 72)),
+    suggestions: suggestions.slice(0, 5).map((item: any, index: number) => ({
+      id: String(item?.id || `suggestion-${index + 1}`),
+      type: String(item?.type || "readability"),
+      title: String(item?.title || fallbackTitle).slice(0, 80),
+      detail: String(item?.detail || "").slice(0, 500),
+      actionPrompt: String(item?.actionPrompt || item?.detail || "").slice(0, 500),
+      severity: ["high", "medium", "low"].includes(item?.severity) ? item.severity : "medium",
+    })).filter((item: any) => item.detail || item.actionPrompt),
+  };
+}
+
 async function buildReferenceContext(userId: string, references: ChatReference[] | undefined): Promise<string> {
   if (!Array.isArray(references) || references.length === 0) return "";
   const ids = Array.from(new Set(
@@ -87,18 +119,28 @@ async function buildReferenceContext(userId: string, references: ChatReference[]
   }).join("\n\n---\n\n");
 }
 
-async function buildBrainKnowledgeContext(userId: string, text: string): Promise<string> {
-  if (!text) return "";
+async function buildBrainKnowledgeContext(userId: string, text: string, references?: ChatReference[]): Promise<string> {
   try {
+    const referencedIds = Array.from(new Set(
+      (Array.isArray(references) ? references : [])
+        .filter((ref) => ref?.type === "brain" && typeof ref.id === "string")
+        .map((ref) => ref.id as string)
+    ));
     const knowledges = await prisma.aIBrainKnowledge.findMany({
-      where: { userId },
-      select: { title: true, description: true, category: true },
+      where: {
+        userId,
+        ...(referencedIds.length > 0 ? { id: { in: referencedIds } } : {}),
+      },
+      select: { id: true, title: true, description: true, category: true },
     });
     if (knowledges.length === 0) return "";
 
-    const matches = knowledges.filter((k: any) =>
-      text.toLowerCase().includes(k.title.toLowerCase())
-    );
+    const lowerText = text.toLowerCase();
+    const matches = referencedIds.length > 0
+      ? referencedIds
+          .map((id) => knowledges.find((k: any) => k.id === id))
+          .filter(Boolean)
+      : knowledges.filter((k: any) => lowerText.includes(k.title.toLowerCase()));
     if (matches.length === 0) return "";
 
     return [
@@ -136,6 +178,78 @@ router.post("/greeting", async (req: Request, res: Response) => {
     res.json({ greeting: greetings[pers] });
   } catch (error) {
     res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// AI writing review for the current document
+router.post("/writing-review", async (req: Request, res: Response) => {
+  try {
+    const { title, content } = req.body;
+    const plainText = stripHtml(String(content || "")).slice(0, 12000);
+    const authReq = req as AuthRequest;
+    const { apiKey, apiBaseUrl, aiModel, lang: userLang } = await getUserApiKey(authReq.user!.userId);
+    if (!apiKey) {
+      res.status(400).json({ error: t(userLang, "请先在设置中配置 API Key", "Please configure API Key in Settings") });
+      return;
+    }
+    if (plainText.length < 40) {
+      res.status(400).json({ error: t(userLang, "当前文档内容太少，暂时无法分析。", "The current document is too short to analyze.") });
+      return;
+    }
+
+    const prompt = [
+      "你是 ZNWriter 的写作检查器。请只返回 JSON，不要 markdown。",
+      "分析当前文档，给出 0-100 综合评分和最多 5 条可执行建议。",
+      "建议类型只能是 structure/tone/readability/completeness/density。",
+      "JSON 格式：{\"score\":82,\"suggestions\":[{\"id\":\"s1\",\"type\":\"structure\",\"severity\":\"medium\",\"title\":\"标题\",\"detail\":\"问题说明\",\"actionPrompt\":\"给 AI 执行的修改指令\"}]}",
+      `文档标题：${String(title || "无标题文档")}`,
+      "文档内容：",
+      plainText,
+    ].join("\n");
+
+    const response = await fetch(buildChatCompletionsUrl(apiBaseUrl), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: aiModel,
+        messages: [
+          { role: "system", content: "Return valid compact JSON only." },
+          { role: "user", content: prompt },
+        ],
+        temperature: 0.2,
+        max_tokens: 1200,
+        stream: false,
+      }),
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      res.status(502).json({ error: t(userLang, `AI 写作检查失败: ${errText.slice(0, 120)}`, `AI writing review failed: ${errText.slice(0, 120)}`) });
+      return;
+    }
+
+    const json = await response.json() as any;
+    const rawContent = json.choices?.[0]?.message?.content || json.choices?.[0]?.text || "";
+    const parsed = extractJsonObject(rawContent);
+    const normalized = normalizeWritingReview(parsed, t(userLang, "写作建议", "Writing suggestion"));
+    if (normalized.suggestions.length === 0) {
+      normalized.suggestions = [{
+        id: "readability-1",
+        type: "readability",
+        title: t(userLang, "优化表达节奏", "Improve pacing"),
+        detail: t(userLang, "建议检查段落长度、重复表达和句式节奏，让文章更容易阅读。", "Review paragraph length, repeated wording, and sentence rhythm to make the article easier to read."),
+        actionPrompt: t(userLang, "优化文章表达节奏，减少重复表达，并保持原意。", "Improve pacing, reduce repetition, and preserve the original meaning."),
+        severity: "medium",
+      }];
+    }
+    res.json(normalized);
+  } catch (error) {
+    console.error("Writing review error:", error);
+    const userLang = getRequestLang(req);
+    res.status(500).json({ error: t(userLang, "AI 写作检查失败", "AI writing review failed") });
   }
 });
 
@@ -182,7 +296,7 @@ router.post("/chat", async (req: Request, res: Response) => {
     const referenceContext = await buildReferenceContext(authReq.user!.userId, references);
     
     const userText = lastUserMsg ? lastUserMsg.content : "";
-    const brainKnowledgeContext = await buildBrainKnowledgeContext(authReq.user!.userId, userText);
+    const brainKnowledgeContext = await buildBrainKnowledgeContext(authReq.user!.userId, userText, references);
 
     const systemPrompt = buildSystemPrompt(
       pers,

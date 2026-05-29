@@ -10,6 +10,7 @@ import Highlight from "@tiptap/extension-highlight";
 import Placeholder from "@tiptap/extension-placeholder";
 import TextAlign from "@tiptap/extension-text-align";
 import { Toggle } from "@/components/ui/toggle";
+import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipProvider } from "@/components/ui/tooltip";
 import { Separator } from "@/components/ui/separator";
 import { Scrollbar } from "@/components/ui/scrollbar";
@@ -18,12 +19,14 @@ import {
   List, ListOrdered, Code, Code2, Quote, Minus,
   AlignLeft, AlignCenter, AlignRight,
   Undo2, Redo2, Heading1, Heading2, Heading3,
-  Highlighter, Star, Palette, Eraser,
+  Highlighter, Star, Palette, Eraser, ClipboardCheck, Loader2, X, Sparkles,
 } from "lucide-react";
 import { useI18n } from "@/components/I18nProvider";
 import { useDocuments } from "@/store";
 import { useToast } from "@/components/Toast";
 import { AIBubbleMenu } from "@/components/AIBubbleMenu";
+import { api, type WritingReviewSuggestion } from "@/api";
+import { cn } from "@/lib/utils";
 
 const TEXT_COLORS = [
   { color: "#1a1a1a", label: "默认" },
@@ -69,6 +72,11 @@ export function Editor({ documentId }: EditorProps) {
   const isApplyingExternalContentRef = useRef(false);
   const [selectionChars, setSelectionChars] = useState(0);
   const [toolbarRevision, setToolbarRevision] = useState(0);
+  const [inspectorOpen, setInspectorOpen] = useState(false);
+  const [reviewLoading, setReviewLoading] = useState(false);
+  const [reviewScore, setReviewScore] = useState<number | null>(null);
+  const [reviewSuggestions, setReviewSuggestions] = useState<WritingReviewSuggestion[]>([]);
+  const [ignoredSuggestions, setIgnoredSuggestions] = useState<Set<string>>(new Set());
 
   const titleRef = useRef(title);
   const documentIdRef = useRef(documentId);
@@ -247,6 +255,33 @@ export function Editor({ documentId }: EditorProps) {
     const current = getDocument(documentId);
     toast(current?.isFavorite ? t("toast.favRemoved") : t("toast.favAdded"), "success");
   };
+
+  const runWritingReview = useCallback(async () => {
+    if (!doc || !editor) return;
+    const plain = editor.state.doc.textBetween(0, editor.state.doc.content.size, "\n\n", "\n").trim();
+    if (plain.length < 40) {
+      toast(t("inspector.noContent"), "info");
+      return;
+    }
+    setInspectorOpen(true);
+    setReviewLoading(true);
+    try {
+      const result = await api.writingReview({ title, content: editor.getHTML() });
+      setReviewScore(result.score);
+      setReviewSuggestions(result.suggestions || []);
+      setIgnoredSuggestions(new Set());
+      toast(t("inspector.done"), "success");
+    } catch (err: any) {
+      toast(err.message || t("inspector.failed"), "error");
+    } finally {
+      setReviewLoading(false);
+    }
+  }, [doc, editor, title, t, toast]);
+
+  const sendSuggestionToAssistant = useCallback((suggestion: WritingReviewSuggestion) => {
+    const text = `${t("inspector.askAssistantPrefix")}\n${suggestion.actionPrompt || suggestion.detail}`;
+    window.dispatchEvent(new CustomEvent("znwriter-ai-chat-prefill", { detail: { text } }));
+  }, [t]);
 
   const handleContainerMouseDown = useCallback(
     (e: React.MouseEvent) => {
@@ -504,13 +539,35 @@ export function Editor({ documentId }: EditorProps) {
             </div>
           )}
         </div>
+        <Separator orientation="vertical" className="mx-1 h-4" />
+        <Tooltip content={t("inspector.open")}>
+          <Toggle
+            size="sm"
+            pressed={inspectorOpen}
+            onPressedChange={() => setInspectorOpen((open) => !open)}
+            aria-label={t("inspector.open")}
+          >
+            <ClipboardCheck className="h-3.5 w-3.5" />
+          </Toggle>
+        </Tooltip>
+        <Tooltip content={reviewSuggestions.length > 0 ? t("inspector.rerun") : t("inspector.run")}>
+          <Toggle
+            size="sm"
+            pressed={reviewLoading}
+            onPressedChange={runWritingReview}
+            aria-label={t("inspector.run")}
+          >
+            {reviewLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+          </Toggle>
+        </Tooltip>
         </div>
       </TooltipProvider>
 
       {/* Editor Area */}
-      <Scrollbar className="flex-1">
+      <div className="flex min-h-0 flex-1">
+      <Scrollbar className="min-w-0 flex-1">
         <div className="min-h-full cursor-default" onMouseDown={handleContainerMouseDown}>
-          <div className="mx-auto max-w-[720px] px-12 py-12">
+          <div className={cn("mx-auto px-12 py-12 transition-[max-width] duration-200", inspectorOpen ? "max-w-[680px]" : "max-w-[720px]")}>
             {/* Title + Favorite */}
             <div className="flex items-start gap-3 mb-4">
               <input
@@ -544,6 +601,94 @@ export function Editor({ documentId }: EditorProps) {
           </div>
         </div>
       </Scrollbar>
+      {inspectorOpen && (
+        <aside className="flex w-[320px] shrink-0 flex-col border-l border-surface-200 bg-surface-50 dark:border-surface-800 dark:bg-surface-950">
+          <div className="flex items-center justify-between border-b border-surface-200 px-4 py-3 dark:border-surface-800">
+            <div>
+              <div className="text-sm font-semibold text-surface-900 dark:text-surface-100">{t("inspector.title")}</div>
+              {reviewScore !== null && (
+                <div className="mt-1 text-xs text-surface-500">{t("inspector.score")} {reviewScore}</div>
+              )}
+            </div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              onClick={() => setInspectorOpen(false)}
+              title={t("inspector.close")}
+              aria-label={t("inspector.close")}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+          <div className="border-b border-surface-200 p-3 dark:border-surface-800">
+            <Button
+              type="button"
+              onClick={runWritingReview}
+              disabled={reviewLoading}
+              className="w-full"
+            >
+              {reviewLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ClipboardCheck className="h-3.5 w-3.5" />}
+              {reviewLoading ? t("inspector.loading") : reviewSuggestions.length > 0 ? t("inspector.rerun") : t("inspector.run")}
+            </Button>
+          </div>
+          <Scrollbar className="flex-1">
+            <div className="space-y-3 p-3">
+              {reviewLoading ? (
+                <div className="rounded-xl border border-surface-200 bg-white p-4 text-sm text-surface-500 dark:border-surface-800 dark:bg-surface-900">
+                  {t("inspector.loading")}
+                </div>
+              ) : reviewSuggestions.filter((item) => !ignoredSuggestions.has(item.id)).length === 0 ? (
+                <div className="rounded-xl border border-dashed border-surface-200 bg-white p-4 text-sm leading-relaxed text-surface-500 dark:border-surface-800 dark:bg-surface-900">
+                  {t("inspector.empty")}
+                </div>
+              ) : (
+                reviewSuggestions
+                  .filter((item) => !ignoredSuggestions.has(item.id))
+                  .map((suggestion) => (
+                    <div key={suggestion.id} className="rounded-xl border border-surface-200 bg-white p-3 shadow-sm dark:border-surface-800 dark:bg-surface-900">
+                      <div className="mb-2 flex items-start justify-between gap-2">
+                        <div>
+                          <div className="text-sm font-semibold text-surface-900 dark:text-surface-100">{suggestion.title}</div>
+                          <div className="mt-1 text-[10px] font-medium uppercase tracking-wide text-brand-500">
+                            {suggestion.type === "structure" ? t("inspector.structure") : suggestion.type === "tone" ? t("inspector.tone") : suggestion.type === "completeness" ? t("inspector.completeness") : suggestion.type === "density" ? t("inspector.density") : t("inspector.readability")}
+                          </div>
+                        </div>
+                        <span className={cn(
+                          "rounded-full px-2 py-0.5 text-[10px] font-semibold",
+                          suggestion.severity === "high" && "bg-red-50 text-red-600 dark:bg-red-950 dark:text-red-300",
+                          suggestion.severity === "medium" && "bg-amber-50 text-amber-600 dark:bg-amber-950 dark:text-amber-300",
+                          suggestion.severity === "low" && "bg-emerald-50 text-emerald-600 dark:bg-emerald-950 dark:text-emerald-300"
+                        )}>
+                          {suggestion.severity === "high" ? t("inspector.severityHigh") : suggestion.severity === "low" ? t("inspector.severityLow") : t("inspector.severityMedium")}
+                        </span>
+                      </div>
+                      <p className="text-xs leading-relaxed text-surface-600 dark:text-surface-400">{suggestion.detail}</p>
+                      <div className="mt-3 flex items-center gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={() => sendSuggestionToAssistant(suggestion)}
+                        >
+                          {t("inspector.apply")}
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setIgnoredSuggestions((prev) => new Set(prev).add(suggestion.id))}
+                        >
+                          {t("inspector.ignore")}
+                        </Button>
+                      </div>
+                    </div>
+                  ))
+              )}
+            </div>
+          </Scrollbar>
+        </aside>
+      )}
+      </div>
 
       {/* Footer */}
       <div className="flex items-center justify-between border-t border-surface-200 px-6 py-2 dark:border-surface-800">

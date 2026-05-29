@@ -10,6 +10,15 @@ export interface ApiKeyHistory {
   updatedAt: string;
 }
 
+export interface WritingReviewSuggestion {
+  id: string;
+  type: "structure" | "tone" | "readability" | "completeness" | "density" | string;
+  title: string;
+  detail: string;
+  actionPrompt: string;
+  severity: "high" | "medium" | "low";
+}
+
 function getToken(): string | null {
   return localStorage.getItem("token");
 }
@@ -148,10 +157,15 @@ export const api = {
     messages: { role: string; content: string }[];
     personality: string;
     memoryContext: string;
-    references?: { type: "document"; id: string; title: string }[];
+    references?: { type: "document" | "brain"; id: string; title: string }[];
   }) =>
     request<{ reply: string; action: { type: string; title?: string; docId?: string; content?: string } | null }>(
       "/ai/chat", { method: "POST", body: JSON.stringify(data) }
+    ),
+
+  writingReview: (data: { title: string; content: string }) =>
+    request<{ score: number; suggestions: WritingReviewSuggestion[] }>(
+      "/ai/writing-review", { method: "POST", body: JSON.stringify(data) }
     ),
 
   getConversations: () =>

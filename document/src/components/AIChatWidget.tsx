@@ -41,13 +41,23 @@ const MAX_MEMORY_MESSAGES = 20;
 interface Message {
   role: "user" | "assistant";
   content: string;
-  sources?: DocumentReference[];
+  sources?: ChatReference[];
 }
 
-interface DocumentReference {
-  type: "document";
+interface ChatReference {
+  type: "document" | "brain";
   id: string;
   title: string;
+}
+
+type DocumentReference = ChatReference & { type: "document" };
+type BrainReference = ChatReference & { type: "brain" };
+
+interface BrainKnowledge {
+  id: string;
+  title: string;
+  description: string;
+  category: string;
 }
 
 interface AIChatWidgetProps {
@@ -207,9 +217,9 @@ function summarizeDiff(lines: DiffLine[]) {
   );
 }
 
-function uniqueReferences(refs: DocumentReference[]) {
+function uniqueReferences<T extends ChatReference>(refs: T[]) {
   return refs.filter(
-    (ref, index, all) => all.findIndex((item) => item.id === ref.id) === index
+    (ref, index, all) => all.findIndex((item) => `${item.type}:${item.id}` === `${ref.type}:${ref.id}`) === index
   );
 }
 
@@ -233,19 +243,26 @@ function getSlashQuery(value: string): { query: string; start: number } | null {
   return { query: match[2] || "", start: match.index + match[1].length };
 }
 
+function getBrainQuery(value: string): { query: string; start: number } | null {
+  const match = value.match(/(^|\s)#([^\s#]*)$/);
+  if (!match || match.index === undefined) return null;
+  return { query: match[2] || "", start: match.index + match[1].length };
+}
+
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function findMentionDeletionRange(
+function findTokenDeletionRange(
   value: string,
   cursor: number,
   key: "Backspace" | "Delete",
-  refs: DocumentReference[]
+  refs: ChatReference[],
+  prefix: "@" | "#"
 ): { start: number; end: number } | null {
   const orderedRefs = [...refs].sort((a, b) => b.title.length - a.title.length);
   for (const ref of orderedRefs) {
-    const token = `@${ref.title}`;
+    const token = `${prefix}${ref.title}`;
     let start = value.indexOf(token);
     while (start !== -1) {
       const end = start + token.length;
@@ -266,7 +283,7 @@ function findMentionDeletionRange(
 }
 
 async function streamChat(
-  data: { messages: Message[]; personality: string; memoryContext: string; references?: DocumentReference[] },
+  data: { messages: Message[]; personality: string; memoryContext: string; references?: ChatReference[] },
   onDelta: (delta: string) => void,
   signal: AbortSignal
 ): Promise<{ reply: string; action: any }> {
@@ -389,8 +406,12 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
   const restoredRef = useRef(false);
   const [keyOk, setKeyOk] = useState(false);
   const [references, setReferences] = useState<DocumentReference[]>([]);
+  const [brainReferences, setBrainReferences] = useState<BrainReference[]>([]);
+  const [brainKnowledges, setBrainKnowledges] = useState<BrainKnowledge[]>([]);
   const [mentionOpen, setMentionOpen] = useState(false);
   const [mentionIndex, setMentionIndex] = useState(0);
+  const [brainOpen, setBrainOpen] = useState(false);
+  const [brainIndex, setBrainIndex] = useState(0);
   const [commandOpen, setCommandOpen] = useState(false);
   const [commandIndex, setCommandIndex] = useState(0);
   const [pendingUpdate, setPendingUpdate] = useState<PendingDocumentUpdate | null>(null);
@@ -413,6 +434,13 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
       return prev;
     });
   }, [documents, references]);
+
+  useEffect(() => {
+    if (!open || brainKnowledges.length > 0) return;
+    api.listBrainKnowledges()
+      .then((res) => setBrainKnowledges(res.knowledges || []))
+      .catch(() => setBrainKnowledges([]));
+  }, [brainKnowledges.length, open]);
 
   // Save conversation to DB
   const saveConversation = useCallback(async () => {
@@ -591,6 +619,21 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
   }, []);
 
   useEffect(() => {
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<{ text?: string }>).detail;
+      if (!detail?.text) return;
+      setInput(detail.text);
+      setOpen(true);
+      requestAnimationFrame(() => {
+        inputRef.current?.focus();
+        resizeTextarea();
+      });
+    };
+    window.addEventListener("znwriter-ai-chat-prefill", handler);
+    return () => window.removeEventListener("znwriter-ai-chat-prefill", handler);
+  }, [resizeTextarea]);
+
+  useEffect(() => {
     resizeTextarea();
   }, [input, resizeTextarea]);
 
@@ -660,14 +703,19 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
     const referencedByText = documents
       .filter((doc) => text.includes(`@${doc.title}`))
       .map((doc) => ({ type: "document" as const, id: doc.id, title: doc.title }));
-    const requestReferences = uniqueReferences([...currentReference, ...references, ...referencedByText]);
+    const referencedBrainsByText = brainKnowledges
+      .filter((item) => text.includes(`#${item.title}`))
+      .map((item) => ({ type: "brain" as const, id: item.id, title: item.title }));
+    const requestReferences = uniqueReferences([...currentReference, ...references, ...referencedByText, ...brainReferences, ...referencedBrainsByText]);
 
     const userMsg: Message = { role: "user", content: text };
     const withUser = [...messages, userMsg];
     setMessages(withUser);
     setInput("");
     setReferences([]);
+    setBrainReferences([]);
     setMentionOpen(false);
+    setBrainOpen(false);
     setCommandOpen(false);
     setLoading(true);
     setActionMode(nextActionMode);
@@ -762,7 +810,8 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
           }
 
           const actionDocId = typeof action.docId === "string" ? action.docId.trim() : "";
-          const fallbackDocId = requestReferences.length === 1 ? requestReferences[0].id : "";
+          const docReferences = requestReferences.filter((ref): ref is DocumentReference => ref.type === "document");
+          const fallbackDocId = docReferences.length === 1 ? docReferences[0].id : "";
           const targetDocId = actionDocId && getDocument(actionDocId) ? actionDocId : fallbackDocId || actionDocId;
           const targetDoc = targetDocId ? getDocument(targetDocId) || await loadDocument(targetDocId) : null;
 
@@ -823,7 +872,7 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
       setActionMode(false);
       setTaskStage((stage) => (stage === "preview" ? stage : "idle"));
     }
-  }, [input, loading, streaming, messages, currentDocumentId, createDocument, toast, t, documents, references, getDocument, loadDocument, updateDocument]);
+  }, [input, loading, streaming, messages, currentDocumentId, createDocument, toast, t, documents, references, brainReferences, brainKnowledges, getDocument, loadDocument, updateDocument]);
 
   const handleStop = useCallback(() => {
     abortRef.current?.abort();
@@ -913,19 +962,23 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
   }, [currentDocumentId, loadVersions, restoreDocumentVersion, restoringVersionId, t, toast]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if ((e.key === "Backspace" || e.key === "Delete") && references.length > 0) {
+    if ((e.key === "Backspace" || e.key === "Delete") && (references.length > 0 || brainReferences.length > 0)) {
       const target = e.currentTarget as HTMLTextAreaElement;
       const selectionStart = target.selectionStart ?? 0;
       const selectionEnd = target.selectionEnd ?? selectionStart;
       if (selectionStart === selectionEnd) {
-        const range = findMentionDeletionRange(input, selectionStart, e.key, references);
+        const docRange = findTokenDeletionRange(input, selectionStart, e.key, references, "@");
+        const brainRange = findTokenDeletionRange(input, selectionStart, e.key, brainReferences, "#");
+        const range = docRange || brainRange;
         if (range) {
           e.preventDefault();
           const next = `${input.slice(0, range.start)}${input.slice(range.end)}`;
           setInput(next);
           setMentionOpen(false);
+          setBrainOpen(false);
           setMentionIndex(0);
           setReferences((prev) => prev.filter((ref) => next.includes(`@${ref.title}`)));
+          setBrainReferences((prev) => prev.filter((ref) => next.includes(`#${ref.title}`)));
           requestAnimationFrame(() => {
             inputRef.current?.setSelectionRange(range.start, range.start);
             resizeTextarea();
@@ -955,6 +1008,34 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
         if (e.key === "Enter" && !e.shiftKey) {
           e.preventDefault();
           selectCommand(commandMatches[commandIndex]);
+          return;
+        }
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        return;
+      }
+    }
+
+    if (showBrainMenu) {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setBrainOpen(false);
+        return;
+      }
+      if (brainMatches.length > 0) {
+        if (e.key === "ArrowDown") {
+          e.preventDefault();
+          setBrainIndex((i) => Math.min(i + 1, brainMatches.length - 1));
+          return;
+        }
+        if (e.key === "ArrowUp") {
+          e.preventDefault();
+          setBrainIndex((i) => Math.max(i - 1, 0));
+          return;
+        }
+        if (e.key === "Enter" && !e.shiftKey) {
+          e.preventDefault();
+          selectBrainReference(brainMatches[brainIndex]);
           return;
         }
       } else if (e.key === "Enter") {
@@ -1001,6 +1082,7 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
   const currentPersonality = PERSONALITY_OPTIONS.find((p) => p.key === personality) || PERSONALITY_OPTIONS[0];
   const isGenerating = loading || streaming;
   const mention = getMentionQuery(input);
+  const brainMention = getBrainQuery(input);
   const slash = getSlashQuery(input);
   const slashCommands: SlashCommand[] = [
     { id: "rewrite", label: t("ai.commandRewrite"), prompt: t("ai.commandRewritePrompt") },
@@ -1008,6 +1090,8 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
     { id: "expand", label: t("ai.commandExpand"), prompt: t("ai.commandExpandPrompt") },
     { id: "formal", label: t("ai.commandFormal"), prompt: t("ai.commandFormalPrompt") },
     { id: "outline", label: t("ai.commandOutline"), prompt: t("ai.commandOutlinePrompt") },
+    { id: "docqa", label: t("ai.commandDocQA"), prompt: t("ai.commandDocQAPrompt") },
+    { id: "multisummary", label: t("ai.commandMultiSummary"), prompt: t("ai.commandMultiSummaryPrompt") },
   ];
   const commandMatches = slash
     ? slashCommands.filter((command) => command.label.toLowerCase().includes(slash.query.toLowerCase()))
@@ -1018,7 +1102,14 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
         .filter((doc) => doc.title.toLowerCase().includes(mention.query.toLowerCase()))
         .slice(0, 6)
     : [];
+  const brainMatches = brainMention
+    ? brainKnowledges
+        .filter((item) => !brainReferences.some((ref) => ref.id === item.id))
+        .filter((item) => item.title.toLowerCase().includes(brainMention.query.toLowerCase()))
+        .slice(0, 6)
+    : [];
   const showMentionMenu = mentionOpen && !!mention && !isGenerating;
+  const showBrainMenu = brainOpen && !!brainMention && !isGenerating;
   const showCommandMenu = commandOpen && !!slash && !isGenerating;
   const activeContextDocument = currentDocumentId ? getDocument(currentDocumentId) : undefined;
   const taskStageLabel = (stage: TaskStage) => {
@@ -1061,6 +1152,23 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
     setInput((prev) => prev.replace(tokenPattern, " ").replace(/\s{2,}/g, " ").trimStart());
   };
 
+  const selectBrainReference = (item: BrainKnowledge) => {
+    if (!brainMention) return;
+    setBrainReferences((prev) => (
+      prev.some((ref) => ref.id === item.id)
+        ? prev
+        : [...prev, { type: "brain", id: item.id, title: item.title }]
+    ));
+    setInput((prev) => `${prev.slice(0, brainMention.start)}#${item.title} `);
+    setBrainOpen(false);
+  };
+
+  const removeBrainReference = (ref: BrainReference) => {
+    setBrainReferences((prev) => prev.filter((item) => item.id !== ref.id));
+    const tokenPattern = new RegExp(`(^|\\s)#${escapeRegExp(ref.title)}(?=\\s|$)`, "g");
+    setInput((prev) => prev.replace(tokenPattern, " ").replace(/\s{2,}/g, " ").trimStart());
+  };
+
   const selectCommand = (command: SlashCommand) => {
     if (!slash) return;
     setInput((prev) => `${prev.slice(0, slash.start)}${command.prompt}`);
@@ -1075,12 +1183,16 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
   const handleInputChange = (next: string) => {
     setInput(next);
     const nextMention = getMentionQuery(next);
+    const nextBrain = getBrainQuery(next);
     const nextSlash = getSlashQuery(next);
     setMentionOpen(!!nextMention);
-    setCommandOpen(!!nextSlash && !nextMention);
+    setBrainOpen(!!nextBrain && !nextMention);
+    setCommandOpen(!!nextSlash && !nextMention && !nextBrain);
     setMentionIndex(0);
+    setBrainIndex(0);
     setCommandIndex(0);
     setReferences((prev) => prev.filter((ref) => next.includes(`@${ref.title}`)));
+    setBrainReferences((prev) => prev.filter((ref) => next.includes(`#${ref.title}`)));
   };
 
   return (
@@ -1303,8 +1415,12 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
                                   key={source.id}
                                   className="inline-flex max-w-[160px] items-center gap-1 rounded-full bg-white px-2 py-0.5 text-[10px] font-medium text-surface-500 dark:bg-surface-900 dark:text-surface-400"
                                 >
-                                  <FileText className="h-3 w-3 shrink-0 text-brand-500" />
-                                  <span className="truncate">@{source.title}</span>
+                                  {source.type === "brain" ? (
+                                    <Sparkles className="h-3 w-3 shrink-0 text-amber-500" />
+                                  ) : (
+                                    <FileText className="h-3 w-3 shrink-0 text-brand-500" />
+                                  )}
+                                  <span className="truncate">{source.type === "brain" ? "#" : "@"}{source.title}</span>
                                 </span>
                               ))}
                             </div>
@@ -1469,6 +1585,28 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
                 ))}
               </div>
             )}
+            {brainReferences.length > 0 && (
+              <div className="mb-2 flex flex-wrap items-center gap-1.5">
+                <span className="text-[10px] font-medium text-surface-400">{t("ai.brainContext")}</span>
+                {brainReferences.map((ref) => (
+                  <span
+                    key={ref.id}
+                    className="inline-flex max-w-[180px] items-center gap-1 rounded-full bg-amber-50 px-2 py-1 text-[11px] font-medium text-amber-700 dark:bg-amber-950 dark:text-amber-300"
+                  >
+                    <Sparkles className="h-3 w-3 shrink-0" />
+                    <span className="truncate">#{ref.title}</span>
+                    <button
+                      type="button"
+                      title={t("ai.removeBrainReference")}
+                      onClick={() => removeBrainReference(ref)}
+                      className="rounded-full p-0.5 text-amber-400 hover:bg-amber-100 hover:text-amber-700 dark:hover:bg-amber-900 dark:hover:text-amber-200"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
             <div className="flex items-center gap-2">
               <div className="relative flex-1">
               <textarea
@@ -1476,7 +1614,7 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
                 value={input}
                 onChange={(e) => handleInputChange(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder={isGenerating ? t("ai.replying") : `${t("ai.placeholder")} ${t("ai.mentionHint")} · ${t("ai.commandHint")}`}
+                placeholder={isGenerating ? t("ai.replying") : `${t("ai.placeholder")} ${t("ai.mentionHint")} · ${t("ai.brainHint")} · ${t("ai.commandHint")}`}
                 disabled={isGenerating}
                 rows={1}
                 className="w-full resize-none rounded-xl border border-surface-200 bg-surface-50 px-4 py-2 text-sm text-surface-900 outline-none transition-all duration-200 hover:border-surface-300 hover:bg-surface-100 focus:border-brand-300 focus:ring-1 focus:ring-brand-300 focus:bg-white disabled:opacity-50 disabled:cursor-not-allowed dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 dark:hover:border-surface-600 dark:hover:bg-surface-700 dark:focus:border-brand-700 dark:focus:bg-surface-800"
@@ -1504,6 +1642,33 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
                     ))
                   ) : (
                     <div className="px-3 py-2 text-xs text-surface-400">{t("ai.noMatchingDocs")}</div>
+                  )}
+                </div>
+              )}
+              {showBrainMenu && (
+                <div className="absolute bottom-full left-0 z-30 mb-2 max-h-56 w-full overflow-hidden rounded-xl border border-surface-200 bg-white py-1 shadow-lg dark:border-surface-700 dark:bg-surface-900">
+                  {brainMatches.length > 0 ? (
+                    brainMatches.map((item, idx) => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onMouseEnter={() => setBrainIndex(idx)}
+                        onClick={() => selectBrainReference(item)}
+                        className={cn(
+                          "flex w-full items-center gap-2 px-3 py-2 text-left text-xs transition-colors",
+                          idx === brainIndex
+                            ? "bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
+                            : "text-surface-700 hover:bg-surface-50 dark:text-surface-200 dark:hover:bg-surface-800"
+                        )}
+                      >
+                        <Sparkles className="h-3.5 w-3.5 shrink-0 text-amber-500" />
+                        <span className="truncate">#{item.title}</span>
+                        {item.category && <span className="ml-auto shrink-0 text-[10px] text-surface-400">{item.category}</span>}
+                      </button>
+                    ))
+                  ) : (
+                    <div className="px-3 py-2 text-xs text-surface-400">{t("ai.noMatchingBrain")}</div>
                   )}
                 </div>
               )}
