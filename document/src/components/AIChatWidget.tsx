@@ -1100,7 +1100,7 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
       </button>
 
       {open && keyOk && (
-        <div className="fixed bottom-6 left-6 z-50 flex h-[640px] w-[480px] flex-col rounded-2xl border border-surface-200 bg-white shadow-2xl dark:border-surface-700 dark:bg-surface-900">
+        <div className="fixed bottom-6 left-6 z-50 flex h-[min(760px,calc(100vh-48px))] w-[min(560px,calc(100vw-48px))] flex-col rounded-2xl border border-surface-200 bg-white shadow-2xl dark:border-surface-700 dark:bg-surface-900">
           {/* Backdrop: click outside to close and abort */}
           <div
             className="fixed inset-0 -z-10"
