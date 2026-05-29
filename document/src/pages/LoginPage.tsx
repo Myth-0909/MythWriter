@@ -1,13 +1,15 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ForgotPasswordModal } from "@/components/ForgotPasswordModal";
-import { Particles } from "@/components/Particles";
+import { AmbientBackground } from "@/components/AmbientBackground";
 import { ShinyText } from "@/components/ShinyText";
 import { BrandLogo } from "@/components/BrandLogo";
+import { MagneticCard } from "@/components/MagneticCard";
 import { cn } from "@/lib/utils";
-import { Eye, EyeOff, Mail, Lock, User, ArrowRight, Loader2, Globe } from "lucide-react";
+import { Eye, EyeOff, Mail, Lock, User, ArrowRight, Loader2, Globe, Sun, Moon, Monitor } from "lucide-react";
 import { useI18n } from "@/components/I18nProvider";
+import { useTheme } from "@/components/ThemeProvider";
 import { useToast } from "@/components/Toast";
 import { api, setToken } from "@/api";
 
@@ -19,22 +21,11 @@ interface LoginPageProps {
 
 export function LoginPage({ onLogin }: LoginPageProps) {
   const { t, lang, toggleLang } = useI18n();
+  const { themeMode, setThemeMode } = useTheme();
   const { toast } = useToast();
   const [mode, setMode] = useState<Mode>("login");
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [isDark, setIsDark] = useState(
-    () => document.documentElement.classList.contains("dark")
-  );
-
-  // Track dark mode changes
-  useEffect(() => {
-    const observer = new MutationObserver(() => {
-      setIsDark(document.documentElement.classList.contains("dark"));
-    });
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
-    return () => observer.disconnect();
-  }, []);
 
   // Form fields
   const [name, setName] = useState("");
@@ -93,49 +84,115 @@ export function LoginPage({ onLogin }: LoginPageProps) {
 
   return (
     <div className="relative flex h-screen w-full items-center justify-center overflow-hidden bg-surface-50 dark:bg-surface-950">
-      {/* Particles network background */}
-      <Particles
-        particleColor={isDark ? "#60a5fa" : "#3b82f6"}
-        lineColor={isDark ? "#3b82f6" : "#2563eb"}
-        particleCount={90}
-        connectDistance={150}
-        moveSpeed={0.35}
-        mouseRadius={200}
-        mouseForce={0.35}
-        className="absolute inset-0 z-0"
-      />
+      <style>{`
+        .magnetic-glow::after {
+          content: '';
+          position: absolute;
+          inset: 0;
+          border-radius: inherit;
+          background: radial-gradient(circle at var(--mx, 50%) var(--my, 50%), rgba(168,139,89,0.12) 0%, transparent 55%);
+          pointer-events: none;
+          opacity: 0;
+          transition: opacity 0.3s ease;
+          z-index: 0;
+        }
+        .magnetic-glow:hover::after {
+          opacity: 1;
+        }
+        .magnetic-glow > input {
+          position: relative;
+          z-index: 1;
+        }
+        .magnetic-glow > svg,
+        .magnetic-glow > button {
+          z-index: 2;
+        }
+      `}</style>
+      {/* Ambient background — paper texture + AI light + subtle grid */}
+      <AmbientBackground className="z-0" />
 
-      {/* Language switch */}
-      <button
-        onClick={toggleLang}
-        className="absolute top-6 right-6 z-20 inline-flex items-center gap-1.5 rounded-full border border-surface-200/60 bg-white/70 backdrop-blur-md px-3 py-1.5 text-xs font-medium text-surface-600 shadow-sm transition-all duration-300 hover:bg-white hover:text-surface-900 hover:shadow-md active:scale-95 dark:border-surface-700/60 dark:bg-surface-900/70 dark:text-surface-400 dark:hover:bg-surface-900 dark:hover:text-surface-200"
-      >
-        <Globe className="h-3.5 w-3.5" />
-        <span>{lang === "zh" ? "English" : "中文"}</span>
-      </button>
+      {/* Top-right controls */}
+      <div className="absolute top-6 right-6 z-20 flex items-center gap-3">
+        {/* Theme switch — same as settings page */}
+        <div className="relative grid w-[116px] grid-cols-3 gap-1 rounded-lg bg-white/70 p-1 backdrop-blur-md dark:bg-surface-900/70">
+          <div
+            className="absolute left-1 top-1 h-8 w-8 rounded-md bg-white shadow-sm transition-transform duration-300 ease-out dark:bg-surface-700"
+            style={{ transform: `translateX(${themeMode === "system" ? 0 : themeMode === "light" ? 36 : 72}px)` }}
+          />
+          <button
+            onClick={() => setThemeMode("system")}
+            className={`relative z-10 flex h-8 w-8 items-center justify-center rounded-md transition-colors cursor-pointer ${
+              themeMode === "system"
+                ? "text-surface-900 dark:text-surface-100"
+                : "text-surface-400 hover:text-surface-600 dark:hover:text-surface-300"
+            }`}
+            title={t("nav.followSystem")}
+          >
+            <Monitor className="h-4 w-4" />
+          </button>
+          <button
+            onClick={() => setThemeMode("light")}
+            className={`relative z-10 flex h-8 w-8 items-center justify-center rounded-md transition-colors cursor-pointer ${
+              themeMode === "light"
+                ? "text-amber-500"
+                : "text-surface-400 hover:text-surface-600 dark:hover:text-surface-300"
+            }`}
+            title={t("nav.lightMode")}
+          >
+            <Sun className="h-4 w-4" />
+          </button>
+          <button
+            onClick={() => setThemeMode("dark")}
+            className={`relative z-10 flex h-8 w-8 items-center justify-center rounded-md transition-colors cursor-pointer ${
+              themeMode === "dark"
+                ? "text-brand-500 dark:text-brand-400"
+                : "text-surface-400 hover:text-surface-600 dark:hover:text-surface-300"
+            }`}
+            title={t("nav.darkMode")}
+          >
+            <Moon className="h-4 w-4" />
+          </button>
+        </div>
 
-      {/* Login card */}
-      <div className="relative z-10 w-full max-w-[420px] rounded-2xl border border-surface-200/80 bg-white/85 backdrop-blur-xl p-8 shadow-xl dark:border-surface-700/80 dark:bg-surface-900/85">
+        {/* Language switch */}
+        <button
+          onClick={toggleLang}
+          className="inline-flex items-center gap-1.5 rounded-full border border-surface-200/60 bg-white/70 backdrop-blur-md px-3 py-1.5 text-xs font-medium text-surface-600 shadow-sm transition-all duration-300 hover:bg-white hover:text-surface-900 hover:shadow-md active:scale-95 dark:border-surface-700/60 dark:bg-surface-900/70 dark:text-surface-400 dark:hover:bg-surface-900 dark:hover:text-surface-200"
+        >
+          <Globe className="h-3.5 w-3.5" />
+          <span>{lang === "zh" ? "English" : "中文"}</span>
+        </button>
+      </div>
+
+      {/* Login card — 3D magnetic tilt */}
+      <MagneticCard className="z-10 w-full max-w-[420px]" intensity={4}>
+        <div
+          className="w-full rounded-2xl border border-surface-200/80 bg-white/85 p-8 shadow-xl backdrop-blur-xl dark:border-surface-700/80 dark:bg-surface-900/85"
+        >
         {/* Logo */}
         <div className="mb-8 text-center">
           <div className="mb-3 flex justify-center">
             <BrandLogo size="lg" />
           </div>
-          <ShinyText
-            text={t("app.name")}
-            color={isDark ? "#e2e8f0" : "#0f172a"}
-            shineColor={isDark ? "#d8bd73" : "#b9954e"}
-            speed={2.5}
-            direction="right"
-            className="text-2xl font-bold tracking-normal"
-          />
+          <div>
+            <ShinyText
+              text={t("app.name")}
+              color={themeMode === "dark" ? "#e2e8f0" : "#0f172a"}
+              shineColor={themeMode === "dark" ? "#d8bd73" : "#b9954e"}
+              speed={2.5}
+              direction="right"
+              className="text-2xl font-bold tracking-normal"
+            />
+          </div>
           <p className="mt-1 text-sm text-surface-500">
             {mode === "login" ? t("login.welcomeBack") : t("login.createAccount")}
           </p>
         </div>
 
         {/* Tabs */}
-        <div className="mb-6 flex rounded-lg bg-surface-100 p-1 dark:bg-surface-800">
+        <div
+          className="mb-6 flex rounded-lg bg-surface-100 p-1 dark:bg-surface-800"
+        >
           <button
             onClick={() => setMode("login")}
             className={cn(
@@ -175,7 +232,16 @@ export function LoginPage({ onLogin }: LoginPageProps) {
             )}
           >
             <div className="overflow-hidden">
-              <div className="relative">
+              <div
+                className="relative rounded-md magnetic-glow"
+                onMouseMove={(e) => {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  const x = ((e.clientX - rect.left) / rect.width) * 100;
+                  const y = ((e.clientY - rect.top) / rect.height) * 100;
+                  e.currentTarget.style.setProperty("--mx", `${x}%`);
+                  e.currentTarget.style.setProperty("--my", `${y}%`);
+                }}
+              >
                 <User className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-surface-400" />
                 <Input
                   type="text"
@@ -189,7 +255,16 @@ export function LoginPage({ onLogin }: LoginPageProps) {
             </div>
           </div>
 
-          <div className="relative">
+          <div
+            className="relative rounded-md magnetic-glow"
+            onMouseMove={(e) => {
+              const rect = e.currentTarget.getBoundingClientRect();
+              const x = ((e.clientX - rect.left) / rect.width) * 100;
+              const y = ((e.clientY - rect.top) / rect.height) * 100;
+              e.currentTarget.style.setProperty("--mx", `${x}%`);
+              e.currentTarget.style.setProperty("--my", `${y}%`);
+            }}
+          >
             <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-surface-400" />
             <Input
               type="email"
@@ -201,7 +276,16 @@ export function LoginPage({ onLogin }: LoginPageProps) {
             />
           </div>
 
-          <div className="relative">
+          <div
+            className="relative rounded-md magnetic-glow"
+            onMouseMove={(e) => {
+              const rect = e.currentTarget.getBoundingClientRect();
+              const x = ((e.clientX - rect.left) / rect.width) * 100;
+              const y = ((e.clientY - rect.top) / rect.height) * 100;
+              e.currentTarget.style.setProperty("--mx", `${x}%`);
+              e.currentTarget.style.setProperty("--my", `${y}%`);
+            }}
+          >
             <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-surface-400" />
             <Input
               type={showPassword ? "text" : "password"}
@@ -244,11 +328,12 @@ export function LoginPage({ onLogin }: LoginPageProps) {
             </div>
           </div>
 
-          <Button
-            type="submit"
-            className="mt-2 h-10 w-full font-medium active:scale-[0.98] transition-transform cursor-pointer"
-            disabled={submitting}
-          >
+          <div className="relative">
+            <Button
+              type="submit"
+              className="relative mt-2 h-10 w-full font-medium shadow-[0_10px_22px_rgba(15,42,35,0.16)] active:scale-[0.98] transition-transform cursor-pointer"
+              disabled={submitting}
+            >
             {submitting ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : mode === "login" ? (
@@ -257,6 +342,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
               t("login.createAccountBtn")
             )}
           </Button>
+          </div>
 
           {/* Switch mode */}
           <p className="mt-4 text-center text-xs text-surface-500">
@@ -287,7 +373,8 @@ export function LoginPage({ onLogin }: LoginPageProps) {
             )}
           </p>
         </form>
-      </div>
+        </div>
+      </MagneticCard>
 
       {/* Forgot Password Modal */}
       <ForgotPasswordModal
