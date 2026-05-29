@@ -191,15 +191,19 @@ export function LoginPage({ onLogin }: LoginPageProps) {
 
         {/* Tabs */}
         <div
-          className="mb-6 flex rounded-lg bg-surface-100 p-1 dark:bg-surface-800"
+          className="relative mb-6 grid grid-cols-2 gap-1 rounded-lg bg-surface-100 p-1 dark:bg-surface-800"
         >
+          <div
+            className="absolute bottom-1 left-1 top-1 w-[calc(50%-6px)] rounded-md bg-white shadow-sm transition-transform duration-300 ease-out dark:bg-surface-700"
+            style={{ transform: mode === "register" ? "translateX(calc(100% + 4px))" : "translateX(0)" }}
+          />
           <button
             onClick={() => setMode("login")}
             className={cn(
-              "flex-1 rounded-md py-2 text-sm font-medium transition-all duration-200 cursor-pointer",
+              "relative z-10 rounded-md py-2 text-sm font-medium transition-colors duration-300 cursor-pointer",
               "active:scale-[0.97]",
               mode === "login"
-                ? "bg-white text-surface-900 shadow-sm dark:bg-surface-700 dark:text-surface-100"
+                ? "text-surface-900 dark:text-surface-100"
                 : "text-surface-500 hover:text-surface-700 dark:hover:text-surface-300"
             )}
           >
@@ -208,10 +212,10 @@ export function LoginPage({ onLogin }: LoginPageProps) {
           <button
             onClick={() => setMode("register")}
             className={cn(
-              "flex-1 rounded-md py-2 text-sm font-medium transition-all duration-200 cursor-pointer",
+              "relative z-10 rounded-md py-2 text-sm font-medium transition-colors duration-300 cursor-pointer",
               "active:scale-[0.97]",
               mode === "register"
-                ? "bg-white text-surface-900 shadow-sm dark:bg-surface-700 dark:text-surface-100"
+                ? "text-surface-900 dark:text-surface-100"
                 : "text-surface-500 hover:text-surface-700 dark:hover:text-surface-300"
             )}
           >
