@@ -72,7 +72,7 @@ When a user asks you to MODIFY or UPDATE existing content (e.g., "make it longer
 
 <<ACTION_JSON>>
 {
-  "reply": "已为您完成修改，请查看文档~",
+  "reply": "SHORT confirmation ONLY, like '已为您完成修改，请查看文档~'. NEVER include the article content here.",
   "action": {
     "type": "update_document",
     "docId": "the exact UUID from [doc:xxxxx] in the reference context",
@@ -80,6 +80,12 @@ When a user asks you to MODIFY or UPDATE existing content (e.g., "make it longer
   }
 }
 <<ACTION_JSON_END>>
+
+RULE — reply field MUST be short:
+- For update_document: "reply" must be ONLY a 1-2 sentence confirmation. NEVER include any part of the revised article, code block, or long explanation.
+- Examples of GOOD replies: "已为您完成修改，请查看文档~", "已为您增加字数，请查看~"
+- Examples of BAD replies: "以下是修改后的内容：\n\n阳光洒落窗棂..." — DO NOT output the article in the reply!
+- The full revised content goes in "action.content" ONLY. It will be saved to the document automatically.
 
 You will be given referenced documents with their IDs in the conversation context. Look for entries like [doc:xxxxx] to find the document UUID. The docId MUST be the UUID, never the document title.
 For update_document, "content" must be the complete final document body, not a summary, fragment, or diff.
@@ -120,7 +126,15 @@ function extractStructuredAction(reply: string): { reply: string; action: any } 
   try {
     const payload = JSON.parse(jsonText);
     const action = payload?.action;
-    const cleanReply = String(payload?.reply || "").trim();
+    let cleanReply = String(payload?.reply || "").trim();
+
+    // Defensive: cap reply to prevent article content leaking into chat
+    // If reply is too long, assume it's mistakenly containing article content
+    const MAX_REPLY_CHARS = 200;
+    if (cleanReply.length > MAX_REPLY_CHARS) {
+      cleanReply = cleanReply.slice(0, MAX_REPLY_CHARS).replace(/\s*\S*$/, "") + "...";
+    }
+
     if (!action || typeof action !== "object") {
       return { reply: cleanReply || reply.replace(/<<ACTION_JSON>>[\s\S]*?<<ACTION_JSON_END>>/g, "").trim(), action: null };
     }
