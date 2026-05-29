@@ -582,17 +582,6 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
       });
   }, [user?.name]);
 
-  // Smart auto-scroll: only scroll to bottom if user is near the bottom
-  useEffect(() => {
-    if (userScrolledUpRef.current) return;
-    chatEndRef.current?.scrollIntoView({ behavior: "auto" });
-  }, [messages]);
-
-  // Reset scroll lock when user sends a new message
-  useEffect(() => {
-    if (loading) userScrolledUpRef.current = false;
-  }, [loading]);
-
   // Handle scroll events for smart scroll detection
   const handleScrollEvent = useCallback((_instance: any, event: Event) => {
     const target = event.target as HTMLElement;
@@ -601,6 +590,47 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
     const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
     userScrolledUpRef.current = distanceFromBottom > 80;
   }, []);
+
+  const scrollChatToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
+    const marker = chatEndRef.current;
+    if (!marker) return;
+
+    const viewport = marker.closest(".os-viewport") as HTMLElement | null;
+    if (viewport) {
+      viewport.scrollTo({ top: viewport.scrollHeight, behavior });
+      return;
+    }
+
+    marker.scrollIntoView({ behavior, block: "end" });
+  }, []);
+
+  // Smart auto-scroll: only scroll to bottom if user is near the bottom
+  useEffect(() => {
+    if (userScrolledUpRef.current) return;
+    scrollChatToBottom();
+  }, [messages, scrollChatToBottom]);
+
+  // Always show the most recent messages when the assistant opens.
+  useEffect(() => {
+    if (!open || !keyOk || messages.length === 0) return;
+    userScrolledUpRef.current = false;
+
+    const frame = requestAnimationFrame(() => scrollChatToBottom());
+    const timers = [
+      window.setTimeout(() => scrollChatToBottom(), 80),
+      window.setTimeout(() => scrollChatToBottom(), 260),
+    ];
+
+    return () => {
+      cancelAnimationFrame(frame);
+      timers.forEach(window.clearTimeout);
+    };
+  }, [keyOk, messages.length, open, scrollChatToBottom]);
+
+  // Reset scroll lock when user sends a new message
+  useEffect(() => {
+    if (loading) userScrolledUpRef.current = false;
+  }, [loading]);
 
   // Auto-resize textarea helper
   const resizeTextarea = useCallback(() => {
