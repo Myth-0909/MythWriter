@@ -612,8 +612,9 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
     const el = inputRef.current;
     if (!el) return;
     el.style.height = "auto";
-    const maxHeight = 96; // ~4 lines
-    const nextHeight = Math.min(el.scrollHeight, maxHeight);
+    const minHeight = 42;
+    const maxHeight = 112; // ~5 lines
+    const nextHeight = Math.max(minHeight, Math.min(el.scrollHeight, maxHeight));
     el.style.height = `${nextHeight}px`;
     el.style.overflowY = el.scrollHeight > maxHeight ? "auto" : "hidden";
   }, []);
@@ -1200,15 +1201,44 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
       {/* Floating button */}
       <button
         onMouseDown={handleMouseDown}
+        aria-label={t("ai.title")}
         className={cn(
-          "fixed z-50 flex h-14 w-14 items-center justify-center rounded-full shadow-lg transition-all duration-300 select-none",
+          "group fixed z-50 flex h-[60px] w-[60px] items-center justify-center overflow-hidden rounded-full shadow-[0_18px_36px_rgba(118,87,44,0.24)] ring-1 ring-white/40 transition-all duration-300 select-none dark:ring-white/10",
           open ? "opacity-0 pointer-events-none scale-75" : "opacity-100 scale-100",
-          dragging ? "cursor-grabbing shadow-xl scale-105" : "cursor-grab hover:shadow-xl hover:scale-105",
-          "bg-brand-500 text-white dark:bg-brand-600"
+          dragging ? "cursor-grabbing scale-105" : "cursor-grab hover:-translate-y-0.5 hover:scale-105",
+          "bg-[linear-gradient(145deg,#d7bd73_0%,#b9954e_48%,#76572c_100%)] text-white"
         )}
         style={{ left: pos.x, top: pos.y, transition: dragging ? "none" : undefined }}
       >
-        <Sparkles className="h-6 w-6" />
+        <span className="absolute inset-[3px] rounded-full bg-[radial-gradient(circle_at_32%_24%,rgba(255,255,255,0.34),rgba(255,255,255,0)_34%),linear-gradient(145deg,rgba(255,255,255,0.18),rgba(255,255,255,0)_52%)]" />
+        <span className="absolute -right-5 -top-5 h-12 w-12 rounded-full bg-white/20 blur-xl transition-transform duration-500 group-hover:translate-x-1 group-hover:translate-y-1" />
+        <svg
+          viewBox="0 0 64 64"
+          aria-hidden="true"
+          className="relative h-10 w-10 drop-shadow-[0_2px_5px_rgba(47,39,24,0.26)]"
+        >
+          <path
+            d="M18 19h27L25 45h24"
+            fill="none"
+            stroke="rgba(255,255,255,0.96)"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth="6"
+          />
+          <path
+            d="M44 18c2.8 0 4-1.2 4-4 0 2.8 1.2 4 4 4-2.8 0-4 1.2-4 4 0-2.8-1.2-4-4-4Z"
+            fill="rgba(255,255,255,0.96)"
+          />
+          <path
+            d="M14 39c5.8 7.1 15.1 10.2 25.3 7.3 4.7-1.3 8.3-3.8 10.7-7.1"
+            fill="none"
+            stroke="rgba(255,255,255,0.62)"
+            strokeLinecap="round"
+            strokeWidth="3"
+          />
+          <circle cx="17" cy="27" r="2.3" fill="rgba(255,255,255,0.82)" />
+          <circle cx="52" cy="30" r="1.8" fill="rgba(255,255,255,0.76)" />
+        </svg>
       </button>
 
       {open && keyOk && (
@@ -1607,19 +1637,20 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
                 ))}
               </div>
             )}
-            <div className="flex items-center gap-2">
-              <div className="relative flex-1">
-              <textarea
-                ref={inputRef}
-                value={input}
-                onChange={(e) => handleInputChange(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder={isGenerating ? t("ai.replying") : `${t("ai.placeholder")} ${t("ai.mentionHint")} · ${t("ai.brainHint")} · ${t("ai.commandHint")}`}
-                disabled={isGenerating}
-                rows={1}
-                className="w-full resize-none rounded-xl border border-surface-200 bg-surface-50 px-4 py-2 text-sm text-surface-900 outline-none transition-all duration-200 hover:border-surface-300 hover:bg-surface-100 focus:border-brand-300 focus:ring-1 focus:ring-brand-300 focus:bg-white disabled:opacity-50 disabled:cursor-not-allowed dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 dark:hover:border-surface-600 dark:hover:bg-surface-700 dark:focus:border-brand-700 dark:focus:bg-surface-800"
-                style={{ maxHeight: "96px" }}
-              />
+            <div className="rounded-2xl border border-surface-200 bg-white p-2 shadow-sm transition-colors focus-within:border-brand-300 focus-within:ring-1 focus-within:ring-brand-300 dark:border-surface-700 dark:bg-surface-900 dark:focus-within:border-brand-700">
+              <div className="relative flex items-end gap-2">
+                <div className="relative min-w-0 flex-1">
+                  <textarea
+                    ref={inputRef}
+                    value={input}
+                    onChange={(e) => handleInputChange(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    placeholder={isGenerating ? t("ai.replying") : t("ai.placeholder")}
+                    disabled={isGenerating}
+                    rows={1}
+                    className="block min-h-[42px] w-full resize-none overflow-hidden rounded-xl bg-transparent px-3 py-2.5 text-sm leading-5 text-surface-900 outline-none placeholder:text-surface-400 disabled:cursor-not-allowed disabled:opacity-50 dark:text-surface-100 dark:placeholder:text-surface-500"
+                    style={{ maxHeight: "112px" }}
+                  />
               {showMentionMenu && (
                 <div className="absolute bottom-full left-0 z-30 mb-2 max-h-56 w-full overflow-hidden rounded-xl border border-surface-200 bg-white py-1 shadow-lg dark:border-surface-700 dark:bg-surface-900">
                   {mentionMatches.length > 0 ? (
@@ -1695,20 +1726,26 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
                   ))}
                 </div>
               )}
+                </div>
+                {isGenerating ? (
+                  <Tooltip content={t("ai.stop")} delay={150}>
+                    <Button size="icon" onClick={handleStop} className="mb-0.5 h-9 w-9 shrink-0 rounded-xl bg-red-500 hover:bg-red-600">
+                      <Square className="h-3.5 w-3.5 text-white" fill="white" />
+                    </Button>
+                  </Tooltip>
+                ) : (
+                  <Tooltip content={t("ai.send")} delay={150}>
+                    <Button size="icon" onClick={handleSend} disabled={!input.trim()} className="mb-0.5 h-9 w-9 shrink-0 rounded-xl">
+                      <Send className="h-4 w-4" />
+                    </Button>
+                  </Tooltip>
+                )}
               </div>
-              {isGenerating ? (
-                <Tooltip content={t("ai.stop")} delay={150}>
-                  <Button size="icon" onClick={handleStop} className="h-9 w-9 shrink-0 rounded-xl bg-red-500 hover:bg-red-600">
-                    <Square className="h-3.5 w-3.5 text-white" fill="white" />
-                  </Button>
-                </Tooltip>
-              ) : (
-                <Tooltip content={t("ai.send")} delay={150}>
-                  <Button size="icon" onClick={handleSend} disabled={!input.trim()} className="h-9 w-9 shrink-0 rounded-xl">
-                    <Send className="h-4 w-4" />
-                  </Button>
-                </Tooltip>
-              )}
+              <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 px-3 pb-1 text-[10px] text-surface-400 dark:text-surface-500">
+                <span>{t("ai.mentionHint")}</span>
+                <span>{t("ai.brainHint")}</span>
+                <span>{t("ai.commandHint")}</span>
+              </div>
             </div>
           </div>
         </div>
