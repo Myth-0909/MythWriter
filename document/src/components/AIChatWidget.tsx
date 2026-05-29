@@ -1203,41 +1203,64 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
         onMouseDown={handleMouseDown}
         aria-label={t("ai.title")}
         className={cn(
-          "group fixed z-50 flex h-[60px] w-[60px] items-center justify-center overflow-hidden rounded-full shadow-[0_18px_36px_rgba(118,87,44,0.24)] ring-1 ring-white/40 transition-all duration-300 select-none dark:ring-white/10",
+          "group fixed z-50 flex h-[62px] w-[62px] items-center justify-center overflow-hidden rounded-full border border-white/70 bg-[linear-gradient(145deg,rgba(255,255,255,0.96),rgba(232,237,233,0.92))] shadow-[0_18px_38px_rgba(46,61,57,0.18),inset_0_1px_0_rgba(255,255,255,0.92)] ring-1 ring-surface-200/70 transition-all duration-300 select-none backdrop-blur-md dark:border-white/10 dark:bg-[linear-gradient(145deg,rgba(47,55,52,0.96),rgba(24,32,30,0.92))] dark:ring-white/10",
           open ? "opacity-0 pointer-events-none scale-75" : "opacity-100 scale-100",
           dragging ? "cursor-grabbing scale-105" : "cursor-grab hover:-translate-y-0.5 hover:scale-105",
-          "bg-[linear-gradient(145deg,#d7bd73_0%,#b9954e_48%,#76572c_100%)] text-white"
+          "text-surface-700 dark:text-surface-100"
         )}
         style={{ left: pos.x, top: pos.y, transition: dragging ? "none" : undefined }}
       >
-        <span className="absolute inset-[3px] rounded-full bg-[radial-gradient(circle_at_32%_24%,rgba(255,255,255,0.34),rgba(255,255,255,0)_34%),linear-gradient(145deg,rgba(255,255,255,0.18),rgba(255,255,255,0)_52%)]" />
-        <span className="absolute -right-5 -top-5 h-12 w-12 rounded-full bg-white/20 blur-xl transition-transform duration-500 group-hover:translate-x-1 group-hover:translate-y-1" />
+        <span className="absolute inset-[5px] rounded-full bg-[radial-gradient(circle_at_33%_22%,rgba(255,255,255,0.88),rgba(255,255,255,0)_34%),linear-gradient(145deg,rgba(255,255,255,0.55),rgba(255,255,255,0.08)_58%,rgba(185,149,78,0.14))] shadow-[inset_0_-10px_18px_rgba(92,107,102,0.08)] dark:bg-[radial-gradient(circle_at_35%_22%,rgba(255,255,255,0.22),rgba(255,255,255,0)_32%),linear-gradient(145deg,rgba(255,255,255,0.12),rgba(185,149,78,0.12))]" />
+        <span className="absolute -right-4 -top-4 h-11 w-11 rounded-full bg-brand-200/35 blur-xl transition-transform duration-500 group-hover:translate-x-1 group-hover:translate-y-1 dark:bg-brand-500/20" />
         <svg
-          viewBox="0 0 64 64"
+          viewBox="0 0 80 80"
           aria-hidden="true"
-          className="relative h-10 w-10 drop-shadow-[0_2px_5px_rgba(47,39,24,0.26)]"
+          className="relative h-12 w-12 drop-shadow-[0_5px_10px_rgba(46,61,57,0.22)]"
         >
           <path
-            d="M18 19h27L25 45h24"
-            fill="none"
-            stroke="rgba(255,255,255,0.96)"
-            strokeLinecap="round"
+            d="M18.7 45.2c-3.4-12.2 4.2-24.8 17-28.1 11.7-3 23.6 3.9 26.6 15.4 2.9 11.2-3.8 22.8-15.3 26.5-5.2 1.7-10.6 1.3-15.1-.8L20.8 63l3.1-10.2a22.6 22.6 0 0 1-5.2-7.6Z"
+            fill="rgba(255,255,255,0.54)"
+            stroke="rgba(101,118,112,0.64)"
             strokeLinejoin="round"
-            strokeWidth="6"
+            strokeWidth="2.7"
           />
           <path
-            d="M44 18c2.8 0 4-1.2 4-4 0 2.8 1.2 4 4 4-2.8 0-4 1.2-4 4 0-2.8-1.2-4-4-4Z"
-            fill="rgba(255,255,255,0.96)"
+            d="M31.6 48.3c7.2-15.7 17.1-25.8 31.6-30.2-3.2 15.1-11.7 26.2-27.4 34.7l-9.4 5.1 5.2-9.6Z"
+            fill="rgba(255,255,255,0.72)"
+            stroke="rgba(82,98,93,0.92)"
+            strokeLinejoin="round"
+            strokeWidth="3.2"
           />
           <path
-            d="M14 39c5.8 7.1 15.1 10.2 25.3 7.3 4.7-1.3 8.3-3.8 10.7-7.1"
+            d="M37.5 48.4 56.2 25"
             fill="none"
-            stroke="rgba(255,255,255,0.62)"
+            stroke="rgba(82,98,93,0.74)"
             strokeLinecap="round"
-            strokeWidth="3"
+            strokeWidth="2.4"
           />
-          <circle cx="17" cy="27" r="2.3" fill="rgba(255,255,255,0.82)" />
-          <circle cx="52" cy="30" r="1.8" fill="rgba(255,255,255,0.76)" />
+          <path
+            d="M31.2 47.9 19.4 59.7"
+            fill="none"
+            stroke="rgba(82,98,93,0.88)"
+            strokeLinecap="round"
+            strokeWidth="3.4"
+          />
+          <path
+            d="M28.1 51.2 21 44l-2.6 15.2 15.1-2.7-5.4-5.3Z"
+            fill="rgba(255,255,255,0.86)"
+            stroke="rgba(82,98,93,0.9)"
+            strokeLinejoin="round"
+            strokeWidth="2.8"
+          />
+          <path
+            d="M44.4 36.4h10.5M39.5 43.2h10.8"
+            fill="none"
+            stroke="rgba(185,149,78,0.72)"
+            strokeLinecap="round"
+            strokeWidth="2.4"
+          />
+          <circle cx="61.5" cy="20.2" r="4.1" fill="rgba(255,255,255,0.88)" />
+          <circle cx="61.5" cy="20.2" r="2" fill="rgba(216,189,115,0.9)" />
         </svg>
       </button>
 
