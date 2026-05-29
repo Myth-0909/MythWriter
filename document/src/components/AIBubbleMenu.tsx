@@ -27,13 +27,12 @@ function cleanSelectionResult(text: string): string {
   return result;
 }
 
-type ActionType = "rewrite" | "expand" | "summarize" | "translate" | "continue" | "toneFormal" | "toneCasual";
+type ActionType = "rewrite" | "expand" | "summarize" | "continue" | "toneFormal" | "toneCasual";
 
 const ACTION_PROMPTS: Record<ActionType, string> = {
   rewrite: "改写",
   expand: "扩写",
   summarize: "缩写",
-  translate: "翻译为{targetLang}",
   continue: "续写",
   toneFormal: "用正式语气改写",
   toneCasual: "用轻松语气改写",
@@ -128,9 +127,6 @@ export function AIBubbleMenu({ editor }: AIBubbleMenuProps) {
     const succeedingText = editor.state.doc.textBetween(to, Math.min(editor.state.doc.content.size, to + 400), "\n");
 
     let prompt = ACTION_PROMPTS[type];
-    if (type === "translate") {
-      prompt = prompt.replace("{targetLang}", lang === "zh" ? "英文" : "中文");
-    }
 
     const systemMessage = `你是一个写作助手。当前用户正在撰写一篇文章，以下是文章的上下文信息，请特别参考上下文以确保语境、人设、语气和逻辑的一致性。
 
@@ -181,7 +177,7 @@ ${succeedingText}
     }
   }, [editor, lang, loading, t, toast]);
 
-  const primaryActions: ActionType[] = ["rewrite", "expand", "summarize", "translate"];
+  const primaryActions: ActionType[] = ["rewrite", "expand", "summarize"];
   const moreActions: ActionType[] = ["continue", "toneFormal", "toneCasual"];
 
   return (

@@ -332,7 +332,6 @@ const translations = {
   "ai.menu.rewrite": { zh: "改写", en: "Rewrite" },
   "ai.menu.expand": { zh: "扩写", en: "Expand" },
   "ai.menu.summarize": { zh: "缩写", en: "Summarize" },
-  "ai.menu.translate": { zh: "翻译", en: "Translate" },
   "ai.menu.continue": { zh: "续写", en: "Continue" },
   "ai.menu.tone": { zh: "语气", en: "Tone" },
   "ai.menu.toneFormal": { zh: "正式语气", en: "Formal" },
