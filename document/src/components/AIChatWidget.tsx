@@ -14,6 +14,7 @@ import { markdownToHtml } from "@/lib/markdown";
 import { sanitizeHtml } from "@/lib/html";
 import { Tooltip } from "@/components/ui/tooltip";
 import type { DocumentVersion } from "@/types";
+import gsap from "gsap";
 
 const API_BASE = "http://localhost:3000/api";
 
@@ -465,6 +466,7 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
   const dragStart = useRef({ x: 0, y: 0 });
   const posStart = useRef({ x: 0, y: 0 });
   const hasMoved = useRef(false);
+  const chatPanelRef = useRef<HTMLDivElement>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const userScrolledUpRef = useRef(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -1192,6 +1194,43 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
     setBrainReferences((prev) => prev.filter((ref) => next.includes(`#${ref.title}`)));
   };
 
+  useEffect(() => {
+    const panel = chatPanelRef.current;
+    if (!open || !keyOk || !panel) return;
+
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const ctx = gsap.context(() => {
+      const rect = panel.getBoundingClientRect();
+      const originX = Math.min(Math.max(pos.x + 31 - rect.left, 24), rect.width - 24);
+      const originY = Math.min(Math.max(pos.y + 31 - rect.top, 24), rect.height - 24);
+      const enterItems = panel.querySelectorAll("[data-ai-chat-enter]");
+
+      gsap.set(panel, { transformOrigin: `${originX}px ${originY}px` });
+
+      if (reduceMotion) {
+        gsap.set(panel, { autoAlpha: 1, scale: 1, y: 0, filter: "none" });
+        gsap.set(enterItems, { autoAlpha: 1, y: 0 });
+        return;
+      }
+
+      const timeline = gsap.timeline({ defaults: { ease: "power3.out" } });
+      timeline
+        .fromTo(
+          panel,
+          { autoAlpha: 0, scale: 0.92, y: 18, filter: "blur(10px)" },
+          { autoAlpha: 1, scale: 1, y: 0, filter: "blur(0px)", duration: 0.42, clearProps: "filter,transform,opacity,visibility" }
+        )
+        .fromTo(
+          enterItems,
+          { autoAlpha: 0, y: 10 },
+          { autoAlpha: 1, y: 0, duration: 0.34, ease: "power2.out", stagger: 0.055, clearProps: "transform,opacity,visibility" },
+          0.08
+        );
+    }, panel);
+
+    return () => ctx.revert();
+  }, [keyOk, open, pos.x, pos.y]);
+
   return (
     <>
       {/* Floating button */}
@@ -1261,7 +1300,10 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
       </button>
 
       {open && keyOk && (
-        <div className="fixed bottom-6 left-6 z-50 flex h-[min(760px,calc(100vh-48px))] w-[min(560px,calc(100vw-48px))] flex-col rounded-2xl border border-surface-200 bg-white shadow-2xl dark:border-surface-700 dark:bg-surface-900">
+        <div
+          ref={chatPanelRef}
+          className="fixed bottom-6 left-6 z-50 flex h-[min(760px,calc(100vh-48px))] w-[min(560px,calc(100vw-48px))] flex-col rounded-2xl border border-surface-200 bg-white shadow-2xl dark:border-surface-700 dark:bg-surface-900"
+        >
           {/* Backdrop: click outside to close and abort */}
           <div
             className="fixed inset-0 -z-10"
@@ -1274,7 +1316,7 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
             }}
           />
           {/* Header */}
-          <div className="shrink-0 border-b border-surface-200 px-4 py-3 dark:border-surface-700">
+          <div data-ai-chat-enter className="shrink-0 border-b border-surface-200 px-4 py-3 dark:border-surface-700">
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2">
                 <div className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-100 dark:bg-brand-900">
@@ -1389,7 +1431,7 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
           </div>
 
           {/* Messages */}
-          <Scrollbar className="flex-1 px-4 py-4" options={{ scrollbars: { autoHide: "leave" } }} events={{ scroll: handleScrollEvent }}>
+          <Scrollbar data-ai-chat-enter className="flex-1 px-4 py-4" options={{ scrollbars: { autoHide: "leave" } }} events={{ scroll: handleScrollEvent }}>
             {messages.length === 0 ? (
               <div className="flex h-full flex-col items-center justify-center text-center px-4">
                 <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-brand-50 dark:bg-brand-950">
@@ -1601,7 +1643,7 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
 
           {/* Delete selected bar */}
           {editMode && selectedMsgs.size > 0 && (
-            <div className="shrink-0 border-t border-surface-200 bg-red-50 px-4 py-2 flex items-center justify-between dark:bg-red-950 dark:border-surface-700">
+            <div data-ai-chat-enter className="shrink-0 border-t border-surface-200 bg-red-50 px-4 py-2 flex items-center justify-between dark:bg-red-950 dark:border-surface-700">
               <span className="text-xs text-red-600 dark:text-red-400">已选择 {selectedMsgs.size} 条消息</span>
               <Button size="sm" variant="destructive" onClick={() => setDeleteMsgConfirm(true)}>
                 <Trash2 className="h-3.5 w-3.5 mr-1" />
@@ -1611,7 +1653,7 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
           )}
 
           {/* Input */}
-          <div className="shrink-0 border-t border-surface-200 px-3 py-3 dark:border-surface-700">
+          <div data-ai-chat-enter className="shrink-0 border-t border-surface-200 px-3 py-3 dark:border-surface-700">
             {references.length > 0 && (
               <div className="mb-2 flex flex-wrap items-center gap-1.5">
                 <span className="text-[10px] font-medium text-surface-400">{t("ai.referenceContext")}</span>
