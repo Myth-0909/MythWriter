@@ -9,6 +9,97 @@ export function safePersonality(raw: any): Personality {
   return "normal";
 }
 
+// --- Semantic context extraction for selection editing ---
+
+// Sentence boundary regex: Chinese and English sentence-ending punctuation
+const SENTENCE_BOUNDARY = /[\u3002\uff01\uff1f\.!?]+[\s\n]*/;
+// Paragraph boundary: double newline or explicit paragraph break
+const PARAGRAPH_BOUNDARY = /\n\s*\n/;
+
+/**
+ * Find the nearest semantic boundary within a character limit.
+ * Prefers paragraph > sentence > fallback to character limit.
+ */
+function findSemanticBoundary(
+  text: string,
+  limit: number,
+  direction: "backward" | "forward"
+): number {
+  if (text.length <= limit) return text.length;
+
+  const slice = direction === "backward"
+    ? text.slice(-limit)
+    : text.slice(0, limit);
+
+  // Try paragraph boundary first
+  const paraRegex = new RegExp(PARAGRAPH_BOUNDARY.source, "g");
+  const paraMatches = [...slice.matchAll(paraRegex)];
+  if (paraMatches.length > 0) {
+    const lastPara = direction === "backward"
+      ? paraMatches[paraMatches.length - 1]
+      : paraMatches[0];
+    if (direction === "backward") {
+      const offset = lastPara.index! + lastPara[0].length;
+      return limit - (slice.length - offset);
+    }
+    return lastPara.index! + lastPara[0].length;
+  }
+
+  // Try sentence boundary
+  const sentenceRegex = new RegExp(SENTENCE_BOUNDARY.source, "g");
+  const sentenceMatches = [...slice.matchAll(sentenceRegex)];
+  if (sentenceMatches.length > 0) {
+    const lastSentence = direction === "backward"
+      ? sentenceMatches[sentenceMatches.length - 1]
+      : sentenceMatches[0];
+    if (direction === "backward") {
+      const offset = lastSentence.index! + lastSentence[0].length;
+      return limit - (slice.length - offset);
+    }
+    return lastSentence.index! + lastSentence[0].length;
+  }
+
+  // Fallback: use full limit
+  return limit;
+}
+
+/**
+ * Extract context text up to a semantic boundary, based on selected text length.
+ * Short selections get less context, long selections get more.
+ */
+export function getSemanticContext(
+  fullText: string,
+  selectedText: string
+): { preceding: string; succeeding: string } {
+  const selStart = fullText.indexOf(selectedText);
+  if (selStart === -1) return { preceding: "", succeeding: "" };
+
+  const selEnd = selStart + selectedText.length;
+  const selLen = selectedText.length;
+
+  // Dynamic context range based on selection length
+  let contextLimit: number;
+  if (selLen < 50) {
+    contextLimit = 150;  // Short selection: ~1 sentence
+  } else if (selLen < 200) {
+    contextLimit = 300;  // Medium: ~1-2 paragraphs
+  } else {
+    contextLimit = 500;  // Long selection: more context
+  }
+
+  // Extract preceding context
+  const beforeText = fullText.slice(0, selStart);
+  const precedingLen = findSemanticBoundary(beforeText, contextLimit, "backward");
+  const preceding = beforeText.slice(-precedingLen);
+
+  // Extract succeeding context
+  const afterText = fullText.slice(selEnd);
+  const succeedingLen = findSemanticBoundary(afterText, contextLimit, "forward");
+  const succeeding = afterText.slice(0, succeedingLen);
+
+  return { preceding, succeeding };
+}
+
 const PERSONALITY_PROMPTS: Record<Personality, string> = {
   normal: `You are ZNWriter AI in "Normal" mode. You are a friendly, balanced, and helpful writing assistant.
 - Be warm but not overbearing, professional but not stiff.
@@ -129,13 +220,23 @@ export function buildSystemPrompt(personality: Personality, memoryContext: strin
 function extractStructuredAction(reply: string): { reply: string; action: any } | null {
   const blockMatch = reply.match(/<<ACTION_JSON>>\s*([\s\S]*?)\s*<<ACTION_JSON_END>>/);
   const fenceMatch = reply.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  const trimmedReply = reply.trim();
+
   const jsonText = blockMatch
     ? blockMatch[1].trim()
     : fenceMatch && fenceMatch[1].trim().startsWith("{")
       ? fenceMatch[1].trim()
-      : reply.trim().startsWith("{")
-      ? reply.trim()
-      : "";
+      : trimmedReply.startsWith("{")
+        ? trimmedReply
+        : (() => {
+            // Fallback: model may output garbled prefix (e.g. "<>" instead of "<<ACTION_JSON>>")
+            // Extract the first { ... } JSON block from the reply.
+            const jsonStart = trimmedReply.indexOf("{");
+            const jsonEnd = trimmedReply.lastIndexOf("}");
+            return jsonStart !== -1 && jsonEnd > jsonStart
+              ? trimmedReply.slice(jsonStart, jsonEnd + 1)
+              : "";
+          })();
   if (!jsonText) return null;
 
   try {
@@ -207,7 +308,20 @@ export function parseAction(reply: string): { reply: string; action: any } {
   const titleMatch = reply.match(/<<CREATE_DOC:(.+)>>/);
   const updateMatch = reply.match(/<<UPDATE_DOC:([^>]+)>>/);
 
-  if (!titleMatch && !updateMatch) return { reply, action: null };
+  if (!titleMatch && !updateMatch) {
+    // Defense-in-depth: strip garbled action markers that slipped through extraction.
+    // Be conservative — only remove our own format markers, not arbitrary code blocks.
+    let clean = reply
+      .replace(/<<ACTION_JSON>>[\s\S]*?<<ACTION_JSON_END>>/g, "")
+      .replace(/```json\s*[\s\S]*?\s*```/g, "")
+      .replace(/<>\s*/g, "")
+      .trim();
+    // If the reply was entirely garbled markers / JSON payload, use a fallback
+    if (!clean) {
+      clean = "抱歉，我遇到了一些问题，请重新提问~";
+    }
+    return { reply: clean, action: null };
+  }
 
   const docContent = docContentMatch ? docContentMatch[1].trim() : "";
 
