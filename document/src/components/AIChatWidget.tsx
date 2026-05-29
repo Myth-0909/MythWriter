@@ -44,6 +44,7 @@ interface Message {
   role: "user" | "assistant";
   content: string;
   sources?: ChatReference[];
+  timestamp?: string;
 }
 
 interface ChatReference {
@@ -216,6 +217,17 @@ function uniqueReferences<T extends ChatReference>(refs: T[]) {
   return refs.filter(
     (ref, index, all) => all.findIndex((item) => `${item.type}:${item.id}` === `${ref.type}:${ref.id}`) === index
   );
+}
+
+function formatTimestamp(): string {
+  const now = new Date();
+  const yy = String(now.getFullYear()).slice(-2);
+  const mm = String(now.getMonth() + 1).padStart(2, "0");
+  const dd = String(now.getDate()).padStart(2, "0");
+  const hh = String(now.getHours()).padStart(2, "0");
+  const min = String(now.getMinutes()).padStart(2, "0");
+  const ss = String(now.getSeconds()).padStart(2, "0");
+  return `${yy}/${mm}/${dd} ${hh}:${min}:${ss}`;
 }
 
 function buildMemoryContext(memory: Message[]): string {
@@ -569,10 +581,11 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
 
   const greetUser = useCallback(() => {
     const pers = personalityRef.current;
+    const ts = formatTimestamp();
     api.aiGreeting({ userName: user?.name || "", personality: pers })
       .then((res) => {
-        setMessages([{ role: "assistant", content: res.greeting }]);
-        memoryRef.current = [{ role: "assistant", content: res.greeting }];
+        setMessages([{ role: "assistant", content: res.greeting, timestamp: ts }]);
+        memoryRef.current = [{ role: "assistant", content: res.greeting, timestamp: ts }];
         saveMemory(memoryRef.current);
       })
       .catch(() => {
@@ -583,7 +596,7 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
           serious: `${user?.name || '用户'}，您好。我是小麦，请说明您的需求。`,
           silly: `哇哦！${user?.name || '用户'} 来了！我是小麦——您的写作小伙伴！`,
         };
-        setMessages([{ role: "assistant", content: fallbacks[pers] || fallbacks.normal }]);
+        setMessages([{ role: "assistant", content: fallbacks[pers] || fallbacks.normal, timestamp: ts }]);
       });
   }, [user?.name]);
 
@@ -760,7 +773,7 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
       .map((item) => ({ type: "brain" as const, id: item.id, title: item.title }));
     const requestReferences = uniqueReferences([...currentReference, ...references, ...referencedByText, ...brainReferences, ...referencedBrainsByText]);
 
-    const userMsg: Message = { role: "user", content: text };
+    const userMsg: Message = { role: "user", content: text, timestamp: formatTimestamp() };
     const withUser = [...messages, userMsg];
     setMessages(withUser);
     setInput("");
@@ -795,7 +808,7 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
           if (firstDelta) {
             firstDelta = false;
             setStreaming(true);
-            setMessages((prev) => [...prev, { role: "assistant", content: delta, sources: requestReferences }]);
+            setMessages((prev) => [...prev, { role: "assistant", content: delta, sources: requestReferences, timestamp: formatTimestamp() }]);
           } else {
             setMessages((prev) => {
               const next = [...prev];
@@ -827,7 +840,7 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
         if (last && last.role === "assistant") {
           next[next.length - 1] = { ...last, content: finalContent, sources: requestReferences };
         } else if (finalContent) {
-          next.push({ role: "assistant", content: finalContent, sources: requestReferences });
+          next.push({ role: "assistant", content: finalContent, sources: requestReferences, timestamp: formatTimestamp() });
         }
         return next;
       });
@@ -875,9 +888,9 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
               const next = [...prev];
               const last = next[next.length - 1];
               if (last && last.role === "assistant") {
-                next[next.length - 1] = { ...last, content: message };
+                next[next.length - 1] = { ...last, content: message, timestamp: formatTimestamp() };
               } else {
-                next.push({ role: "assistant", content: message });
+                next.push({ role: "assistant", content: message, timestamp: formatTimestamp() });
               }
               return next;
             });
@@ -914,9 +927,9 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
         const next = [...prev];
         const last = next[next.length - 1];
         if (last && last.role === "assistant" && !last.content) {
-          next[next.length - 1] = { role: "assistant", content: error.message || "AI 服务不可用" };
+          next[next.length - 1] = { role: "assistant", content: error.message || "AI 服务不可用", timestamp: formatTimestamp() };
         } else {
-          next.push({ role: "assistant", content: error.message || t("ai.serviceUnavailable") });
+          next.push({ role: "assistant", content: error.message || t("ai.serviceUnavailable"), timestamp: formatTimestamp() });
         }
         return next;
       });
@@ -1589,6 +1602,15 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
                         )}
                         {streaming && isLastAssistant && (
                           <span className="inline-block w-1.5 h-4 ml-0.5 bg-brand-500 animate-pulse rounded-sm align-middle" />
+                        )}
+                        {/* Timestamp */}
+                        {msg.timestamp && (
+                          <div className={cn(
+                            "mt-1 text-[10px]",
+                            isUser ? "text-white/70" : "text-surface-400 dark:text-surface-500"
+                          )}>
+                            {msg.timestamp}
+                          </div>
                         )}
                         {/* Feedback buttons: centered vertically, appear on hover */}
                         {!isUser && !streaming && msg.content && !feedbackDoneRef.current.has(i) && (
