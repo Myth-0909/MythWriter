@@ -386,8 +386,6 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
   } = useDocuments();
   const { user } = useAuth();
   const [open, setOpen] = useState(false);
-  const [closing, setClosing] = useState(false);
-  const closingRef = useRef(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -1270,17 +1268,39 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
       abortRef.current.abort();
     }
     saveConversation();
-    closingRef.current = true;
-    setClosing(true);
-    setOpen(false);
+
+    const panel = chatPanelRef.current;
+    if (!panel) {
+      setOpen(false);
+      return;
+    }
+
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reduceMotion) {
+      setOpen(false);
+      return;
+    }
+
+    const enterItems = panel.querySelectorAll("[data-ai-chat-enter]");
+    gsap.timeline({
+      defaults: { ease: "power3.in" },
+      onComplete: () => setOpen(false),
+    })
+      .to(
+        enterItems,
+        { autoAlpha: 0, y: 8, duration: 0.22, stagger: 0.03, ease: "power2.in" },
+        0
+      )
+      .to(
+        panel,
+        { autoAlpha: 0, scale: 0.92, y: 18, filter: "blur(10px)", duration: 0.32 },
+        0.06
+      );
   }, [saveConversation]);
 
   useEffect(() => {
     const panel = chatPanelRef.current;
-    if (!keyOk || !panel) return;
-
-    // When panel is fully closed, reset closing state
-    if (!open && !closing) return;
+    if (!open || !keyOk || !panel) return;
 
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const ctx = gsap.context(() => {
@@ -1292,57 +1312,28 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
       gsap.set(panel, { transformOrigin: `${originX}px ${originY}px` });
 
       if (reduceMotion) {
-        gsap.set(panel, { autoAlpha: open ? 1 : 0, scale: 1, y: 0, filter: "none" });
-        gsap.set(enterItems, { autoAlpha: open ? 1 : 0, y: 0 });
-        if (!open) {
-          closingRef.current = false;
-          setClosing(false);
-          setOpen(false);
-        }
+        gsap.set(panel, { autoAlpha: 1, scale: 1, y: 0, filter: "none" });
+        gsap.set(enterItems, { autoAlpha: 1, y: 0 });
         return;
       }
 
-      if (open) {
-        // Enter animation
-        const timeline = gsap.timeline({ defaults: { ease: "power3.out" } });
-        timeline
-          .fromTo(
-            panel,
-            { autoAlpha: 0, scale: 0.92, y: 18, filter: "blur(10px)" },
-            { autoAlpha: 1, scale: 1, y: 0, filter: "blur(0px)", duration: 0.42, clearProps: "filter,transform,opacity,visibility" }
-          )
-          .fromTo(
-            enterItems,
-            { autoAlpha: 0, y: 10 },
-            { autoAlpha: 1, y: 0, duration: 0.34, ease: "power2.out", stagger: 0.055, clearProps: "transform,opacity,visibility" },
-            0.08
-          );
-      } else {
-        // Exit animation (reverse of enter)
-        const timeline = gsap.timeline({
-          defaults: { ease: "power3.in" },
-          onComplete: () => {
-            closingRef.current = false;
-            setClosing(false);
-            setOpen(false);
-          },
-        });
-        timeline
-          .to(
-            enterItems,
-            { autoAlpha: 0, y: 8, duration: 0.22, stagger: 0.03, ease: "power2.in" },
-            0
-          )
-          .to(
-            panel,
-            { autoAlpha: 0, scale: 0.92, y: 18, filter: "blur(10px)", duration: 0.32 },
-            0.06
-          );
-      }
+      const timeline = gsap.timeline({ defaults: { ease: "power3.out" } });
+      timeline
+        .fromTo(
+          panel,
+          { autoAlpha: 0, scale: 0.92, y: 18, filter: "blur(10px)" },
+          { autoAlpha: 1, scale: 1, y: 0, filter: "blur(0px)", duration: 0.42, clearProps: "filter,transform,opacity,visibility" }
+        )
+        .fromTo(
+          enterItems,
+          { autoAlpha: 0, y: 10 },
+          { autoAlpha: 1, y: 0, duration: 0.34, ease: "power2.out", stagger: 0.055, clearProps: "transform,opacity,visibility" },
+          0.08
+        );
     }, panel);
 
     return () => ctx.revert();
-  }, [keyOk, open, closing, pos.x, pos.y]);
+  }, [keyOk, open, pos.x, pos.y]);
 
   return (
     <>
@@ -1352,7 +1343,7 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
         aria-label={t("ai.title")}
         className={cn(
           "group fixed z-50 flex h-[62px] w-[62px] items-center justify-center overflow-hidden rounded-full border border-white/70 bg-[linear-gradient(145deg,rgba(255,255,255,0.96),rgba(232,237,233,0.92))] shadow-[0_18px_38px_rgba(46,61,57,0.18),inset_0_1px_0_rgba(255,255,255,0.92)] ring-1 ring-surface-200/70 transition-all duration-300 select-none backdrop-blur-md dark:border-white/10 dark:bg-[linear-gradient(145deg,rgba(47,55,52,0.96),rgba(24,32,30,0.92))] dark:ring-white/10",
-          open || closing ? "opacity-0 pointer-events-none scale-75" : "opacity-100 scale-100",
+          open ? "opacity-0 pointer-events-none scale-75" : "opacity-100 scale-100",
           dragging ? "cursor-grabbing scale-105" : "cursor-grab hover:-translate-y-0.5 hover:scale-105",
           "text-surface-700 dark:text-surface-100"
         )}
@@ -1412,7 +1403,7 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
         </svg>
       </button>
 
-      {(open || closing) && keyOk && (
+      {open && keyOk && (
         <div
           ref={chatPanelRef}
           className="fixed bottom-6 left-6 z-50 flex h-[min(760px,calc(100vh-48px))] w-[min(560px,calc(100vw-48px))] flex-col rounded-2xl border border-surface-200 bg-white shadow-2xl dark:border-surface-700 dark:bg-surface-900"
