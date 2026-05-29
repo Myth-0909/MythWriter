@@ -119,13 +119,6 @@ function absoluteToAnchored(pos: Position): AnchoredPosition {
   return { side, yPercent };
 }
 
-// Detect if user message contains action intent (create, edit, delete, etc.)
-const ACTION_KEYWORDS = /生成|创建|修改|删除|收藏|添加|编辑|写文章|新建|制作|翻译|改写|改成|改为|优化|调整|润色|扩写|总结/i;
-
-function isActionIntent(message: string): boolean {
-  return ACTION_KEYWORDS.test(message);
-}
-
 function loadMemory(): Message[] {
   try { return JSON.parse(localStorage.getItem(MEMORY_KEY) || "[]"); } catch { return []; }
 }
@@ -383,7 +376,6 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [streaming, setStreaming] = useState(false);
-  const [actionMode, setActionMode] = useState(false);
   const [personality, setPersonality] = useState<Personality>(() =>
     safePersonality(localStorage.getItem(PERSONALITY_KEY))
   );
@@ -696,9 +688,9 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
     const text = input.trim();
     if (!text || loading || streaming) return;
 
-    const nextActionMode = isActionIntent(text);
     const currentDocument = currentDocumentId ? getDocument(currentDocumentId) : undefined;
-    const currentReference = nextActionMode && currentDocument && !currentDocument.isDeleted
+    // Always pass current document as context for LLM-based intent detection
+    const currentReference = currentDocument && !currentDocument.isDeleted
       ? [{ type: "document" as const, id: currentDocument.id, title: currentDocument.title }]
       : [];
     const referencedByText = documents
@@ -719,8 +711,7 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
     setBrainOpen(false);
     setCommandOpen(false);
     setLoading(true);
-    setActionMode(nextActionMode);
-    setTaskStage(nextActionMode ? "analyzing" : "idle");
+    setTaskStage("idle");
     api.logActivity({ action: "chat_send", detail: text.slice(0, 100) }).catch(() => {});
 
     const memory = [...memoryRef.current, userMsg];
@@ -733,21 +724,16 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
       const memoryContext = buildMemoryContext(memory);
       let fullContent = "";
       let firstDelta = true;
-      if (nextActionMode) setTaskStage("generating");
 
       const { reply, action } = await streamChat(
         { messages: withUser, personality: personalityRef.current, memoryContext, references: requestReferences },
         (delta) => {
           fullContent += delta;
-          // For action intents (e.g. create_document), don't show streaming in chat
-          if (nextActionMode) return;
           if (firstDelta) {
             firstDelta = false;
             setStreaming(true);
-            // Add assistant message on first delta
             setMessages((prev) => [...prev, { role: "assistant", content: delta, sources: requestReferences }]);
           } else {
-            // Update last assistant message
             setMessages((prev) => {
               const next = [...prev];
               const last = next[next.length - 1];
@@ -802,7 +788,7 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
       }
 
       // Handle update_document action: update the document specified by the model
-      if (action?.type === "update_document") {
+      if (action?.type === "update_document" && action.content) {
         try {
           const nextContent = typeof action.content === "string" ? action.content.trim() : "";
           if (!nextContent) {
@@ -870,7 +856,6 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
     } finally {
       setLoading(false);
       setStreaming(false);
-      setActionMode(false);
       setTaskStage((stage) => (stage === "preview" ? stage : "idle"));
     }
   }, [input, loading, streaming, messages, currentDocumentId, createDocument, toast, t, documents, references, brainReferences, brainKnowledges, getDocument, loadDocument, updateDocument]);
@@ -879,29 +864,29 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
     abortRef.current?.abort();
     setLoading(false);
     setStreaming(false);
-    setActionMode(false);
   }, []);
 
   const applyPendingUpdate = useCallback(async () => {
     if (!pendingUpdate || applyingUpdate) return;
+    const update = pendingUpdate; // 缓存当前值，避免中途关闭弹窗后被清空
     setApplyingUpdate(true);
     try {
       try {
         setTaskStage("snapshot");
-        await createDocumentVersion(pendingUpdate.docId, "ai_edit");
+        await createDocumentVersion(update.docId, "ai_edit");
       } catch (err) {
         console.error("[version_snapshot] error:", err);
         toast(t("ai.versionSnapshotFailed"), "error");
         return;
       }
 
-      await updateDocument(pendingUpdate.docId, {
-        title: pendingUpdate.title,
-        content: pendingUpdate.nextHtml,
+      await updateDocument(update.docId, {
+        title: update.title,
+        content: update.nextHtml,
       });
       setTaskStage("verify");
-      const verifiedDoc = await loadDocument(pendingUpdate.docId);
-      if (!verifiedDoc || verifiedDoc.content !== pendingUpdate.nextHtml) {
+      const verifiedDoc = await loadDocument(update.docId);
+      if (!verifiedDoc || verifiedDoc.content !== update.nextHtml) {
         toast(t("ai.docUpdateVerifyFailed"), "error");
         return;
       }
@@ -909,7 +894,7 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
       toast(t("ai.docUpdated"), "success");
       const updatedNote = {
         role: "assistant" as const,
-        content: `[系统] 已为用户更新文档「${pendingUpdate.title}」[doc:${pendingUpdate.docId}]。最新内容摘要：${pendingUpdate.nextMarkdown.slice(0, 200)}...`,
+        content: `[系统] 已为用户更新文档「${update.title}」[doc:${update.docId}]。最新内容摘要：${update.nextMarkdown.slice(0, 200)}...`,
       };
       memoryRef.current = [...memoryRef.current, updatedNote];
       saveMemory(memoryRef.current);
@@ -1585,7 +1570,7 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
                     </div>
                     <div className="flex items-center gap-1.5 rounded-2xl rounded-bl-md bg-surface-100 px-4 py-3 dark:bg-surface-800">
                       <span className="text-xs text-surface-500">
-                        {(actionMode ? t("ai.action") : t("ai.thinking")).split("").map((char, ci) => (
+                        {t("ai.thinking").split("").map((char, ci) => (
                           <span
                             key={ci}
                             className="inline-block animate-bounce"
@@ -1777,8 +1762,8 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
       <Dialog open={!!pendingUpdate} onOpenChange={(open) => {
         if (!open && !applyingUpdate) setPendingUpdate(null);
       }}>
-        <DialogContent className="max-h-[86vh] max-w-[880px] overflow-hidden p-0">
-          <div className="border-b border-surface-200 px-6 py-5 dark:border-surface-700">
+        <DialogContent className="flex max-h-[86vh] max-w-[880px] flex-col overflow-hidden p-0">
+          <div className="shrink-0 border-b border-surface-200 px-6 py-5 dark:border-surface-700">
             <div className="flex items-start justify-between gap-4 pr-8">
               <div>
                 <DialogTitle className="text-base font-bold text-surface-900 dark:text-surface-100">
@@ -1828,34 +1813,36 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
           </div>
 
           {pendingUpdate && (
-            <div className="grid min-h-0 grid-cols-[96px_1fr] border-b border-surface-200 bg-surface-50 text-xs font-semibold text-surface-500 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-400">
+          <div className="flex min-h-[200px] flex-1 flex-col overflow-hidden">
+            <div className="grid shrink-0 grid-cols-[96px_1fr] border-b border-surface-200 bg-surface-50 text-xs font-semibold text-surface-500 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-400">
               <div className="border-r border-surface-200 px-4 py-2 dark:border-surface-700">{t("ai.diffOld")} / {t("ai.diffNew")}</div>
               <div className="px-4 py-2">{pendingUpdate.stats.unchanged} {t("ai.diffUnchanged")}</div>
             </div>
+
+            <Scrollbar className="flex-1">
+              <div className="divide-y divide-surface-100 dark:divide-surface-800">
+                {(pendingUpdate?.diffLines || []).map((line, index) => (
+                  <div
+                    key={`${line.type}-${index}`}
+                    className={cn(
+                      "grid grid-cols-[96px_1fr] text-sm leading-relaxed",
+                      line.type === "added" && "bg-emerald-50/70 text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100",
+                      line.type === "removed" && "bg-red-50/70 text-red-900 dark:bg-red-950/40 dark:text-red-100",
+                      line.type === "unchanged" && "text-surface-600 dark:text-surface-300"
+                    )}
+                  >
+                    <div className="select-none border-r border-surface-100 px-4 py-2 font-mono text-xs dark:border-surface-800">
+                      {line.type === "added" ? `+ ${t("ai.diffNew")}` : line.type === "removed" ? `- ${t("ai.diffOld")}` : " "}
+                    </div>
+                    <div className="whitespace-pre-wrap px-4 py-2">{line.text}</div>
+                  </div>
+                ))}
+              </div>
+            </Scrollbar>
+          </div>
           )}
 
-          <Scrollbar className="max-h-[52vh] min-h-[260px]">
-            <div className="divide-y divide-surface-100 dark:divide-surface-800">
-              {(pendingUpdate?.diffLines || []).map((line, index) => (
-                <div
-                  key={`${line.type}-${index}`}
-                  className={cn(
-                    "grid grid-cols-[96px_1fr] text-sm leading-relaxed",
-                    line.type === "added" && "bg-emerald-50/70 text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100",
-                    line.type === "removed" && "bg-red-50/70 text-red-900 dark:bg-red-950/40 dark:text-red-100",
-                    line.type === "unchanged" && "text-surface-600 dark:text-surface-300"
-                  )}
-                >
-                  <div className="select-none border-r border-surface-100 px-4 py-2 font-mono text-xs dark:border-surface-800">
-                    {line.type === "added" ? `+ ${t("ai.diffNew")}` : line.type === "removed" ? `- ${t("ai.diffOld")}` : " "}
-                  </div>
-                  <div className="whitespace-pre-wrap px-4 py-2">{line.text}</div>
-                </div>
-              ))}
-            </div>
-          </Scrollbar>
-
-          <div className="flex items-center justify-end gap-2 bg-white px-6 py-4 dark:bg-surface-900">
+          <div className="shrink-0 flex items-center justify-end gap-2 bg-white px-6 py-4 dark:bg-surface-900">
             <Button variant="outline" onClick={() => setPendingUpdate(null)} disabled={applyingUpdate}>
               {t("ai.diffCancel")}
             </Button>
