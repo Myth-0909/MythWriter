@@ -30,6 +30,7 @@ model User {
   brainCategories AIBrainCategory[]
   documentGroups  DocumentGroup[]
   apiKeyHistories  ApiKeyConfigHistory[]
+  documentVersions DocumentVersion[]
 
   @@map("users")
 }
@@ -67,11 +68,31 @@ model Document {
 
   groupId String?        @map("group_id")
   group   DocumentGroup? @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  versions DocumentVersion[]
 
   @@index([userId])
   @@index([userId, isDeleted])
   @@index([groupId])
   @@map("documents")
+}
+
+model DocumentVersion {
+  id         String   @id @default(uuid())
+  documentId String   @map("document_id")
+  userId     String   @map("user_id")
+  title      String
+  content    String   @db.LongText
+  preview    String?
+  source     String   @default("manual")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([documentId])
+  @@index([userId])
+  @@index([documentId, createdAt])
+  @@map("document_versions")
 }
 
 enum DocumentCategory {

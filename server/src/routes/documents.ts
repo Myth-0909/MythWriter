@@ -1,12 +1,18 @@
 import { Router, Response } from "express";
 import { AuthRequest, authMiddleware } from "../middleware/auth";
+import { t } from "../lib/i18n";
 import {
   createDocument, getDocument, listDocuments, listFavorites, listTrash,
   updateDocument, toggleFavorite, moveToTrash, restoreFromTrash,
-  permanentlyDelete, emptyTrash,
+  permanentlyDelete, emptyTrash, createDocumentVersion, listDocumentVersions,
+  restoreDocumentVersion,
 } from "../services/documentService";
 
 const router = Router();
+
+function requestLang(req: AuthRequest) {
+  return String(req.headers["accept-language"] || "").toLowerCase().startsWith("en") ? "en" : "zh";
+}
 
 // All routes require authentication
 router.use(authMiddleware);
@@ -41,6 +47,51 @@ router.get("/trash", async (req: AuthRequest, res: Response) => {
   } catch (error) {
     console.error("List trash error:", error);
     res.status(500).json({ error: "获取回收站列表失败" });
+  }
+});
+
+// GET /api/documents/:id/versions - List document versions
+router.get("/:id/versions", async (req: AuthRequest, res: Response) => {
+  try {
+    const versions = await listDocumentVersions(String(req.params.id), req.user!.userId);
+    if (!versions) {
+      res.status(404).json({ error: t(requestLang(req), "文档不存在", "Document not found") });
+      return;
+    }
+    res.json({ versions });
+  } catch (error) {
+    console.error("List document versions error:", error);
+    res.status(500).json({ error: t(requestLang(req), "获取版本记录失败", "Failed to load version history") });
+  }
+});
+
+// POST /api/documents/:id/versions - Save a version snapshot
+router.post("/:id/versions", async (req: AuthRequest, res: Response) => {
+  try {
+    const version = await createDocumentVersion(String(req.params.id), req.user!.userId, req.body?.source || "manual");
+    if (!version) {
+      res.status(404).json({ error: t(requestLang(req), "文档不存在", "Document not found") });
+      return;
+    }
+    res.status(201).json({ version });
+  } catch (error) {
+    console.error("Create document version error:", error);
+    res.status(500).json({ error: t(requestLang(req), "保存版本快照失败", "Failed to save version snapshot") });
+  }
+});
+
+// PATCH /api/documents/:id/versions/:versionId/restore - Restore a version
+router.patch("/:id/versions/:versionId/restore", async (req: AuthRequest, res: Response) => {
+  try {
+    const document = await restoreDocumentVersion(String(req.params.id), String(req.params.versionId), req.user!.userId);
+    if (!document) {
+      res.status(404).json({ error: t(requestLang(req), "版本不存在", "Version not found") });
+      return;
+    }
+    res.json({ document });
+  } catch (error) {
+    console.error("Restore document version error:", error);
+    res.status(500).json({ error: t(requestLang(req), "恢复版本失败", "Failed to restore version") });
   }
 });
 

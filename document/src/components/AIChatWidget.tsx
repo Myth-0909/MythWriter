@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { Bot, X, Send, Sparkles, Smile, ChevronDown, ThumbsUp, ThumbsDown, Star, Trash2, Check, Pencil, Square, FileText } from "lucide-react";
+import { Bot, X, Send, Sparkles, Smile, ChevronDown, ThumbsUp, ThumbsDown, Star, Trash2, Check, Pencil, Square, FileText, History, RotateCcw, Clock3 } from "lucide-react";
 import { ConfirmModal } from "@/components/ConfirmModal";
 import { Scrollbar } from "@/components/ui/scrollbar";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
@@ -13,6 +13,7 @@ import { api } from "@/api";
 import { markdownToHtml } from "@/lib/markdown";
 import { sanitizeHtml } from "@/lib/html";
 import { Tooltip } from "@/components/ui/tooltip";
+import type { DocumentVersion } from "@/types";
 
 const API_BASE = "http://localhost:3000/api";
 
@@ -40,6 +41,7 @@ const MAX_MEMORY_MESSAGES = 20;
 interface Message {
   role: "user" | "assistant";
   content: string;
+  sources?: DocumentReference[];
 }
 
 interface DocumentReference {
@@ -51,6 +53,14 @@ interface DocumentReference {
 interface AIChatWidgetProps {
   currentDocumentId?: string;
 }
+
+type SlashCommand = {
+  id: string;
+  label: string;
+  prompt: string;
+};
+
+type TaskStage = "idle" | "analyzing" | "generating" | "preview" | "snapshot" | "verify" | "done";
 
 type DiffLine = {
   type: "added" | "removed" | "unchanged";
@@ -197,6 +207,12 @@ function summarizeDiff(lines: DiffLine[]) {
   );
 }
 
+function uniqueReferences(refs: DocumentReference[]) {
+  return refs.filter(
+    (ref, index, all) => all.findIndex((item) => item.id === ref.id) === index
+  );
+}
+
 function buildMemoryContext(memory: Message[]): string {
   if (memory.length === 0) return "";
   return memory.map((m) => {
@@ -207,6 +223,12 @@ function buildMemoryContext(memory: Message[]): string {
 
 function getMentionQuery(value: string): { query: string; start: number } | null {
   const match = value.match(/(^|\s)@([^\s@]*)$/);
+  if (!match || match.index === undefined) return null;
+  return { query: match[2] || "", start: match.index + match[1].length };
+}
+
+function getSlashQuery(value: string): { query: string; start: number } | null {
+  const match = value.match(/(^|\s)\/([^\s/]*)$/);
   if (!match || match.index === undefined) return null;
   return { query: match[2] || "", start: match.index + match[1].length };
 }
@@ -328,7 +350,16 @@ async function streamChat(
 export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
   const { t } = useI18n();
   const { toast } = useToast();
-  const { createDocument, documents, getDocument, loadDocument, updateDocument } = useDocuments();
+  const {
+    createDocument,
+    documents,
+    getDocument,
+    loadDocument,
+    updateDocument,
+    listDocumentVersions,
+    createDocumentVersion,
+    restoreDocumentVersion,
+  } = useDocuments();
   const { user } = useAuth();
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -360,8 +391,15 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
   const [references, setReferences] = useState<DocumentReference[]>([]);
   const [mentionOpen, setMentionOpen] = useState(false);
   const [mentionIndex, setMentionIndex] = useState(0);
+  const [commandOpen, setCommandOpen] = useState(false);
+  const [commandIndex, setCommandIndex] = useState(0);
   const [pendingUpdate, setPendingUpdate] = useState<PendingDocumentUpdate | null>(null);
   const [applyingUpdate, setApplyingUpdate] = useState(false);
+  const [versionDialogOpen, setVersionDialogOpen] = useState(false);
+  const [versionLoading, setVersionLoading] = useState(false);
+  const [versions, setVersions] = useState<DocumentVersion[]>([]);
+  const [restoringVersionId, setRestoringVersionId] = useState<string | null>(null);
+  const [taskStage, setTaskStage] = useState<TaskStage>("idle");
 
   // Automatically clear references when the corresponding document is deleted/removed
   useEffect(() => {
@@ -622,9 +660,7 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
     const referencedByText = documents
       .filter((doc) => text.includes(`@${doc.title}`))
       .map((doc) => ({ type: "document" as const, id: doc.id, title: doc.title }));
-    const requestReferences = [...currentReference, ...references, ...referencedByText].filter(
-      (ref, index, all) => all.findIndex((item) => item.id === ref.id) === index
-    );
+    const requestReferences = uniqueReferences([...currentReference, ...references, ...referencedByText]);
 
     const userMsg: Message = { role: "user", content: text };
     const withUser = [...messages, userMsg];
@@ -632,8 +668,10 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
     setInput("");
     setReferences([]);
     setMentionOpen(false);
+    setCommandOpen(false);
     setLoading(true);
     setActionMode(nextActionMode);
+    setTaskStage(nextActionMode ? "analyzing" : "idle");
     api.logActivity({ action: "chat_send", detail: text.slice(0, 100) }).catch(() => {});
 
     const memory = [...memoryRef.current, userMsg];
@@ -646,6 +684,7 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
       const memoryContext = buildMemoryContext(memory);
       let fullContent = "";
       let firstDelta = true;
+      if (nextActionMode) setTaskStage("generating");
 
       const { reply, action } = await streamChat(
         { messages: withUser, personality: personalityRef.current, memoryContext, references: requestReferences },
@@ -657,14 +696,14 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
             firstDelta = false;
             setStreaming(true);
             // Add assistant message on first delta
-            setMessages((prev) => [...prev, { role: "assistant", content: delta }]);
+            setMessages((prev) => [...prev, { role: "assistant", content: delta, sources: requestReferences }]);
           } else {
             // Update last assistant message
             setMessages((prev) => {
               const next = [...prev];
               const last = next[next.length - 1];
               if (last && last.role === "assistant") {
-                next[next.length - 1] = { ...last, content: fullContent };
+                next[next.length - 1] = { ...last, content: fullContent, sources: requestReferences };
               }
               return next;
             });
@@ -684,9 +723,9 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
         const next = [...prev];
         const last = next[next.length - 1];
         if (last && last.role === "assistant") {
-          next[next.length - 1] = { ...last, content: finalContent };
+          next[next.length - 1] = { ...last, content: finalContent, sources: requestReferences };
         } else if (finalContent) {
-          next.push({ role: "assistant", content: finalContent });
+          next.push({ role: "assistant", content: finalContent, sources: requestReferences });
         }
         return next;
       });
@@ -758,6 +797,7 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
             diffLines,
             stats,
           });
+          setTaskStage("preview");
           toast(t("ai.diffReady"), "info");
         } catch (err: any) {
           console.error("[update_doc] error:", err);
@@ -781,6 +821,7 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
       setLoading(false);
       setStreaming(false);
       setActionMode(false);
+      setTaskStage((stage) => (stage === "preview" ? stage : "idle"));
     }
   }, [input, loading, streaming, messages, currentDocumentId, createDocument, toast, t, documents, references, getDocument, loadDocument, updateDocument]);
 
@@ -795,10 +836,26 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
     if (!pendingUpdate || applyingUpdate) return;
     setApplyingUpdate(true);
     try {
+      try {
+        setTaskStage("snapshot");
+        await createDocumentVersion(pendingUpdate.docId, "ai_edit");
+      } catch (err) {
+        console.error("[version_snapshot] error:", err);
+        toast(t("ai.versionSnapshotFailed"), "error");
+        return;
+      }
+
       await updateDocument(pendingUpdate.docId, {
         title: pendingUpdate.title,
         content: pendingUpdate.nextHtml,
       });
+      setTaskStage("verify");
+      const verifiedDoc = await loadDocument(pendingUpdate.docId);
+      if (!verifiedDoc || verifiedDoc.content !== pendingUpdate.nextHtml) {
+        toast(t("ai.docUpdateVerifyFailed"), "error");
+        return;
+      }
+
       toast(t("ai.docUpdated"), "success");
       const updatedNote = {
         role: "assistant" as const,
@@ -807,13 +864,53 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
       memoryRef.current = [...memoryRef.current, updatedNote];
       saveMemory(memoryRef.current);
       setPendingUpdate(null);
+      setTaskStage("done");
     } catch (err: any) {
       console.error("[apply_update] error:", err);
       toast(t("ai.docUpdateFailed"), "error");
     } finally {
       setApplyingUpdate(false);
+      setTimeout(() => setTaskStage("idle"), 1200);
     }
-  }, [applyingUpdate, pendingUpdate, t, toast, updateDocument]);
+  }, [applyingUpdate, createDocumentVersion, loadDocument, pendingUpdate, t, toast, updateDocument]);
+
+  const loadVersions = useCallback(async () => {
+    if (!currentDocumentId) {
+      setVersions([]);
+      return;
+    }
+    setVersionLoading(true);
+    try {
+      const nextVersions = await listDocumentVersions(currentDocumentId);
+      setVersions(nextVersions);
+    } catch (err) {
+      console.error("[versions] load error:", err);
+      toast(t("ai.versionLoadFailed"), "error");
+    } finally {
+      setVersionLoading(false);
+    }
+  }, [currentDocumentId, listDocumentVersions, t, toast]);
+
+  useEffect(() => {
+    if (versionDialogOpen) {
+      loadVersions();
+    }
+  }, [loadVersions, versionDialogOpen]);
+
+  const restoreVersion = useCallback(async (version: DocumentVersion) => {
+    if (!currentDocumentId || restoringVersionId) return;
+    setRestoringVersionId(version.id);
+    try {
+      await restoreDocumentVersion(currentDocumentId, version.id);
+      toast(t("ai.versionRestored"), "success");
+      await loadVersions();
+    } catch (err) {
+      console.error("[versions] restore error:", err);
+      toast(t("ai.versionRestoreFailed"), "error");
+    } finally {
+      setRestoringVersionId(null);
+    }
+  }, [currentDocumentId, loadVersions, restoreDocumentVersion, restoringVersionId, t, toast]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if ((e.key === "Backspace" || e.key === "Delete") && references.length > 0) {
@@ -835,6 +932,34 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
           });
           return;
         }
+      }
+    }
+
+    if (showCommandMenu) {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setCommandOpen(false);
+        return;
+      }
+      if (commandMatches.length > 0) {
+        if (e.key === "ArrowDown") {
+          e.preventDefault();
+          setCommandIndex((i) => Math.min(i + 1, commandMatches.length - 1));
+          return;
+        }
+        if (e.key === "ArrowUp") {
+          e.preventDefault();
+          setCommandIndex((i) => Math.max(i - 1, 0));
+          return;
+        }
+        if (e.key === "Enter" && !e.shiftKey) {
+          e.preventDefault();
+          selectCommand(commandMatches[commandIndex]);
+          return;
+        }
+      } else if (e.key === "Enter") {
+        e.preventDefault();
+        return;
       }
     }
 
@@ -876,6 +1001,17 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
   const currentPersonality = PERSONALITY_OPTIONS.find((p) => p.key === personality) || PERSONALITY_OPTIONS[0];
   const isGenerating = loading || streaming;
   const mention = getMentionQuery(input);
+  const slash = getSlashQuery(input);
+  const slashCommands: SlashCommand[] = [
+    { id: "rewrite", label: t("ai.commandRewrite"), prompt: t("ai.commandRewritePrompt") },
+    { id: "summarize", label: t("ai.commandSummarize"), prompt: t("ai.commandSummarizePrompt") },
+    { id: "expand", label: t("ai.commandExpand"), prompt: t("ai.commandExpandPrompt") },
+    { id: "formal", label: t("ai.commandFormal"), prompt: t("ai.commandFormalPrompt") },
+    { id: "outline", label: t("ai.commandOutline"), prompt: t("ai.commandOutlinePrompt") },
+  ];
+  const commandMatches = slash
+    ? slashCommands.filter((command) => command.label.toLowerCase().includes(slash.query.toLowerCase()))
+    : [];
   const mentionMatches = mention
     ? documents
         .filter((doc) => !references.some((ref) => ref.id === doc.id))
@@ -883,6 +1019,30 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
         .slice(0, 6)
     : [];
   const showMentionMenu = mentionOpen && !!mention && !isGenerating;
+  const showCommandMenu = commandOpen && !!slash && !isGenerating;
+  const activeContextDocument = currentDocumentId ? getDocument(currentDocumentId) : undefined;
+  const taskStageLabel = (stage: TaskStage) => {
+    if (stage === "analyzing") return t("ai.taskAnalyze");
+    if (stage === "generating") return t("ai.taskGenerate");
+    if (stage === "preview") return t("ai.taskPreview");
+    if (stage === "snapshot") return t("ai.taskSnapshot");
+    if (stage === "verify") return t("ai.taskVerify");
+    if (stage === "done") return t("ai.taskDone");
+    return "";
+  };
+  const taskSteps: { stage: TaskStage; label: string }[] = [
+    { stage: "analyzing", label: t("ai.taskAnalyze") },
+    { stage: "generating", label: t("ai.taskGenerate") },
+    { stage: "preview", label: t("ai.taskPreview") },
+    { stage: "snapshot", label: t("ai.taskSnapshot") },
+    { stage: "verify", label: t("ai.taskVerify") },
+  ];
+  const activeTaskIndex = taskSteps.findIndex((step) => step.stage === taskStage);
+  const versionSourceLabel = (source: string) => {
+    if (source === "ai_edit") return t("ai.versionBeforeAi");
+    if (source === "restore") return t("ai.versionBeforeRestore");
+    return t("ai.versionManual");
+  };
 
   const selectReference = (doc: { id: string; title: string }) => {
     if (!mention) return;
@@ -901,11 +1061,25 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
     setInput((prev) => prev.replace(tokenPattern, " ").replace(/\s{2,}/g, " ").trimStart());
   };
 
+  const selectCommand = (command: SlashCommand) => {
+    if (!slash) return;
+    setInput((prev) => `${prev.slice(0, slash.start)}${command.prompt}`);
+    setCommandOpen(false);
+    setCommandIndex(0);
+    requestAnimationFrame(() => {
+      inputRef.current?.focus();
+      resizeTextarea();
+    });
+  };
+
   const handleInputChange = (next: string) => {
     setInput(next);
     const nextMention = getMentionQuery(next);
+    const nextSlash = getSlashQuery(next);
     setMentionOpen(!!nextMention);
+    setCommandOpen(!!nextSlash && !nextMention);
     setMentionIndex(0);
+    setCommandIndex(0);
     setReferences((prev) => prev.filter((ref) => next.includes(`@${ref.title}`)));
   };
 
@@ -951,6 +1125,13 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
                 </div>
               </div>
               <div className="flex items-center gap-1">
+                {currentDocumentId && (
+                  <Tooltip content={t("ai.versionHistory")} delay={150}>
+                    <Button variant="ghost" size="icon" onClick={() => setVersionDialogOpen(true)} className="h-8 w-8">
+                      <History className="h-4 w-4" />
+                    </Button>
+                  </Tooltip>
+                )}
                 <Tooltip content={t("card.edit")} delay={150}>
                   <Button variant="ghost" size="icon" onClick={() => { setEditMode(!editMode); setSelectedMsgs(new Set()); }} className={cn("h-8 w-8", editMode && "bg-brand-100 text-brand-600 dark:bg-brand-900 dark:text-brand-400")}>
                     <Pencil className="h-4 w-4" />
@@ -961,7 +1142,7 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
                     <Trash2 className="h-4 w-4" />
                   </Button>
                 </Tooltip>
-                <Tooltip content="关闭" delay={150}>
+                <Tooltip content={t("common.close")} delay={150}>
                   <Button variant="ghost" size="icon" onClick={() => { abortRef.current?.abort(); saveConversation(); setOpen(false); }} className="h-8 w-8">
                     <X className="h-4 w-4" />
                   </Button>
@@ -970,6 +1151,7 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
             </div>
 
             {/* Personality selector */}
+            <div className="flex items-center gap-2">
             <div className="relative">
               <button
                 onClick={() => setPersonalityOpen(!personalityOpen)}
@@ -1002,6 +1184,47 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
                 </>
               )}
             </div>
+            {activeContextDocument && (
+              <div className="flex min-w-0 items-center gap-1.5 rounded-lg border border-brand-100 bg-brand-50 px-2 py-1 text-xs text-brand-700 dark:border-brand-900 dark:bg-brand-950 dark:text-brand-300">
+                <FileText className="h-3 w-3 shrink-0" />
+                <span className="shrink-0 font-medium">{t("ai.currentContext")}</span>
+                <span className="truncate">@{activeContextDocument.title}</span>
+                <span className="shrink-0 rounded-full bg-white/70 px-1.5 py-0.5 text-[10px] font-semibold text-brand-600 dark:bg-brand-900/70 dark:text-brand-200">
+                  {t("ai.autoContext")}
+                </span>
+              </div>
+            )}
+            </div>
+            {taskStage !== "idle" && (
+              <div className="mt-2 rounded-xl border border-surface-200 bg-surface-50 px-3 py-2 dark:border-surface-700 dark:bg-surface-800">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-surface-400">
+                    {t("ai.taskMode")}
+                  </span>
+                  <span className="text-[10px] font-medium text-brand-600 dark:text-brand-300">
+                    {taskStage === "preview" ? t("ai.taskWaiting") : taskStageLabel(taskStage)}
+                  </span>
+                </div>
+                <div className="grid grid-cols-5 gap-1.5">
+                  {taskSteps.map((step, index) => {
+                    const done = taskStage === "done" || (activeTaskIndex !== -1 && index < activeTaskIndex);
+                    const active = step.stage === taskStage;
+                    return (
+                      <div
+                        key={step.stage}
+                        className={cn(
+                          "h-1.5 rounded-full transition-colors",
+                          done && "bg-brand-500",
+                          active && "bg-brand-300 dark:bg-brand-500",
+                          !done && !active && "bg-surface-200 dark:bg-surface-700"
+                        )}
+                        title={step.label}
+                      />
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Messages */}
@@ -1068,6 +1291,24 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
                             className="ai-chat-markdown prose prose-sm max-w-none dark:prose-invert"
                             dangerouslySetInnerHTML={{ __html: sanitizeHtml(markdownToHtml(msg.content)) }}
                           />
+                        )}
+                        {!isUser && msg.sources && msg.sources.length > 0 && (
+                          <div className="mt-2 border-t border-surface-200/70 pt-2 dark:border-surface-700/70">
+                            <div className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-surface-400">
+                              {t("ai.usedSources")}
+                            </div>
+                            <div className="flex flex-wrap gap-1">
+                              {uniqueReferences(msg.sources).slice(0, 4).map((source) => (
+                                <span
+                                  key={source.id}
+                                  className="inline-flex max-w-[160px] items-center gap-1 rounded-full bg-white px-2 py-0.5 text-[10px] font-medium text-surface-500 dark:bg-surface-900 dark:text-surface-400"
+                                >
+                                  <FileText className="h-3 w-3 shrink-0 text-brand-500" />
+                                  <span className="truncate">@{source.title}</span>
+                                </span>
+                              ))}
+                            </div>
+                          </div>
                         )}
                         {streaming && isLastAssistant && (
                           <span className="inline-block w-1.5 h-4 ml-0.5 bg-brand-500 animate-pulse rounded-sm align-middle" />
@@ -1235,7 +1476,7 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
                 value={input}
                 onChange={(e) => handleInputChange(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder={isGenerating ? t("ai.replying") : `${t("ai.placeholder")} ${t("ai.mentionHint")}`}
+                placeholder={isGenerating ? t("ai.replying") : `${t("ai.placeholder")} ${t("ai.mentionHint")} · ${t("ai.commandHint")}`}
                 disabled={isGenerating}
                 rows={1}
                 className="w-full resize-none rounded-xl border border-surface-200 bg-surface-50 px-4 py-2 text-sm text-surface-900 outline-none transition-all duration-200 hover:border-surface-300 hover:bg-surface-100 focus:border-brand-300 focus:ring-1 focus:ring-brand-300 focus:bg-white disabled:opacity-50 disabled:cursor-not-allowed dark:border-surface-700 dark:bg-surface-800 dark:text-surface-100 dark:hover:border-surface-600 dark:hover:bg-surface-700 dark:focus:border-brand-700 dark:focus:bg-surface-800"
@@ -1266,15 +1507,38 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
                   )}
                 </div>
               )}
+              {showCommandMenu && (
+                <div className="absolute bottom-full left-0 z-30 mb-2 max-h-64 w-full overflow-hidden rounded-xl border border-surface-200 bg-white py-1 shadow-lg dark:border-surface-700 dark:bg-surface-900">
+                  {commandMatches.map((command, idx) => (
+                    <button
+                      key={command.id}
+                      type="button"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onMouseEnter={() => setCommandIndex(idx)}
+                      onClick={() => selectCommand(command)}
+                      className={cn(
+                        "flex w-full items-center gap-2 px-3 py-2 text-left text-xs transition-colors",
+                        idx === commandIndex
+                          ? "bg-brand-50 text-brand-700 dark:bg-brand-950 dark:text-brand-300"
+                          : "text-surface-700 hover:bg-surface-50 dark:text-surface-200 dark:hover:bg-surface-800"
+                      )}
+                    >
+                      <Sparkles className="h-3.5 w-3.5 shrink-0 text-brand-500" />
+                      <span className="font-medium">{command.label}</span>
+                      <span className="min-w-0 truncate text-surface-400">{command.prompt}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
               </div>
               {isGenerating ? (
-                <Tooltip content="停止生成" delay={150}>
+                <Tooltip content={t("ai.stop")} delay={150}>
                   <Button size="icon" onClick={handleStop} className="h-9 w-9 shrink-0 rounded-xl bg-red-500 hover:bg-red-600">
                     <Square className="h-3.5 w-3.5 text-white" fill="white" />
                   </Button>
                 </Tooltip>
               ) : (
-                <Tooltip content="发送" delay={150}>
+                <Tooltip content={t("ai.send")} delay={150}>
                   <Button size="icon" onClick={handleSend} disabled={!input.trim()} className="h-9 w-9 shrink-0 rounded-xl">
                     <Send className="h-4 w-4" />
                   </Button>
@@ -1317,6 +1581,25 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
                 <span className="truncate text-sm font-semibold text-surface-900 dark:text-surface-100">{pendingUpdate.title}</span>
               </div>
             )}
+            <div className="mt-3 grid grid-cols-5 gap-1.5">
+              {taskSteps.map((step, index) => {
+                const done = taskStage === "done" || (activeTaskIndex !== -1 && index < activeTaskIndex);
+                const active = step.stage === taskStage;
+                return (
+                  <div key={step.stage} className="min-w-0">
+                    <div
+                      className={cn(
+                        "mb-1 h-1.5 rounded-full transition-colors",
+                        done && "bg-brand-500",
+                        active && "bg-brand-300 dark:bg-brand-500",
+                        !done && !active && "bg-surface-200 dark:bg-surface-700"
+                      )}
+                    />
+                    <div className="truncate text-center text-[10px] text-surface-400">{step.label}</div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
 
           {pendingUpdate && (
@@ -1355,6 +1638,89 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
               {applyingUpdate ? t("ai.docActionRunning") : t("ai.diffApply")}
             </Button>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={versionDialogOpen} onOpenChange={setVersionDialogOpen}>
+        <DialogContent className="max-h-[82vh] max-w-[640px] overflow-hidden p-0">
+          <div className="border-b border-surface-200 px-6 py-5 dark:border-surface-700">
+            <div className="flex items-start gap-3 pr-8">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-600 dark:bg-brand-950 dark:text-brand-300">
+                <History className="h-4 w-4" />
+              </div>
+              <div>
+                <DialogTitle className="text-base font-bold text-surface-900 dark:text-surface-100">
+                  {t("ai.versionHistory")}
+                </DialogTitle>
+                <DialogDescription className="mt-1 text-xs leading-relaxed">
+                  {t("ai.versionHistoryDesc")}
+                </DialogDescription>
+              </div>
+            </div>
+          </div>
+
+          <Scrollbar className="max-h-[54vh] min-h-[240px]">
+            <div className="space-y-2 p-4">
+              {versionLoading ? (
+                <div className="flex h-40 items-center justify-center text-sm text-surface-500">
+                  {t("common.loading")}
+                </div>
+              ) : versions.length === 0 ? (
+                <div className="flex h-40 flex-col items-center justify-center rounded-xl border border-dashed border-surface-200 bg-surface-50 text-center dark:border-surface-700 dark:bg-surface-800">
+                  <History className="mb-2 h-5 w-5 text-surface-400" />
+                  <p className="text-sm font-medium text-surface-600 dark:text-surface-300">{t("ai.versionEmpty")}</p>
+                </div>
+              ) : (
+                versions.map((version) => {
+                  const createdAt = new Intl.DateTimeFormat(undefined, {
+                    month: "2-digit",
+                    day: "2-digit",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  }).format(new Date(version.createdAt));
+                  const preview = htmlToPlainText(version.content).slice(0, 120);
+                  return (
+                    <div
+                      key={version.id}
+                      className="group rounded-xl border border-surface-200 bg-white p-3 transition-colors hover:border-brand-200 hover:bg-brand-50/40 dark:border-surface-700 dark:bg-surface-900 dark:hover:border-brand-800 dark:hover:bg-brand-950/20"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="truncate text-sm font-semibold text-surface-900 dark:text-surface-100">
+                              {version.title}
+                            </span>
+                            <span className="shrink-0 rounded-full bg-surface-100 px-2 py-0.5 text-[10px] font-medium text-surface-500 dark:bg-surface-800 dark:text-surface-400">
+                              {versionSourceLabel(version.source)}
+                            </span>
+                          </div>
+                          <div className="mt-1 flex items-center gap-1 text-[11px] text-surface-400">
+                            <Clock3 className="h-3 w-3" />
+                            <span>{createdAt}</span>
+                          </div>
+                          {preview && (
+                            <p className="mt-2 line-clamp-2 text-xs leading-relaxed text-surface-500 dark:text-surface-400">
+                              {preview}
+                            </p>
+                          )}
+                        </div>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => restoreVersion(version)}
+                          disabled={!!restoringVersionId}
+                          className="shrink-0"
+                        >
+                          <RotateCcw className="h-3.5 w-3.5" />
+                          {restoringVersionId === version.id ? t("ai.docActionRunning") : t("ai.versionRestore")}
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </Scrollbar>
         </DialogContent>
       </Dialog>
 

@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from "react";
-import type { Document, DocumentCategory } from "@/types";
+import type { Document, DocumentCategory, DocumentVersion } from "@/types";
 import { api, isLoggedIn } from "@/api";
 import { useI18n } from "@/components/I18nProvider";
 
@@ -12,6 +12,9 @@ interface DocumentStore {
   loadDocument: (id: string) => Promise<Document | undefined>;
   createDocument: (category?: DocumentCategory, title?: string, content?: string, groupId?: string | null) => Promise<string>;
   updateDocument: (id: string, updates: Partial<Pick<Document, "title" | "content" | "category" | "groupId">>) => Promise<void>;
+  listDocumentVersions: (id: string) => Promise<DocumentVersion[]>;
+  createDocumentVersion: (id: string, source?: string) => Promise<DocumentVersion | undefined>;
+  restoreDocumentVersion: (id: string, versionId: string) => Promise<Document | undefined>;
   toggleFavorite: (id: string) => Promise<void>;
   moveToTrash: (id: string) => Promise<void>;
   restoreFromTrash: (id: string) => Promise<void>;
@@ -30,6 +33,9 @@ const DocumentStoreContext = createContext<DocumentStore>({
   loadDocument: async () => undefined,
   createDocument: async () => "",
   updateDocument: async () => {},
+  listDocumentVersions: async () => [],
+  createDocumentVersion: async () => undefined,
+  restoreDocumentVersion: async () => undefined,
   toggleFavorite: async () => {},
   moveToTrash: async () => {},
   restoreFromTrash: async () => {},
@@ -169,6 +175,22 @@ export function DocumentStoreProvider({ children }: { children: ReactNode }) {
     [refreshDocuments]
   );
 
+  const listDocumentVersions = useCallback(async (id: string) => {
+    const { versions } = await api.listDocumentVersions(id);
+    return versions;
+  }, []);
+
+  const createDocumentVersion = useCallback(async (id: string, source = "manual") => {
+    const { version } = await api.createDocumentVersion(id, { source });
+    return version;
+  }, []);
+
+  const restoreDocumentVersion = useCallback(async (id: string, versionId: string) => {
+    const { document: doc } = await api.restoreDocumentVersion(id, versionId);
+    updateLocalDoc(doc);
+    return doc;
+  }, [updateLocalDoc]);
+
   const toggleFavorite = useCallback(async (id: string) => {
     const { document: doc } = await api.toggleFavorite(id);
     updateLocalDoc(doc);
@@ -205,6 +227,9 @@ export function DocumentStoreProvider({ children }: { children: ReactNode }) {
         loadDocument,
         createDocument,
         updateDocument,
+        listDocumentVersions,
+        createDocumentVersion,
+        restoreDocumentVersion,
         toggleFavorite,
         moveToTrash,
         restoreFromTrash,

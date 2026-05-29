@@ -1,4 +1,4 @@
-import type { Document } from "@/types";
+import type { Document, DocumentVersion } from "@/types";
 
 const API_BASE = "http://localhost:3000/api";
 
@@ -90,6 +90,20 @@ export const api = {
     request<{ document: Document }>(`/documents/${id}`, {
       method: "PUT",
       body: JSON.stringify(data),
+    }),
+
+  listDocumentVersions: (id: string) =>
+    request<{ versions: DocumentVersion[] }>(`/documents/${id}/versions`),
+
+  createDocumentVersion: (id: string, data?: { source?: string }) =>
+    request<{ version: DocumentVersion }>(`/documents/${id}/versions`, {
+      method: "POST",
+      body: JSON.stringify(data || {}),
+    }),
+
+  restoreDocumentVersion: (id: string, versionId: string) =>
+    request<{ document: Document }>(`/documents/${id}/versions/${versionId}/restore`, {
+      method: "PATCH",
     }),
 
   toggleFavorite: (id: string) =>

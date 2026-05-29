@@ -13,7 +13,8 @@ import type { Personality } from "../services/aiService";
 
 const router = Router();
 const MAX_REFERENCE_DOCS = 4;
-const MAX_REFERENCE_CHARS = 12000;
+const MAX_REFERENCE_CHARS = 6000;
+const MAX_TOTAL_REFERENCE_CHARS = 16000;
 
 type ChatReference = {
   type?: string;
@@ -70,13 +71,18 @@ async function buildReferenceContext(userId: string, references: ChatReference[]
     .map((id) => docs.find((doc) => doc.id === id))
     .filter((doc): doc is ReferenceDocument => Boolean(doc));
 
+  let remainingChars = MAX_TOTAL_REFERENCE_CHARS;
   return orderedDocs.map((doc) => {
-    const content = stripHtml(doc.content).slice(0, MAX_REFERENCE_CHARS);
+    const availableChars = Math.max(0, Math.min(MAX_REFERENCE_CHARS, remainingChars));
+    const rawContent = stripHtml(doc.content);
+    const content = rawContent.slice(0, availableChars);
+    remainingChars -= content.length;
+    const truncatedNote = rawContent.length > content.length ? "\n（内容已按上下文窗口自动截断）" : "";
     return [
       `[引用文档：${doc.title}] [doc:${doc.id}]`,
       `更新时间：${doc.updatedAt.toISOString()}`,
       "内容：",
-      content || "(空文档)",
+      `${content || "(空文档)"}${truncatedNote}`,
     ].join("\n");
   }).join("\n\n---\n\n");
 }
@@ -183,7 +189,7 @@ router.post("/chat", async (req: Request, res: Response) => {
       [
         memoryContext || "",
         referenceContext
-          ? `用户为本次对话引用了以下项目文档作为上下文。回答时优先依据这些文档；如果文档信息不足，请明确说明。\n\n${referenceContext}`
+          ? `用户为本次对话引用了以下项目文档作为上下文。回答时优先依据这些文档；如果文档信息不足，请明确说明。普通回答中如使用了文档信息，请简短标注来源文档标题；执行 update_document 时必须使用对应 [doc:xxxxx]。\n\n${referenceContext}`
           : "",
         brainKnowledgeContext || "",
       ].filter(Boolean).join("\n\n")

@@ -13,6 +13,17 @@ export interface Document {
   groupId?: string | null;
 }
 
+export interface DocumentVersion {
+  id: string;
+  documentId: string;
+  userId: string;
+  title: string;
+  content: string;
+  preview?: string | null;
+  source: string;
+  createdAt: string;
+}
+
 export type DocumentCategory = "design" | "journal" | "planning" | "research" | "general";
 
 export const categoryLabels: Record<DocumentCategory, { zh: string; en: string }> = {

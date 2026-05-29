@@ -78,6 +78,66 @@ export async function updateDocument(docId: string, userId: string, data: {
   });
 }
 
+export async function createDocumentVersion(docId: string, userId: string, source = "manual") {
+  const doc = await checkOwnership(docId, userId);
+  if (!doc || doc.isDeleted) return null;
+
+  return prisma.documentVersion.create({
+    data: {
+      documentId: doc.id,
+      userId,
+      title: doc.title,
+      content: doc.content,
+      preview: doc.preview,
+      source,
+    },
+  });
+}
+
+export async function listDocumentVersions(docId: string, userId: string) {
+  const doc = await checkOwnership(docId, userId);
+  if (!doc) return null;
+
+  return prisma.documentVersion.findMany({
+    where: { documentId: docId, userId },
+    orderBy: { createdAt: "desc" },
+    take: 30,
+  });
+}
+
+export async function restoreDocumentVersion(docId: string, versionId: string, userId: string): Promise<Document | null> {
+  const doc = await checkOwnership(docId, userId);
+  if (!doc || doc.isDeleted) return null;
+
+  const version = await prisma.documentVersion.findFirst({
+    where: { id: versionId, documentId: docId, userId },
+  });
+  if (!version) return null;
+
+  const [, restored] = await prisma.$transaction([
+    prisma.documentVersion.create({
+      data: {
+        documentId: doc.id,
+        userId,
+        title: doc.title,
+        content: doc.content,
+        preview: doc.preview,
+        source: "restore",
+      },
+    }),
+    prisma.document.update({
+      where: { id: docId },
+      data: {
+        title: version.title,
+        content: version.content,
+        preview: version.preview !== undefined ? version.preview : buildPreview(version.content),
+      },
+    }),
+  ]);
+
+  return restored;
+}
+
 export async function toggleFavorite(docId: string, userId: string): Promise<Document | null> {
   const doc = await checkOwnership(docId, userId);
   if (!doc) return null;
