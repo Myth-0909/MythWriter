@@ -1272,6 +1272,7 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
     saveConversation();
     closingRef.current = true;
     setClosing(true);
+    setOpen(false);
   }, [saveConversation]);
 
   useEffect(() => {
