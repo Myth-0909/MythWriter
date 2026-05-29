@@ -14,6 +14,7 @@ import { markdownToHtml } from "@/lib/markdown";
 import { sanitizeHtml } from "@/lib/html";
 import { Tooltip } from "@/components/ui/tooltip";
 import type { DocumentVersion } from "@/types";
+import type { OverlayScrollbarsComponentRef } from "overlayscrollbars-react";
 import gsap from "gsap";
 
 const API_BASE = "http://localhost:3000/api";
@@ -467,8 +468,12 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
   const posStart = useRef({ x: 0, y: 0 });
   const hasMoved = useRef(false);
   const chatPanelRef = useRef<HTMLDivElement>(null);
+  const messagesScrollbarRef = useRef<OverlayScrollbarsComponentRef>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const userScrolledUpRef = useRef(false);
+  const forceLatestOnOpenRef = useRef(false);
+  const scrollFrameRef = useRef<number | null>(null);
+  const scrollTimersRef = useRef<number[]>([]);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   // User avatar
@@ -584,6 +589,7 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
 
   // Handle scroll events for smart scroll detection
   const handleScrollEvent = useCallback((_instance: any, event: Event) => {
+    if (forceLatestOnOpenRef.current) return;
     const target = event.target as HTMLElement;
     if (!target) return;
     const { scrollTop, scrollHeight, clientHeight } = target;
@@ -593,16 +599,36 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
 
   const scrollChatToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
     const marker = chatEndRef.current;
-    if (!marker) return;
+    const instance = messagesScrollbarRef.current?.osInstance();
+    instance?.update(true);
 
-    const viewport = marker.closest(".os-viewport") as HTMLElement | null;
-    if (viewport) {
-      viewport.scrollTo({ top: viewport.scrollHeight, behavior });
+    const elements = instance?.elements();
+    const scrollElement = elements?.scrollOffsetElement || elements?.viewport;
+    if (scrollElement) {
+      scrollElement.scrollTo({ top: scrollElement.scrollHeight, behavior });
       return;
     }
 
+    if (!marker) return;
     marker.scrollIntoView({ behavior, block: "end" });
   }, []);
+
+  const clearScheduledChatScroll = useCallback(() => {
+    if (scrollFrameRef.current !== null) {
+      cancelAnimationFrame(scrollFrameRef.current);
+      scrollFrameRef.current = null;
+    }
+    scrollTimersRef.current.forEach(window.clearTimeout);
+    scrollTimersRef.current = [];
+  }, []);
+
+  const scheduleChatScrollToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
+    clearScheduledChatScroll();
+    scrollFrameRef.current = requestAnimationFrame(() => scrollChatToBottom(behavior));
+    scrollTimersRef.current = [40, 120, 280, 520].map((delay) =>
+      window.setTimeout(() => scrollChatToBottom(behavior), delay)
+    );
+  }, [clearScheduledChatScroll, scrollChatToBottom]);
 
   // Smart auto-scroll: only scroll to bottom if user is near the bottom
   useEffect(() => {
@@ -613,19 +639,19 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
   // Always show the most recent messages when the assistant opens.
   useEffect(() => {
     if (!open || !keyOk || messages.length === 0) return;
+    forceLatestOnOpenRef.current = true;
     userScrolledUpRef.current = false;
+    scheduleChatScrollToBottom();
 
-    const frame = requestAnimationFrame(() => scrollChatToBottom());
-    const timers = [
-      window.setTimeout(() => scrollChatToBottom(), 80),
-      window.setTimeout(() => scrollChatToBottom(), 260),
-    ];
+    const release = window.setTimeout(() => {
+      forceLatestOnOpenRef.current = false;
+    }, 760);
 
     return () => {
-      cancelAnimationFrame(frame);
-      timers.forEach(window.clearTimeout);
+      window.clearTimeout(release);
+      clearScheduledChatScroll();
     };
-  }, [keyOk, messages.length, open, scrollChatToBottom]);
+  }, [clearScheduledChatScroll, keyOk, messages.length, open, scheduleChatScrollToBottom]);
 
   // Reset scroll lock when user sends a new message
   useEffect(() => {
@@ -1461,7 +1487,21 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
           </div>
 
           {/* Messages */}
-          <Scrollbar data-ai-chat-enter className="flex-1 px-4 py-4" options={{ scrollbars: { autoHide: "leave" } }} events={{ scroll: handleScrollEvent }}>
+          <Scrollbar
+            ref={messagesScrollbarRef}
+            data-ai-chat-enter
+            className="flex-1 px-4 py-4"
+            options={{ scrollbars: { autoHide: "leave" } }}
+            events={{
+              initialized: () => {
+                if (open && keyOk && messages.length > 0) scheduleChatScrollToBottom();
+              },
+              updated: () => {
+                if (forceLatestOnOpenRef.current) scheduleChatScrollToBottom();
+              },
+              scroll: handleScrollEvent,
+            }}
+          >
             {messages.length === 0 ? (
               <div className="flex h-full flex-col items-center justify-center text-center px-4">
                 <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-brand-50 dark:bg-brand-950">

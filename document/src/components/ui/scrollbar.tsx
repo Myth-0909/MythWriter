@@ -1,5 +1,6 @@
+import { forwardRef } from "react";
 import { OverlayScrollbarsComponent } from "overlayscrollbars-react";
-import type { OverlayScrollbarsComponentProps } from "overlayscrollbars-react";
+import type { OverlayScrollbarsComponentProps, OverlayScrollbarsComponentRef } from "overlayscrollbars-react";
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/components/ThemeProvider";
 
@@ -7,7 +8,10 @@ interface ScrollbarProps extends OverlayScrollbarsComponentProps {
   className?: string;
 }
 
-export function Scrollbar({ className, children, options, events, ...props }: ScrollbarProps) {
+export const Scrollbar = forwardRef<OverlayScrollbarsComponentRef, ScrollbarProps>(function Scrollbar(
+  { className, children, options, events, ...props },
+  ref
+) {
   const { theme } = useTheme();
   const themeName = theme === "dark" ? "os-theme-znwriter-dark" : "os-theme-znwriter-light";
 
@@ -28,6 +32,7 @@ export function Scrollbar({ className, children, options, events, ...props }: Sc
 
   return (
     <OverlayScrollbarsComponent
+      ref={ref}
       options={mergedOptions}
       events={events}
       className={cn("os-host-flex", className)}
@@ -36,5 +41,4 @@ export function Scrollbar({ className, children, options, events, ...props }: Sc
       {children}
     </OverlayScrollbarsComponent>
   );
-}
-
+});
