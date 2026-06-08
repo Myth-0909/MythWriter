@@ -8,10 +8,10 @@ interface BrandLogoProps {
 }
 
 const sizeClass = {
-  sm: "h-7 w-7",
-  md: "h-9 w-9",
-  lg: "h-12 w-12",
-  xl: "h-28 w-28",
+  sm: "h-9 w-9",
+  md: "h-11 w-11",
+  lg: "h-16 w-16",
+  xl: "h-36 w-36",
 };
 
 export function BrandLogo({ size = "md", showWordmark = false, className }: BrandLogoProps) {
