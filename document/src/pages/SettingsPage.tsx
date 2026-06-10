@@ -5,6 +5,7 @@ import { Scrollbar } from "@/components/ui/scrollbar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip } from "@/components/ui/tooltip";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { ConfirmModal } from "@/components/ConfirmModal";
 import { useTheme } from "@/components/ThemeProvider";
 import { useI18n } from "@/components/I18nProvider";
 import { useToast } from "@/components/Toast";
@@ -45,6 +46,7 @@ export function SettingsPage() {
   const [savingKey, setSavingKey] = useState(false);
   const [applyingHistory, setApplyingHistory] = useState(false);
   const [deletingHistoryId, setDeletingHistoryId] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [keyEditable, setKeyEditable] = useState(false);
   const [apiKeyHistories, setApiKeyHistories] = useState<ApiKeyHistory[]>([]);
   const [selectedHistoryId, setSelectedHistoryId] = useState("");
@@ -412,75 +414,74 @@ export function SettingsPage() {
                   <Select
                     value={selectedHistoryId}
                     onValueChange={handleApplyHistory}
-                    disabled={isLocked || applyingHistory || !!deletingHistoryId || apiKeyHistories.length === 0}
+                    disabled={isLocked || applyingHistory || apiKeyHistories.length === 0}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder={apiKeyHistories.length > 0 ? t("apikey.historyPlaceholder") : t("apikey.noHistory")} />
                     </SelectTrigger>
                     <SelectContent>
-                      {apiKeyHistories.map((item, index) => (
-                        <SelectItem key={item.id} value={item.id} index={index} className="pr-9">
-                          <div className="grid w-full min-w-0 justify-items-start gap-1 py-0.5 text-left">
-                            <span className="block max-w-full truncate text-left text-xs font-semibold leading-tight text-surface-800 dark:text-surface-100">
-                              {item.model}
-                            </span>
-                            <span className="block max-w-full truncate text-left text-[10px] leading-tight text-surface-400">
-                              {item.baseUrl}
-                            </span>
-                            <span className="w-fit rounded bg-surface-100 px-1.5 py-0.5 text-[10px] leading-none text-surface-500 dark:bg-surface-800 dark:text-surface-400">
-                              {item.masked}
-                            </span>
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {apiKeyHistories.length > 0 && (
-                    <div className="mt-2 flex max-h-40 flex-col gap-1.5 overflow-y-auto rounded-lg border border-surface-200 bg-surface-50 p-1.5 dark:border-surface-800 dark:bg-surface-900/60">
-                      {apiKeyHistories.map((item) => {
+                      {apiKeyHistories.map((item, index) => {
                         const isCurrent = item.id === selectedHistoryId;
                         const isDeleting = deletingHistoryId === item.id;
+                        const deleteDisabled = isLocked || isDeleting;
                         return (
-                          <div
+                          <SelectItem
                             key={item.id}
-                            className="flex items-center gap-2 rounded-md bg-white px-2.5 py-2 dark:bg-surface-950"
-                          >
-                            <div className="min-w-0 flex-1">
-                              <div className="truncate text-xs font-semibold text-surface-800 dark:text-surface-100">
-                                {item.model}
-                              </div>
-                              <div className="mt-0.5 truncate text-[10px] text-surface-400">
-                                {item.baseUrl}
-                              </div>
-                            </div>
-                            <span className="shrink-0 rounded bg-surface-100 px-1.5 py-0.5 text-[10px] leading-none text-surface-500 dark:bg-surface-800 dark:text-surface-400">
-                              {item.masked}
-                            </span>
-                            <Tooltip
-                              content={isCurrent ? t("apikey.historyCurrentCannotDelete") : t("apikey.deleteHistory")}
-                              delay={150}
-                            >
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon-sm"
-                                disabled={isLocked || isDeleting}
-                                onClick={() => handleDeleteHistory(item.id)}
-                                className="shrink-0 text-surface-400 hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-950/30"
-                                aria-label={t("apikey.deleteHistory")}
+                            value={item.id}
+                            index={index}
+                            rightSlot={
+                              <Tooltip
+                                content={isCurrent ? t("apikey.historyCurrentCannotDelete") : t("apikey.deleteHistory")}
+                                delay={150}
                               >
-                                {isDeleting ? (
-                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                ) : (
-                                  <Trash2 className="h-3.5 w-3.5" />
-                                )}
-                              </Button>
-                            </Tooltip>
-                          </div>
+                                <button
+                                  type="button"
+                                  disabled={deleteDisabled}
+                                  aria-label={t("apikey.deleteHistory")}
+                                  onPointerUp={(e) => {
+                                    // Radix Select triggers item selection in onPointerUp and bails out
+                                    // only when event.defaultPrevented is true. Calling preventDefault
+                                    // here is what actually stops the option from being applied.
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                  }}
+                                  onPointerDown={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                  }}
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    if (deleteDisabled) return;
+                                    setConfirmDeleteId(item.id);
+                                  }}
+                                  className="relative z-10 mr-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-surface-400 transition-colors hover:bg-red-50 hover:text-red-500 disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-surface-400 cursor-pointer dark:hover:bg-red-950/30"
+                                >
+                                  {isDeleting ? (
+                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                  ) : (
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  )}
+                                </button>
+                              </Tooltip>
+                            }
+                          >
+                            <div className="grid w-full min-w-0 justify-items-start gap-1 py-0.5 text-left">
+                              <span className="block max-w-full truncate text-left text-xs font-semibold leading-tight text-surface-800 dark:text-surface-100">
+                                {item.model}
+                              </span>
+                              <span className="block max-w-full truncate text-left text-[10px] leading-tight text-surface-400">
+                                {item.baseUrl}
+                              </span>
+                              <span className="w-fit rounded bg-surface-100 px-1.5 py-0.5 text-[10px] leading-none text-surface-500 dark:bg-surface-800 dark:text-surface-400">
+                                {item.masked}
+                              </span>
+                            </div>
+                          </SelectItem>
                         );
                       })}
-                    </div>
-                  )}
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 {/* Base URL */}
@@ -664,6 +665,21 @@ export function SettingsPage() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Confirm delete history */}
+      <ConfirmModal
+        open={!!confirmDeleteId}
+        onOpenChange={(open) => { if (!open) setConfirmDeleteId(null); }}
+        title={t("apikey.confirmDeleteTitle")}
+        description={t("apikey.confirmDeleteDescription")}
+        confirmLabel={t("common.delete")}
+        cancelLabel={t("common.cancel")}
+        variant="danger"
+        onConfirm={() => {
+          if (confirmDeleteId) handleDeleteHistory(confirmDeleteId);
+          setConfirmDeleteId(null);
+        }}
+      />
     </Scrollbar>
   );
 }

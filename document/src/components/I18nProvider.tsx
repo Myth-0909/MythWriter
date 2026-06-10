@@ -18,6 +18,8 @@ const translations = {
   "nav.expand": { zh: "展开菜单", en: "Expand Menu" },
   "nav.collapse": { zh: "收起菜单", en: "Collapse Menu" },
   "nav.brain": { zh: "AI设定脑库", en: "AI Brain Base" },
+  "nav.switchToEnglish": { zh: "切换到英文", en: "Switch to English" },
+  "nav.switchToChinese": { zh: "切换到中文", en: "Switch to Chinese" },
 
   // AI Brain / Knowledge Base
   "brain.title": { zh: "AI 设定脑库", en: "AI Brain Memory Base" },
@@ -496,6 +498,8 @@ const translations = {
   "apikey.historyApplied": { zh: "已切换到历史配置", en: "Configuration applied" },
   "apikey.historyApplyFailed": { zh: "切换历史配置失败", en: "Failed to apply configuration" },
   "apikey.deleteHistory": { zh: "删除历史配置", en: "Delete saved configuration" },
+  "apikey.confirmDeleteTitle": { zh: "确认删除该配置？", en: "Delete this configuration?" },
+  "apikey.confirmDeleteDescription": { zh: "删除后无法恢复，请确认是否继续。", en: "This action cannot be undone. Please confirm to continue." },
   "apikey.historyDeleted": { zh: "历史配置已删除", en: "Saved configuration deleted" },
   "apikey.historyDeleteFailed": { zh: "删除历史配置失败", en: "Failed to delete saved configuration" },
   "apikey.historyCurrentCannotDelete": { zh: "当前正在使用的配置不能删除", en: "The active configuration cannot be deleted" },

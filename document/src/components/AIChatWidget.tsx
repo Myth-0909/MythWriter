@@ -1700,9 +1700,12 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
                                     className="p-0.5 transition-transform hover:scale-125"
                                   >
                                     <Star
-                                      className="h-3.5 w-3.5 transition-colors"
-                                      fill={hoverStar >= star ? "currentColor" : "none"}
-                                      color={hoverStar >= star ? "#f59e0b" : "#d1d5db"}
+                                      className={cn(
+                                        "h-3.5 w-3.5 transition-colors",
+                                        hoverStar >= star
+                                          ? "fill-amber-500 text-amber-500"
+                                          : "fill-transparent text-surface-300 dark:text-surface-500"
+                                      )}
                                     />
                                   </button>
                                 ))}
