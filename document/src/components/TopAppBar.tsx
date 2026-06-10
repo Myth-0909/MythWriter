@@ -4,8 +4,8 @@ import {
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
+import { Tooltip } from "@/components/ui/tooltip";
 import {
   Share2,
   Download,
@@ -16,7 +16,6 @@ import {
   Sun,
   Moon,
   Monitor,
-  Settings,
   ChevronDown,
 } from "lucide-react";
 import { useTheme } from "@/components/ThemeProvider";
@@ -39,13 +38,14 @@ export function TopAppBar({
   onShare,
   onExport,
   onLogout,
-  onSettings,
   sidebarCollapsed = false,
   onToggleSidebar,
 }: TopAppBarProps) {
   const { t, lang, toggleLang } = useI18n();
-  const { theme, themeMode, setThemeMode } = useTheme();
+  const { themeMode, setThemeMode } = useTheme();
   const { user } = useAuth();
+
+  const themeModeIndex = { system: 0, light: 1, dark: 2 }[themeMode];
 
   const avatarUrl = user?.avatar
     ? `http://localhost:3000/uploads/${user.avatar}`
@@ -112,41 +112,68 @@ export function TopAppBar({
           </>
         )}
 
-        {/* Theme dropdown */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 text-surface-500 hover:text-surface-900 dark:text-surface-400 dark:hover:text-surface-100"
+        {/* Language toggle */}
+        <Tooltip
+          content={lang === "zh" ? t("nav.switchToEnglish") : t("nav.switchToChinese")}
+          delay={150}
+        >
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={toggleLang}
+            className="h-8 w-8 text-surface-500 hover:text-surface-900 dark:text-surface-400 dark:hover:text-surface-100"
+            aria-label={lang === "zh" ? "Switch to English" : "切换到中文"}
+          >
+            <Languages className="h-4 w-4" />
+          </Button>
+        </Tooltip>
+
+        {/* Theme switcher (matches settings page) */}
+        <div className="relative grid w-[116px] grid-cols-3 gap-1 rounded-lg bg-surface-100 p-1 dark:bg-surface-800">
+          <div
+            className="absolute left-1 top-1 h-8 w-8 rounded-md bg-white shadow-sm transition-transform duration-300 ease-out dark:bg-surface-700"
+            style={{ transform: `translateX(${themeModeIndex * 36}px)` }}
+          />
+          <Tooltip content={t("nav.followSystem")} delay={150}>
+            <button
+              onClick={() => setThemeMode("system")}
+              className={`relative z-10 flex h-8 w-8 items-center justify-center rounded-md transition-colors cursor-pointer ${
+                themeMode === "system"
+                  ? "text-surface-900 dark:text-surface-100"
+                  : "text-surface-400 hover:text-surface-600 dark:hover:text-surface-300"
+              }`}
+              aria-label={t("nav.followSystem")}
             >
-              {themeMode === "system" ? (
-                <Monitor className="h-4 w-4" />
-              ) : theme === "light" ? (
-                <Sun className="h-4 w-4" />
-              ) : (
-                <Moon className="h-4 w-4" />
-              )}
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-[160px]">
-            <DropdownMenuItem onClick={() => setThemeMode("system")}>
               <Monitor className="h-4 w-4" />
-              <span>{t("nav.followSystem")}</span>
-              {themeMode === "system" && <span className="ml-auto text-brand-500">✓</span>}
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setThemeMode("light")}>
+            </button>
+          </Tooltip>
+          <Tooltip content={t("nav.lightMode")} delay={150}>
+            <button
+              onClick={() => setThemeMode("light")}
+              className={`relative z-10 flex h-8 w-8 items-center justify-center rounded-md transition-colors cursor-pointer ${
+                themeMode === "light"
+                  ? "text-amber-500"
+                  : "text-surface-400 hover:text-surface-600 dark:hover:text-surface-300"
+              }`}
+              aria-label={t("nav.lightMode")}
+            >
               <Sun className="h-4 w-4" />
-              <span>{t("nav.lightMode")}</span>
-              {themeMode === "light" && <span className="ml-auto text-brand-500">✓</span>}
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setThemeMode("dark")}>
+            </button>
+          </Tooltip>
+          <Tooltip content={t("nav.darkMode")} delay={150}>
+            <button
+              onClick={() => setThemeMode("dark")}
+              className={`relative z-10 flex h-8 w-8 items-center justify-center rounded-md transition-colors cursor-pointer ${
+                themeMode === "dark"
+                  ? "text-brand-500 dark:text-brand-400"
+                  : "text-surface-400 hover:text-surface-600 dark:hover:text-surface-300"
+              }`}
+              aria-label={t("nav.darkMode")}
+            >
               <Moon className="h-4 w-4" />
-              <span>{t("nav.darkMode")}</span>
-              {themeMode === "dark" && <span className="ml-auto text-brand-500">✓</span>}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+            </button>
+          </Tooltip>
+        </div>
 
         {/* User menu */}
         <DropdownMenu>
@@ -166,61 +193,16 @@ export function TopAppBar({
               <ChevronDown className="h-3.5 w-3.5 text-surface-400" />
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-[240px]">
-            {/* User info header */}
-            {user && (
-              <>
-                <div className="flex items-center gap-3 px-3 py-3">
-                  {avatarUrl ? (
-                    <img
-                      src={avatarUrl}
-                      alt="avatar"
-                      className="h-10 w-10 rounded-full object-cover"
-                    />
-                  ) : (
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-500 text-sm font-semibold text-white">
-                      {initials}
-                    </div>
-                  )}
-                  <div className="flex flex-col overflow-hidden">
-                    <span className="truncate text-sm font-medium text-surface-900 dark:text-surface-100">
-                      {user.name}
-                    </span>
-                    <span className="truncate text-xs text-surface-500">
-                      {user.email}
-                    </span>
-                  </div>
-                </div>
-                <DropdownMenuSeparator />
-              </>
-            )}
-
-            {/* Language switch */}
-            <DropdownMenuItem onClick={toggleLang}>
-              <Languages className="h-4 w-4" />
-              <span>{lang === "zh" ? "English" : "中文"}</span>
-            </DropdownMenuItem>
-
-            {/* Settings */}
-            {onSettings && (
-              <DropdownMenuItem onClick={onSettings}>
-                <Settings className="h-4 w-4" />
-                <span>{t("settings.title")}</span>
-              </DropdownMenuItem>
-            )}
-
+          <DropdownMenuContent align="end" className="w-[160px]">
             {/* Logout */}
             {onLogout && (
-              <>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  onClick={onLogout}
-                  className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:text-red-300 dark:hover:bg-red-950"
-                >
-                  <LogOut className="h-4 w-4" />
-                  <span>{t("topbar.logout")}</span>
-                </DropdownMenuItem>
-              </>
+              <DropdownMenuItem
+                onClick={onLogout}
+                className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:text-red-300 dark:hover:bg-red-950"
+              >
+                <LogOut className="h-4 w-4" />
+                <span>{t("topbar.logout")}</span>
+              </DropdownMenuItem>
             )}
           </DropdownMenuContent>
         </DropdownMenu>

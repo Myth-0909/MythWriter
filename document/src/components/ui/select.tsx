@@ -60,8 +60,8 @@ SelectContent.displayName = SelectPrimitive.Content.displayName;
 
 const SelectItem = React.forwardRef<
   React.ComponentRef<typeof SelectPrimitive.Item>,
-  React.ComponentPropsWithoutRef<typeof SelectPrimitive.Item> & { index?: number }
->(({ className, children, index = 0, ...props }, ref) => (
+  React.ComponentPropsWithoutRef<typeof SelectPrimitive.Item> & { index?: number; rightSlot?: React.ReactNode }
+>(({ className, children, index = 0, rightSlot, ...props }, ref) => (
   <SelectPrimitive.Item
     ref={ref}
     style={{ animationDelay: `${index * 40}ms` }}
@@ -71,8 +71,11 @@ const SelectItem = React.forwardRef<
     )}
     {...props}
   >
-    <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
-    <SelectPrimitive.ItemIndicator className="absolute right-3">
+    <SelectPrimitive.ItemText className="min-w-0 flex-1">
+      {children}
+    </SelectPrimitive.ItemText>
+    {rightSlot}
+    <SelectPrimitive.ItemIndicator className={cn("absolute", rightSlot ? "right-9" : "right-3")}>
       <Check className="h-4 w-4" />
     </SelectPrimitive.ItemIndicator>
   </SelectPrimitive.Item>

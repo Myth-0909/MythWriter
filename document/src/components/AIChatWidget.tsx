@@ -14,6 +14,8 @@ import { markdownToHtml } from "@/lib/markdown";
 import { sanitizeHtml } from "@/lib/html";
 import { Tooltip } from "@/components/ui/tooltip";
 import type { DocumentVersion } from "@/types";
+import type { OverlayScrollbarsComponentRef } from "overlayscrollbars-react";
+import gsap from "gsap";
 
 const API_BASE = "http://localhost:3000/api";
 
@@ -42,6 +44,7 @@ interface Message {
   role: "user" | "assistant";
   content: string;
   sources?: ChatReference[];
+  timestamp?: string;
 }
 
 interface ChatReference {
@@ -117,13 +120,6 @@ function absoluteToAnchored(pos: Position): AnchoredPosition {
   const maxY = window.innerHeight - btnSize - MARGIN;
   const yPercent = Math.max(0, Math.min(100, ((pos.y - MARGIN) / (maxY - MARGIN)) * 100));
   return { side, yPercent };
-}
-
-// Detect if user message contains action intent (create, edit, delete, etc.)
-const ACTION_KEYWORDS = /生成|创建|修改|删除|收藏|添加|编辑|写文章|新建|制作|翻译|改写|改成|改为|优化|调整|润色|扩写|总结/i;
-
-function isActionIntent(message: string): boolean {
-  return ACTION_KEYWORDS.test(message);
 }
 
 function loadMemory(): Message[] {
@@ -221,6 +217,17 @@ function uniqueReferences<T extends ChatReference>(refs: T[]) {
   return refs.filter(
     (ref, index, all) => all.findIndex((item) => `${item.type}:${item.id}` === `${ref.type}:${ref.id}`) === index
   );
+}
+
+function formatTimestamp(): string {
+  const now = new Date();
+  const yy = String(now.getFullYear()).slice(-2);
+  const mm = String(now.getMonth() + 1).padStart(2, "0");
+  const dd = String(now.getDate()).padStart(2, "0");
+  const hh = String(now.getHours()).padStart(2, "0");
+  const min = String(now.getMinutes()).padStart(2, "0");
+  const ss = String(now.getSeconds()).padStart(2, "0");
+  return `${yy}/${mm}/${dd} ${hh}:${min}:${ss}`;
 }
 
 function buildMemoryContext(memory: Message[]): string {
@@ -383,7 +390,7 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [streaming, setStreaming] = useState(false);
-  const [actionMode, setActionMode] = useState(false);
+  const [isActing, setIsActing] = useState(false);
   const [personality, setPersonality] = useState<Personality>(() =>
     safePersonality(localStorage.getItem(PERSONALITY_KEY))
   );
@@ -472,8 +479,13 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
   const dragStart = useRef({ x: 0, y: 0 });
   const posStart = useRef({ x: 0, y: 0 });
   const hasMoved = useRef(false);
+  const chatPanelRef = useRef<HTMLDivElement>(null);
+  const messagesScrollbarRef = useRef<OverlayScrollbarsComponentRef>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
   const userScrolledUpRef = useRef(false);
+  const forceLatestOnOpenRef = useRef(false);
+  const scrollFrameRef = useRef<number | null>(null);
+  const scrollTimersRef = useRef<number[]>([]);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   // User avatar
@@ -569,10 +581,11 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
 
   const greetUser = useCallback(() => {
     const pers = personalityRef.current;
+    const ts = formatTimestamp();
     api.aiGreeting({ userName: user?.name || "", personality: pers })
       .then((res) => {
-        setMessages([{ role: "assistant", content: res.greeting }]);
-        memoryRef.current = [{ role: "assistant", content: res.greeting }];
+        setMessages([{ role: "assistant", content: res.greeting, timestamp: ts }]);
+        memoryRef.current = [{ role: "assistant", content: res.greeting, timestamp: ts }];
         saveMemory(memoryRef.current);
       })
       .catch(() => {
@@ -583,29 +596,80 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
           serious: `${user?.name || '用户'}，您好。我是小麦，请说明您的需求。`,
           silly: `哇哦！${user?.name || '用户'} 来了！我是小麦——您的写作小伙伴！`,
         };
-        setMessages([{ role: "assistant", content: fallbacks[pers] || fallbacks.normal }]);
+        setMessages([{ role: "assistant", content: fallbacks[pers] || fallbacks.normal, timestamp: ts }]);
       });
   }, [user?.name]);
 
-  // Smart auto-scroll: only scroll to bottom if user is near the bottom
-  useEffect(() => {
-    if (userScrolledUpRef.current) return;
-    chatEndRef.current?.scrollIntoView({ behavior: "auto" });
-  }, [messages]);
-
-  // Reset scroll lock when user sends a new message
-  useEffect(() => {
-    if (loading) userScrolledUpRef.current = false;
-  }, [loading]);
-
   // Handle scroll events for smart scroll detection
   const handleScrollEvent = useCallback((_instance: any, event: Event) => {
+    if (forceLatestOnOpenRef.current) return;
     const target = event.target as HTMLElement;
     if (!target) return;
     const { scrollTop, scrollHeight, clientHeight } = target;
     const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
     userScrolledUpRef.current = distanceFromBottom > 80;
   }, []);
+
+  const scrollChatToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
+    const marker = chatEndRef.current;
+    const instance = messagesScrollbarRef.current?.osInstance();
+    instance?.update(true);
+
+    const elements = instance?.elements();
+    const scrollElement = elements?.scrollOffsetElement || elements?.viewport;
+    if (scrollElement) {
+      scrollElement.scrollTo({ top: scrollElement.scrollHeight, behavior });
+      return;
+    }
+
+    if (!marker) return;
+    marker.scrollIntoView({ behavior, block: "end" });
+  }, []);
+
+  const clearScheduledChatScroll = useCallback(() => {
+    if (scrollFrameRef.current !== null) {
+      cancelAnimationFrame(scrollFrameRef.current);
+      scrollFrameRef.current = null;
+    }
+    scrollTimersRef.current.forEach(window.clearTimeout);
+    scrollTimersRef.current = [];
+  }, []);
+
+  const scheduleChatScrollToBottom = useCallback((behavior: ScrollBehavior = "auto") => {
+    clearScheduledChatScroll();
+    scrollFrameRef.current = requestAnimationFrame(() => scrollChatToBottom(behavior));
+    scrollTimersRef.current = [40, 120, 280, 520].map((delay) =>
+      window.setTimeout(() => scrollChatToBottom(behavior), delay)
+    );
+  }, [clearScheduledChatScroll, scrollChatToBottom]);
+
+  // Smart auto-scroll: only scroll to bottom if user is near the bottom
+  useEffect(() => {
+    if (userScrolledUpRef.current) return;
+    scrollChatToBottom();
+  }, [messages, scrollChatToBottom]);
+
+  // Always show the most recent messages when the assistant opens.
+  useEffect(() => {
+    if (!open || !keyOk || messages.length === 0) return;
+    forceLatestOnOpenRef.current = true;
+    userScrolledUpRef.current = false;
+    scheduleChatScrollToBottom();
+
+    const release = window.setTimeout(() => {
+      forceLatestOnOpenRef.current = false;
+    }, 760);
+
+    return () => {
+      window.clearTimeout(release);
+      clearScheduledChatScroll();
+    };
+  }, [clearScheduledChatScroll, keyOk, messages.length, open, scheduleChatScrollToBottom]);
+
+  // Reset scroll lock when user sends a new message
+  useEffect(() => {
+    if (loading) userScrolledUpRef.current = false;
+  }, [loading]);
 
   // Auto-resize textarea helper
   const resizeTextarea = useCallback(() => {
@@ -696,9 +760,9 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
     const text = input.trim();
     if (!text || loading || streaming) return;
 
-    const nextActionMode = isActionIntent(text);
     const currentDocument = currentDocumentId ? getDocument(currentDocumentId) : undefined;
-    const currentReference = nextActionMode && currentDocument && !currentDocument.isDeleted
+    // Always pass current document as context for LLM-based intent detection
+    const currentReference = currentDocument && !currentDocument.isDeleted
       ? [{ type: "document" as const, id: currentDocument.id, title: currentDocument.title }]
       : [];
     const referencedByText = documents
@@ -709,7 +773,7 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
       .map((item) => ({ type: "brain" as const, id: item.id, title: item.title }));
     const requestReferences = uniqueReferences([...currentReference, ...references, ...referencedByText, ...brainReferences, ...referencedBrainsByText]);
 
-    const userMsg: Message = { role: "user", content: text };
+    const userMsg: Message = { role: "user", content: text, timestamp: formatTimestamp() };
     const withUser = [...messages, userMsg];
     setMessages(withUser);
     setInput("");
@@ -719,8 +783,7 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
     setBrainOpen(false);
     setCommandOpen(false);
     setLoading(true);
-    setActionMode(nextActionMode);
-    setTaskStage(nextActionMode ? "analyzing" : "idle");
+    setTaskStage("idle");
     api.logActivity({ action: "chat_send", detail: text.slice(0, 100) }).catch(() => {});
 
     const memory = [...memoryRef.current, userMsg];
@@ -733,21 +796,20 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
       const memoryContext = buildMemoryContext(memory);
       let fullContent = "";
       let firstDelta = true;
-      if (nextActionMode) setTaskStage("generating");
 
       const { reply, action } = await streamChat(
         { messages: withUser, personality: personalityRef.current, memoryContext, references: requestReferences },
         (delta) => {
           fullContent += delta;
-          // For action intents (e.g. create_document), don't show streaming in chat
-          if (nextActionMode) return;
+          // Detect action markers in streaming content to switch indicator
+          if (/<<ACTION_JSON>>|<<DOC_BEGIN>>|<<UPDATE_DOC:/.test(fullContent)) {
+            setIsActing(true);
+          }
           if (firstDelta) {
             firstDelta = false;
             setStreaming(true);
-            // Add assistant message on first delta
-            setMessages((prev) => [...prev, { role: "assistant", content: delta, sources: requestReferences }]);
+            setMessages((prev) => [...prev, { role: "assistant", content: delta, sources: requestReferences, timestamp: formatTimestamp() }]);
           } else {
-            // Update last assistant message
             setMessages((prev) => {
               const next = [...prev];
               const last = next[next.length - 1];
@@ -760,6 +822,10 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
         },
         abort.signal
       );
+
+      // Determine final acting state from parsed action
+      const hasAction = !!(action && (action.type === "create_document" || action.type === "update_document"));
+      setIsActing(hasAction);
 
       // Finalize with parsed reply
       const finalContent = reply || fullContent;
@@ -774,7 +840,7 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
         if (last && last.role === "assistant") {
           next[next.length - 1] = { ...last, content: finalContent, sources: requestReferences };
         } else if (finalContent) {
-          next.push({ role: "assistant", content: finalContent, sources: requestReferences });
+          next.push({ role: "assistant", content: finalContent, sources: requestReferences, timestamp: formatTimestamp() });
         }
         return next;
       });
@@ -802,7 +868,7 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
       }
 
       // Handle update_document action: update the document specified by the model
-      if (action?.type === "update_document") {
+      if (action?.type === "update_document" && action.content) {
         try {
           const nextContent = typeof action.content === "string" ? action.content.trim() : "";
           if (!nextContent) {
@@ -822,9 +888,9 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
               const next = [...prev];
               const last = next[next.length - 1];
               if (last && last.role === "assistant") {
-                next[next.length - 1] = { ...last, content: message };
+                next[next.length - 1] = { ...last, content: message, timestamp: formatTimestamp() };
               } else {
-                next.push({ role: "assistant", content: message });
+                next.push({ role: "assistant", content: message, timestamp: formatTimestamp() });
               }
               return next;
             });
@@ -861,16 +927,16 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
         const next = [...prev];
         const last = next[next.length - 1];
         if (last && last.role === "assistant" && !last.content) {
-          next[next.length - 1] = { role: "assistant", content: error.message || "AI 服务不可用" };
+          next[next.length - 1] = { role: "assistant", content: error.message || "AI 服务不可用", timestamp: formatTimestamp() };
         } else {
-          next.push({ role: "assistant", content: error.message || t("ai.serviceUnavailable") });
+          next.push({ role: "assistant", content: error.message || t("ai.serviceUnavailable"), timestamp: formatTimestamp() });
         }
         return next;
       });
     } finally {
       setLoading(false);
       setStreaming(false);
-      setActionMode(false);
+      setIsActing(false);
       setTaskStage((stage) => (stage === "preview" ? stage : "idle"));
     }
   }, [input, loading, streaming, messages, currentDocumentId, createDocument, toast, t, documents, references, brainReferences, brainKnowledges, getDocument, loadDocument, updateDocument]);
@@ -879,29 +945,30 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
     abortRef.current?.abort();
     setLoading(false);
     setStreaming(false);
-    setActionMode(false);
+    setIsActing(false);
   }, []);
 
   const applyPendingUpdate = useCallback(async () => {
     if (!pendingUpdate || applyingUpdate) return;
+    const update = pendingUpdate; // 缓存当前值，避免中途关闭弹窗后被清空
     setApplyingUpdate(true);
     try {
       try {
         setTaskStage("snapshot");
-        await createDocumentVersion(pendingUpdate.docId, "ai_edit");
+        await createDocumentVersion(update.docId, "ai_edit");
       } catch (err) {
         console.error("[version_snapshot] error:", err);
         toast(t("ai.versionSnapshotFailed"), "error");
         return;
       }
 
-      await updateDocument(pendingUpdate.docId, {
-        title: pendingUpdate.title,
-        content: pendingUpdate.nextHtml,
+      await updateDocument(update.docId, {
+        title: update.title,
+        content: update.nextHtml,
       });
       setTaskStage("verify");
-      const verifiedDoc = await loadDocument(pendingUpdate.docId);
-      if (!verifiedDoc || verifiedDoc.content !== pendingUpdate.nextHtml) {
+      const verifiedDoc = await loadDocument(update.docId);
+      if (!verifiedDoc || verifiedDoc.content !== update.nextHtml) {
         toast(t("ai.docUpdateVerifyFailed"), "error");
         return;
       }
@@ -909,7 +976,7 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
       toast(t("ai.docUpdated"), "success");
       const updatedNote = {
         role: "assistant" as const,
-        content: `[系统] 已为用户更新文档「${pendingUpdate.title}」[doc:${pendingUpdate.docId}]。最新内容摘要：${pendingUpdate.nextMarkdown.slice(0, 200)}...`,
+        content: `[系统] 已为用户更新文档「${update.title}」[doc:${update.docId}]。最新内容摘要：${update.nextMarkdown.slice(0, 200)}...`,
       };
       memoryRef.current = [...memoryRef.current, updatedNote];
       saveMemory(memoryRef.current);
@@ -1196,6 +1263,78 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
     setBrainReferences((prev) => prev.filter((ref) => next.includes(`#${ref.title}`)));
   };
 
+  const closeWithAnimation = useCallback(() => {
+    if (abortRef.current) {
+      abortRef.current.abort();
+    }
+    saveConversation();
+
+    const panel = chatPanelRef.current;
+    if (!panel) {
+      setOpen(false);
+      return;
+    }
+
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reduceMotion) {
+      setOpen(false);
+      return;
+    }
+
+    const enterItems = panel.querySelectorAll("[data-ai-chat-enter]");
+    gsap.timeline({
+      defaults: { ease: "power3.in" },
+      onComplete: () => setOpen(false),
+    })
+      .to(
+        enterItems,
+        { autoAlpha: 0, y: 8, duration: 0.22, stagger: 0.03, ease: "power2.in" },
+        0
+      )
+      .to(
+        panel,
+        { autoAlpha: 0, scale: 0.92, y: 18, filter: "blur(10px)", duration: 0.32 },
+        0.06
+      );
+  }, [saveConversation]);
+
+  useEffect(() => {
+    const panel = chatPanelRef.current;
+    if (!open || !keyOk || !panel) return;
+
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const ctx = gsap.context(() => {
+      const rect = panel.getBoundingClientRect();
+      const originX = Math.min(Math.max(pos.x + 31 - rect.left, 24), rect.width - 24);
+      const originY = Math.min(Math.max(pos.y + 31 - rect.top, 24), rect.height - 24);
+      const enterItems = panel.querySelectorAll("[data-ai-chat-enter]");
+
+      gsap.set(panel, { transformOrigin: `${originX}px ${originY}px` });
+
+      if (reduceMotion) {
+        gsap.set(panel, { autoAlpha: 1, scale: 1, y: 0, filter: "none" });
+        gsap.set(enterItems, { autoAlpha: 1, y: 0 });
+        return;
+      }
+
+      const timeline = gsap.timeline({ defaults: { ease: "power3.out" } });
+      timeline
+        .fromTo(
+          panel,
+          { autoAlpha: 0, scale: 0.92, y: 18, filter: "blur(10px)" },
+          { autoAlpha: 1, scale: 1, y: 0, filter: "blur(0px)", duration: 0.42, clearProps: "filter,transform,opacity,visibility" }
+        )
+        .fromTo(
+          enterItems,
+          { autoAlpha: 0, y: 10 },
+          { autoAlpha: 1, y: 0, duration: 0.34, ease: "power2.out", stagger: 0.055, clearProps: "transform,opacity,visibility" },
+          0.08
+        );
+    }, panel);
+
+    return () => ctx.revert();
+  }, [keyOk, open, pos.x, pos.y]);
+
   return (
     <>
       {/* Floating button */}
@@ -1265,20 +1404,19 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
       </button>
 
       {open && keyOk && (
-        <div className="fixed bottom-6 left-6 z-50 flex h-[min(760px,calc(100vh-48px))] w-[min(560px,calc(100vw-48px))] flex-col rounded-2xl border border-surface-200 bg-white shadow-2xl dark:border-surface-700 dark:bg-surface-900">
+        <div
+          ref={chatPanelRef}
+          className="fixed bottom-6 left-6 z-50 flex h-[min(760px,calc(100vh-48px))] w-[min(560px,calc(100vw-48px))] flex-col rounded-2xl border border-surface-200 bg-white shadow-2xl dark:border-surface-700 dark:bg-surface-900"
+        >
           {/* Backdrop: click outside to close and abort */}
           <div
             className="fixed inset-0 -z-10"
             onClick={() => {
-              if (abortRef.current) {
-                abortRef.current.abort();
-              }
-              saveConversation();
-              setOpen(false);
+              closeWithAnimation();
             }}
           />
           {/* Header */}
-          <div className="shrink-0 border-b border-surface-200 px-4 py-3 dark:border-surface-700">
+          <div data-ai-chat-enter className="shrink-0 border-b border-surface-200 px-4 py-3 dark:border-surface-700">
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2">
                 <div className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-100 dark:bg-brand-900">
@@ -1308,7 +1446,7 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
                   </Button>
                 </Tooltip>
                 <Tooltip content={t("common.close")} delay={150}>
-                  <Button variant="ghost" size="icon" onClick={() => { abortRef.current?.abort(); saveConversation(); setOpen(false); }} className="h-8 w-8">
+                  <Button variant="ghost" size="icon" onClick={closeWithAnimation} className="h-8 w-8">
                     <X className="h-4 w-4" />
                   </Button>
                 </Tooltip>
@@ -1393,7 +1531,21 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
           </div>
 
           {/* Messages */}
-          <Scrollbar className="flex-1 px-4 py-4" options={{ scrollbars: { autoHide: "leave" } }} events={{ scroll: handleScrollEvent }}>
+          <Scrollbar
+            ref={messagesScrollbarRef}
+            data-ai-chat-enter
+            className="flex-1 px-4 py-4"
+            options={{ scrollbars: { autoHide: "leave" } }}
+            events={{
+              initialized: () => {
+                if (open && keyOk && messages.length > 0) scheduleChatScrollToBottom();
+              },
+              updated: () => {
+                if (forceLatestOnOpenRef.current) scheduleChatScrollToBottom();
+              },
+              scroll: handleScrollEvent,
+            }}
+          >
             {messages.length === 0 ? (
               <div className="flex h-full flex-col items-center justify-center text-center px-4">
                 <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-brand-50 dark:bg-brand-950">
@@ -1482,6 +1634,15 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
                         {streaming && isLastAssistant && (
                           <span className="inline-block w-1.5 h-4 ml-0.5 bg-brand-500 animate-pulse rounded-sm align-middle" />
                         )}
+                        {/* Timestamp */}
+                        {msg.timestamp && (
+                          <div className={cn(
+                            "mt-1 text-[10px]",
+                            isUser ? "text-white/70" : "text-surface-400 dark:text-surface-500"
+                          )}>
+                            {msg.timestamp}
+                          </div>
+                        )}
                         {/* Feedback buttons: centered vertically, appear on hover */}
                         {!isUser && !streaming && msg.content && !feedbackDoneRef.current.has(i) && (
                           <div className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-full pl-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex flex-col gap-0.5">
@@ -1539,9 +1700,12 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
                                     className="p-0.5 transition-transform hover:scale-125"
                                   >
                                     <Star
-                                      className="h-3.5 w-3.5 transition-colors"
-                                      fill={hoverStar >= star ? "currentColor" : "none"}
-                                      color={hoverStar >= star ? "#f59e0b" : "#d1d5db"}
+                                      className={cn(
+                                        "h-3.5 w-3.5 transition-colors",
+                                        hoverStar >= star
+                                          ? "fill-amber-500 text-amber-500"
+                                          : "fill-transparent text-surface-300 dark:text-surface-500"
+                                      )}
                                     />
                                   </button>
                                 ))}
@@ -1585,7 +1749,7 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
                     </div>
                     <div className="flex items-center gap-1.5 rounded-2xl rounded-bl-md bg-surface-100 px-4 py-3 dark:bg-surface-800">
                       <span className="text-xs text-surface-500">
-                        {(actionMode ? t("ai.action") : t("ai.thinking")).split("").map((char, ci) => (
+                        {(isActing ? t("ai.action") : t("ai.thinking")).split("").map((char, ci) => (
                           <span
                             key={ci}
                             className="inline-block animate-bounce"
@@ -1605,7 +1769,7 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
 
           {/* Delete selected bar */}
           {editMode && selectedMsgs.size > 0 && (
-            <div className="shrink-0 border-t border-surface-200 bg-red-50 px-4 py-2 flex items-center justify-between dark:bg-red-950 dark:border-surface-700">
+            <div data-ai-chat-enter className="shrink-0 border-t border-surface-200 bg-red-50 px-4 py-2 flex items-center justify-between dark:bg-red-950 dark:border-surface-700">
               <span className="text-xs text-red-600 dark:text-red-400">已选择 {selectedMsgs.size} 条消息</span>
               <Button size="sm" variant="destructive" onClick={() => setDeleteMsgConfirm(true)}>
                 <Trash2 className="h-3.5 w-3.5 mr-1" />
@@ -1615,7 +1779,7 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
           )}
 
           {/* Input */}
-          <div className="shrink-0 border-t border-surface-200 px-3 py-3 dark:border-surface-700">
+          <div data-ai-chat-enter className="shrink-0 border-t border-surface-200 px-3 py-3 dark:border-surface-700">
             {references.length > 0 && (
               <div className="mb-2 flex flex-wrap items-center gap-1.5">
                 <span className="text-[10px] font-medium text-surface-400">{t("ai.referenceContext")}</span>
@@ -1777,8 +1941,8 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
       <Dialog open={!!pendingUpdate} onOpenChange={(open) => {
         if (!open && !applyingUpdate) setPendingUpdate(null);
       }}>
-        <DialogContent className="max-h-[86vh] max-w-[880px] overflow-hidden p-0">
-          <div className="border-b border-surface-200 px-6 py-5 dark:border-surface-700">
+        <DialogContent className="flex max-h-[86vh] max-w-[880px] flex-col overflow-hidden p-0">
+          <div className="shrink-0 border-b border-surface-200 px-6 py-5 dark:border-surface-700">
             <div className="flex items-start justify-between gap-4 pr-8">
               <div>
                 <DialogTitle className="text-base font-bold text-surface-900 dark:text-surface-100">
@@ -1828,34 +1992,36 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
           </div>
 
           {pendingUpdate && (
-            <div className="grid min-h-0 grid-cols-[96px_1fr] border-b border-surface-200 bg-surface-50 text-xs font-semibold text-surface-500 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-400">
+          <div className="flex min-h-[200px] flex-1 flex-col overflow-hidden">
+            <div className="grid shrink-0 grid-cols-[96px_1fr] border-b border-surface-200 bg-surface-50 text-xs font-semibold text-surface-500 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-400">
               <div className="border-r border-surface-200 px-4 py-2 dark:border-surface-700">{t("ai.diffOld")} / {t("ai.diffNew")}</div>
               <div className="px-4 py-2">{pendingUpdate.stats.unchanged} {t("ai.diffUnchanged")}</div>
             </div>
+
+            <Scrollbar className="flex-1">
+              <div className="divide-y divide-surface-100 dark:divide-surface-800">
+                {(pendingUpdate?.diffLines || []).map((line, index) => (
+                  <div
+                    key={`${line.type}-${index}`}
+                    className={cn(
+                      "grid grid-cols-[96px_1fr] text-sm leading-relaxed",
+                      line.type === "added" && "bg-emerald-50/70 text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100",
+                      line.type === "removed" && "bg-red-50/70 text-red-900 dark:bg-red-950/40 dark:text-red-100",
+                      line.type === "unchanged" && "text-surface-600 dark:text-surface-300"
+                    )}
+                  >
+                    <div className="select-none border-r border-surface-100 px-4 py-2 font-mono text-xs dark:border-surface-800">
+                      {line.type === "added" ? `+ ${t("ai.diffNew")}` : line.type === "removed" ? `- ${t("ai.diffOld")}` : " "}
+                    </div>
+                    <div className="whitespace-pre-wrap px-4 py-2">{line.text}</div>
+                  </div>
+                ))}
+              </div>
+            </Scrollbar>
+          </div>
           )}
 
-          <Scrollbar className="max-h-[52vh] min-h-[260px]">
-            <div className="divide-y divide-surface-100 dark:divide-surface-800">
-              {(pendingUpdate?.diffLines || []).map((line, index) => (
-                <div
-                  key={`${line.type}-${index}`}
-                  className={cn(
-                    "grid grid-cols-[96px_1fr] text-sm leading-relaxed",
-                    line.type === "added" && "bg-emerald-50/70 text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100",
-                    line.type === "removed" && "bg-red-50/70 text-red-900 dark:bg-red-950/40 dark:text-red-100",
-                    line.type === "unchanged" && "text-surface-600 dark:text-surface-300"
-                  )}
-                >
-                  <div className="select-none border-r border-surface-100 px-4 py-2 font-mono text-xs dark:border-surface-800">
-                    {line.type === "added" ? `+ ${t("ai.diffNew")}` : line.type === "removed" ? `- ${t("ai.diffOld")}` : " "}
-                  </div>
-                  <div className="whitespace-pre-wrap px-4 py-2">{line.text}</div>
-                </div>
-              ))}
-            </div>
-          </Scrollbar>
-
-          <div className="flex items-center justify-end gap-2 bg-white px-6 py-4 dark:bg-surface-900">
+          <div className="shrink-0 flex items-center justify-end gap-2 bg-white px-6 py-4 dark:bg-surface-900">
             <Button variant="outline" onClick={() => setPendingUpdate(null)} disabled={applyingUpdate}>
               {t("ai.diffCancel")}
             </Button>

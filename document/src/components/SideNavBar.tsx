@@ -23,6 +23,7 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
+import { LogoClickEffect } from "@/components/LogoClickEffect";
 
 export type NavId = "documents" | "favorites" | "trash" | "settings" | "brain";
 
@@ -104,6 +105,14 @@ export function SideNavBar({
   const { theme } = useTheme();
   const { t } = useI18n();
   const [logoPreviewOpen, setLogoPreviewOpen] = useState(false);
+  const [logoEffectActive, setLogoEffectActive] = useState(false);
+
+  const handleLogoClick = () => {
+    if (!logoEffectActive) {
+      setLogoEffectActive(true);
+      // Effect will reset itself via onComplete after animation finishes
+    }
+  };
 
   return (
     <>
@@ -114,18 +123,18 @@ export function SideNavBar({
         )}
       >
         {/* Logo Area */}
-        <div className={cn("pt-6 pb-4", collapsed ? "px-3" : "px-6")}>
+        <div className={cn("relative pt-6 pb-4", collapsed ? "px-3" : "px-6")}>
           {collapsed ? (
             <button
-              onClick={() => setLogoPreviewOpen(true)}
-              className="flex w-full justify-center rounded-lg p-0 cursor-pointer"
+              onClick={handleLogoClick}
+              className="relative flex w-full justify-center rounded-lg p-0 cursor-pointer"
             >
               <BrandLogo size="md" />
             </button>
           ) : (
             <button
-              onClick={() => setLogoPreviewOpen(true)}
-              className="flex items-center gap-2 rounded-lg p-0 text-left cursor-pointer"
+              onClick={handleLogoClick}
+              className="relative flex items-center gap-2 rounded-lg p-0 text-left cursor-pointer"
             >
               <BrandLogo size="sm" />
               <ShinyText
@@ -138,6 +147,12 @@ export function SideNavBar({
               />
             </button>
           )}
+
+          {/* GSAP click effect overlay */}
+          <LogoClickEffect
+            active={logoEffectActive}
+            onComplete={() => setLogoEffectActive(false)}
+          />
         </div>
 
         {/* Navigation */}

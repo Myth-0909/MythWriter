@@ -597,7 +597,7 @@ export function Editor({ documentId }: EditorProps) {
             <div className="cursor-text">
               <EditorContent editor={editor} />
             </div>
-            <AIBubbleMenu editor={editor} />
+            <AIBubbleMenu editor={editor} documentId={documentId} />
           </div>
         </div>
       </Scrollbar>

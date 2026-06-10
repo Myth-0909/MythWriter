@@ -27,20 +27,24 @@ function cleanSelectionResult(text: string): string {
   return result;
 }
 
-type ActionType = "rewrite" | "expand" | "summarize" | "translate" | "continue" | "toneFormal" | "toneCasual";
+type ActionType = "rewrite" | "expand" | "summarize" | "continue" | "toneFormal" | "toneCasual";
 
 const ACTION_PROMPTS: Record<ActionType, string> = {
   rewrite: "改写",
   expand: "扩写",
   summarize: "缩写",
-  translate: "翻译为{targetLang}",
   continue: "续写",
   toneFormal: "用正式语气改写",
   toneCasual: "用轻松语气改写",
 };
 
 async function streamChat(
-  data: { messages: { role: string; content: string }[]; personality: string; purpose?: "selection_edit" },
+  data: {
+    messages: { role: string; content: string }[];
+    personality: string;
+    purpose?: "selection_edit";
+    references?: Array<{ type: string; id: string; selectedText: string }>;
+  },
   onDelta: (delta: string) => void,
   signal: AbortSignal
 ): Promise<string> {
@@ -105,9 +109,10 @@ async function streamChat(
 
 interface AIBubbleMenuProps {
   editor: Editor;
+  documentId?: string;
 }
 
-export function AIBubbleMenu({ editor }: AIBubbleMenuProps) {
+export function AIBubbleMenu({ editor, documentId }: AIBubbleMenuProps) {
   const { t, lang } = useI18n();
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
@@ -123,29 +128,10 @@ export function AIBubbleMenu({ editor }: AIBubbleMenuProps) {
     const selectedText = editor.state.doc.textBetween(from, to, "\n");
     if (!selectedText.trim()) return;
 
-    // Grab 400 characters of context before and after the selection to guide the AI
-    const precedingText = editor.state.doc.textBetween(Math.max(0, from - 400), from, "\n");
-    const succeedingText = editor.state.doc.textBetween(to, Math.min(editor.state.doc.content.size, to + 400), "\n");
-
     let prompt = ACTION_PROMPTS[type];
-    if (type === "translate") {
-      prompt = prompt.replace("{targetLang}", lang === "zh" ? "英文" : "中文");
-    }
 
-    const systemMessage = `你是一个写作助手。当前用户正在撰写一篇文章，以下是文章的上下文信息，请特别参考上下文以确保语境、人设、语气和逻辑的一致性。
-
-【前文内容（仅作背景参考，请勿在此基础上重复或修改）】
-${precedingText}
-
-【选中的文字（需要你执行 ${prompt} 的主体）】
->>> ${selectedText} <<<
-
-【后文内容（仅作背景参考，请勿在此基础上重复或修改）】
-${succeedingText}
-
-【重要任务指令】
-请仅对【选中的文字】（即被 >>> <<< 包裹的文本）执行【${prompt}】操作。
-你输出的回答必须只包含处理后的文本结果，严禁包含任何解释、分析、Markdown 标记（如“以下是改写后的内容”等）或前后的引言。`;
+    // Build user message with selected text
+    const userMessage = `请对以下选中的文字执行【${prompt}】操作：\n\n${selectedText}`;
 
     setLoading(true);
     setActiveAction(type);
@@ -155,8 +141,18 @@ ${succeedingText}
     const controller = new AbortController();
 
     try {
+      // Pass document reference for backend to extract semantic context
+      const references = documentId
+        ? [{ type: "document", id: documentId, selectedText }]
+        : [];
+
       const reply = await streamChat(
-        { messages: [{ role: "user", content: systemMessage }], personality: "normal", purpose: "selection_edit" },
+        {
+          messages: [{ role: "user", content: userMessage }],
+          personality: "normal",
+          purpose: "selection_edit",
+          references,
+        },
         (delta) => {
           accumulated += delta;
         },
@@ -181,7 +177,7 @@ ${succeedingText}
     }
   }, [editor, lang, loading, t, toast]);
 
-  const primaryActions: ActionType[] = ["rewrite", "expand", "summarize", "translate"];
+  const primaryActions: ActionType[] = ["rewrite", "expand", "summarize"];
   const moreActions: ActionType[] = ["continue", "toneFormal", "toneCasual"];
 
   return (

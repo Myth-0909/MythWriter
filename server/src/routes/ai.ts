@@ -7,7 +7,7 @@ import {
   buildSystemPrompt, detectDeleteCommand, detectInjection,
   parseAction, safePersonality, getUserApiKey,
   listConversations, saveConversation, deleteConversations,
-  logActivity, saveFeedback,
+  logActivity, saveFeedback, getSemanticContext,
 } from "../services/aiService";
 import type { Personality } from "../services/aiService";
 
@@ -294,9 +294,28 @@ router.post("/chat", async (req: Request, res: Response) => {
 
     const pers = safePersonality(personality);
     const referenceContext = await buildReferenceContext(authReq.user!.userId, references);
-    
+
     const userText = lastUserMsg ? lastUserMsg.content : "";
     const brainKnowledgeContext = await buildBrainKnowledgeContext(authReq.user!.userId, userText, references);
+
+    // For selection edit: extract semantic context from the referenced document
+    let selectionContext = "";
+    if (isSelectionEdit && references) {
+      const docRef = references.find((r: any) => r?.type === "document" && r?.id && r?.selectedText);
+      if (docRef) {
+        const doc = await prisma.document.findFirst({
+          where: { id: docRef.id, userId: authReq.user!.userId, isDeleted: false },
+          select: { content: true },
+        });
+        if (doc) {
+          const plainText = stripHtml(doc.content);
+          const { preceding, succeeding } = getSemanticContext(plainText, docRef.selectedText);
+          if (preceding || succeeding) {
+            selectionContext = `【选中文字的上下文（用于理解语境，请勿修改或重复这些内容）】\n前文：${preceding || "(无)"}\n后文：${succeeding || "(无)"}`;
+          }
+        }
+      }
+    }
 
     const systemPrompt = buildSystemPrompt(
       pers,
@@ -306,6 +325,7 @@ router.post("/chat", async (req: Request, res: Response) => {
           ? `用户为本次对话引用了以下项目文档作为上下文。回答时优先依据这些文档；如果文档信息不足，请明确说明。普通回答中如使用了文档信息，请简短标注来源文档标题；执行 update_document 时必须使用对应 [doc:xxxxx]。\n\n${referenceContext}`
           : "",
         brainKnowledgeContext || "",
+        selectionContext,
       ].filter(Boolean).join("\n\n")
     );
 
@@ -429,8 +449,7 @@ router.post("/chat", async (req: Request, res: Response) => {
               parsed.choices?.[0]?.text;
             if (content) {
               fullContent += content;
-              // Send the delta to client
-              res.write(`data: ${JSON.stringify({ delta: content })}\n\n`);
+              // Buffer all content first; will stream clean reply after parsing
             }
           } catch {
             rawTextContent += `${data}\n`;
@@ -455,13 +474,22 @@ router.post("/chat", async (req: Request, res: Response) => {
       }
     }
 
-    // Parse final response for actions
+    // Parse the full buffered response
     const { reply, action } = parseAction(finalContent);
-    console.log("[AI] parseAction result - reply:", reply.slice(0, 100));
+    const cleanReply = reply || finalContent || "";
+    console.log("[AI] parseAction result - reply:", cleanReply.slice(0, 100));
     console.log("[AI] parseAction result - action:", JSON.stringify(action));
 
+    // Stream the clean reply as deltas (typewriter effect), 2 chars per chunk
+    for (let i = 0; i < cleanReply.length; i += 2) {
+      const chunk = cleanReply.slice(i, i + 2);
+      res.write(`data: ${JSON.stringify({ delta: chunk })}\n\n`);
+      // Small delay for natural typewriter feel
+      await new Promise((r) => setTimeout(r, 10));
+    }
+
     // Send final message with parsed action
-    res.write(`data: ${JSON.stringify({ done: true, reply, action })}\n\n`);
+    res.write(`data: ${JSON.stringify({ done: true, reply: cleanReply, action })}\n\n`);
     res.end();
   } catch (error) {
     console.error("[AI] Route error:", error);
