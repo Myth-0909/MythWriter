@@ -246,8 +246,8 @@ export function DataCityLoginBackground({ className = "", theme = "dark", stageS
       renderer.setAnimationLoop(document.hidden ? null : animate);
     };
 
-    container.addEventListener("pointermove", onPointerMove);
-    container.addEventListener("pointerleave", onPointerLeave);
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerleave", onPointerLeave);
     window.addEventListener("resize", onResize);
     document.addEventListener("visibilitychange", onVisibilityChange);
 
@@ -286,8 +286,8 @@ export function DataCityLoginBackground({ className = "", theme = "dark", stageS
     return () => {
       disposed = true;
       renderer.setAnimationLoop(null);
-      container.removeEventListener("pointermove", onPointerMove);
-      container.removeEventListener("pointerleave", onPointerLeave);
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerleave", onPointerLeave);
       window.removeEventListener("resize", onResize);
       document.removeEventListener("visibilitychange", onVisibilityChange);
       scene.traverse((object) => {
@@ -305,7 +305,7 @@ export function DataCityLoginBackground({ className = "", theme = "dark", stageS
   return (
     <div
       ref={containerRef}
-      className={`pointer-events-auto absolute inset-0 overflow-hidden ${className}`}
+      className={`pointer-events-none absolute inset-0 overflow-hidden ${className}`}
       style={{ backgroundColor: palette.background }}
       aria-hidden="true"
     >

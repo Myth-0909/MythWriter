@@ -218,10 +218,10 @@ export function LoginPage({ onLogin }: LoginPageProps) {
             {t("login.themeLabel")}
           </div>
           <h1 className={cn("max-w-[640px] text-5xl font-black leading-[0.95] tracking-normal xl:text-7xl", isLight ? "text-surface-950" : "text-white")}>
-            {t("login.heroTitle")}
+            {registering ? t("login.registerHeroTitle") : t("login.heroTitle")}
           </h1>
           <p className={cn("mt-6 max-w-[430px] text-sm leading-7", registering ? "lg:ml-auto" : "", isLight ? "text-surface-600" : "text-cyan-100/62")}>
-            {t("login.heroSubtitle")}
+            {registering ? t("login.registerHeroSubtitle") : t("login.heroSubtitle")}
           </p>
         </section>
 

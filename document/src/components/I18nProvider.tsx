@@ -243,8 +243,10 @@ const translations = {
   "login.actionFailed": { zh: "操作失败", en: "Action failed" },
   "login.emailNotRegistered": { zh: "该邮箱尚未注册", en: "This email is not registered" },
   "login.emailNotRegisteredCreate": { zh: "该邮箱尚未注册，请先创建账户", en: "This email is not registered. Please create an account first" },
-  "login.heroTitle": { zh: "把灵感写进一座数据城市", en: "Write ideas into a data city" },
-  "login.heroSubtitle": { zh: "一座为写作者而生的光学高楼，承载文档、灵感与 AI 记忆。", en: "An optical skyline for writers, carrying documents, ideas, and AI memory." },
+  "login.heroTitle": { zh: "欢迎回来，继续书写你的世界。", en: "Welcome back. Continue writing your world." },
+  "login.heroSubtitle": { zh: "ZNWriter 会保存你的文档、灵感与 AI 对话，让故事从上次停下的地方继续生长。", en: "MythWriter keeps your documents, ideas, and AI conversations ready, so your story can grow from where you left off." },
+  "login.registerHeroTitle": { zh: "创建你的写作空间。", en: "Create your writing space." },
+  "login.registerHeroSubtitle": { zh: "在 ZNWriter 中管理作品、整理灵感，并让 AI 成为陪你构建故事世界的助手。", en: "Manage your work, organize ideas, and let AI help you build the world behind every story." },
   "login.themeLabel": { zh: "主题", en: "Theme" },
 
   // Trash Page
