@@ -1,8 +1,8 @@
-# ZNWriter / ZN智能写作
+# ZNWriter / ZN 智能写作
 
-A full-stack cross-platform writing application — your intelligent document workspace with rich text editing, category management, and cloud sync.
+A full-stack cross-platform writing application — an intelligent document workspace with rich text editing, AI-assisted creation, semantic memory, and vector-powered context retrieval.
 
-一个全栈跨平台写作应用——你的智能文档工作区，支持富文本编辑、分类管理和云端同步。
+一个全栈跨平台写作应用——你的智能文档工作区，支持富文本编辑、AI 辅助创作、语义记忆和向量检索上下文。
 
 [English](#english) | [中文](#中文)
 
@@ -15,8 +15,10 @@ A full-stack cross-platform writing application — your intelligent document wo
 #### Document Management
 - **Create & Edit** — Rich text editor powered by Tiptap with full formatting support
 - **7 Writing Categories** — Sci-Fi Novel, Fantasy, Design, Journal, Planning, Research, General
+- **Document Groups** — Create folders, rename them, delete them, and move documents between groups
 - **Favorites** — Star important documents for quick access
 - **Trash & Recovery** — Soft-delete with 30-day trash retention and restore
+- **Version History** — Save document snapshots, view version history, and restore previous versions
 
 #### Rich Text Editor
 - **Text Formatting** — Bold, Italic, Underline, Strikethrough, Highlight
@@ -59,9 +61,24 @@ A full-stack cross-platform writing application — your intelligent document wo
 - **Streaming Output** — Real-time typewriter effect via SSE (Server-Sent Events)
 - **5 Personalities** — Normal, Cute, Catgirl (喵~), Serious, Silly — each with distinct tone and style, instantly switchable with persistent preference
 - **Auto Document Creation** — AI generates content directly into new documents when asked to write
+- **Writing Review** — AI-powered writing quality review with actionable suggestions
 - **Prompt Injection Protection** — Detects and blocks jailbreak/DAN/instruction-leak attacks
 - **Draggable Float Button** — Sparkles icon, drag to reposition, click to open chat dialog
 - **Proactive Greeting** — AI greets user by name in the selected personality style on open
+
+#### AI Brain Memory & Semantic RAG
+- **AI Brain Base** — Create worldbuilding, character, location, and concept cards for consistent long-form writing
+- **Category Management** — Create, edit, delete, color-code, and drag-reorder brain categories
+- **Manual References** — Mention documents with `@title` and brain cards with `#title` in chat
+- **Semantic References** — The assistant can automatically suggest high-confidence brain cards from the current prompt
+- **Vector Search** — Milvus-backed semantic search for brain cards and document chunks
+- **Automatic Reindexing** — Knowledge cards and documents are reindexed after edits, deletes, and version restores
+- **Graceful Degradation** — If Redis, Milvus, or embedding services are unavailable, non-vector features keep working and RAG reports degraded status
+
+#### Reliability
+- **White-Screen Protection** — A global React error boundary prevents full blank screens and offers retry / reload actions
+- **Safe Deep Links** — Missing editor document links redirect back to the document center instead of crashing
+- **Startup Hardening** — Backend health checks remain available even when optional Redis or Milvus services are offline
 
 ### Tech Stack
 
@@ -75,18 +92,21 @@ A full-stack cross-platform writing application — your intelligent document wo
 | Backend | Node.js, Express, TypeScript |
 | ORM | Prisma |
 | Database | MySQL |
+| Cache / Rate Limit | Redis (optional, graceful fallback) |
+| Vector Store | Milvus / Zilliz SDK |
 | Auth | JWT + bcryptjs |
-| AI | DeepSeek Chat API |
+| AI | DeepSeek Chat API + OpenAI-compatible embeddings |
 | Doc Parse | Mammoth (.docx) |
 
 ### Project Structure
 
 ```
-cc_figma/
+MythWriter/
 ├── document/                  # Frontend (React + Tauri)
 │   ├── src/
-│   │   ├── pages/             # 7 page components
-│   │   ├── components/        # Shared components (AIChatWidget, Particles, etc.)
+│   │   ├── pages/             # Documents, editor, brain base, settings, trash, login
+│   │   ├── components/        # Shared UI, editor, AI chat, error boundary
+│   │   ├── components/ui/     # Radix UI wrappers
 │   │   ├── api.ts             # API client
 │   │   ├── auth.tsx           # Auth context provider
 │   │   ├── store.tsx          # Document state management
@@ -96,7 +116,9 @@ cc_figma/
 │   ├── prisma/
 │   │   └── schema.prisma      # Database schema
 │   └── src/
-│       ├── routes/            # API routes (auth, documents, users, stats, ai)
+│       ├── routes/            # API routes (auth, documents, ai, rag, groups, users)
+│       ├── services/          # Business logic and RAG service
+│       ├── lib/               # Prisma, Redis, Milvus, embeddings
 │       └── middleware/        # JWT authentication middleware
 └── start.sh                   # One-click start script
 ```
@@ -107,18 +129,26 @@ cc_figma/
 - Node.js >= 18
 - pnpm
 - MySQL 8+ running on localhost:3306
+- Redis is recommended for blacklist / rate-limit cache; the app can run without it
+- Milvus is optional for semantic RAG; non-vector features continue working when it is offline
 
 #### Setup
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/Myth-0909/ZNWriter.git
-cd cc_figma
+git clone https://github.com/Myth-0909/MythWriter.git
+cd MythWriter
 
 # 2. Configure environment
-# Update server/.env with your MySQL credentials and DeepSeek API key:
+# Update server/.env with your database, AI, and optional vector settings:
 # DATABASE_URL="mysql://root:yourpassword@127.0.0.1:3306/prowriter"
+# JWT_SECRET="replace-with-a-long-random-string"
 # DEEPSEEK_API_KEY="sk-your-deepseek-api-key"
+# EMBEDDING_API_KEY="sk-your-embedding-key"
+# EMBEDDING_BASE_URL="http://your-embedding-service/v1"
+# EMBEDDING_MODEL="Qwen/Qwen3-Embedding-8B"
+# MILVUS_ADDRESS="http://127.0.0.1:19530"
+# MILVUS_TIMEOUT_MS=3000
 
 # 3. Install dependencies
 cd server && npm install && npx prisma db push && cd ..
@@ -152,9 +182,35 @@ cd document && pnpm install && cd ..
 | PATCH | `/api/documents/:id/favorite` | Toggle favorite |
 | PATCH | `/api/documents/:id/trash` | Move to trash |
 | PATCH | `/api/documents/:id/restore` | Restore from trash |
+| GET | `/api/documents/:id/versions` | List document versions |
+| POST | `/api/documents/:id/versions` | Save version snapshot |
+| PATCH | `/api/documents/:id/versions/:versionId/restore` | Restore a version |
+| GET | `/api/groups` | List document groups |
+| POST | `/api/groups` | Create document group |
+| PUT | `/api/groups/:id` | Rename document group |
+| DELETE | `/api/groups/:id` | Delete document group |
 | GET | `/api/stats/weekly` | Weekly writing statistics |
 | POST | `/api/ai/chat` | AI chat (streaming SSE) |
 | POST | `/api/ai/greeting` | AI greeting by personality |
+| POST | `/api/ai/writing-review` | AI writing review |
+| GET | `/api/ai/knowledge` | List AI brain cards |
+| POST | `/api/ai/knowledge` | Create AI brain card |
+| PUT | `/api/ai/knowledge/:id` | Update AI brain card |
+| DELETE | `/api/ai/knowledge/:id` | Delete AI brain card |
+| GET | `/api/ai/categories` | List brain categories |
+| POST | `/api/ai/categories` | Create brain category |
+| PUT | `/api/ai/categories/:id` | Update brain category |
+| PUT | `/api/ai/categories/reorder` | Reorder brain categories |
+| DELETE | `/api/ai/categories/:id` | Delete brain category |
+| GET | `/api/rag/status` | Vector store availability |
+| POST | `/api/rag/search-knowledge` | Semantic brain search |
+| POST | `/api/rag/search-documents` | Semantic document search |
+| POST | `/api/rag/reindex-knowledge/:id` | Reindex one brain card |
+| POST | `/api/rag/reindex-document/:id` | Reindex one document |
+| POST | `/api/rag/reindex-all` | Reindex all brain cards |
+| GET | `/api/users/me/apikey` | Get AI service configuration |
+| PUT | `/api/users/me/apikey` | Save AI service configuration |
+| GET | `/api/users/me/apikey/history` | List saved AI configurations |
 
 ### License
 
@@ -169,8 +225,10 @@ MIT
 #### 文档管理
 - **创建与编辑** — 基于 Tiptap 的富文本编辑器，支持完整的文本格式化
 - **7 种写作分类** — 科幻小说、奇幻、设计、日记、规划、研究、通用
+- **文档分组** — 支持创建文件夹、重命名、删除分组，并在分组之间移动文档
 - **收藏功能** — 星标重要文档，快速访问
 - **回收站与恢复** — 软删除机制，30 天保留期，支持恢复
+- **版本历史** — 保存文档快照、查看版本记录，并恢复到历史版本
 
 #### 富文本编辑器
 - **文本格式** — 粗体、斜体、下划线、删除线、高亮
@@ -213,9 +271,24 @@ MIT
 - **流式输出** — 基于 SSE 的实时打字机效果，可随时中断生成
 - **5 种性格** — 正常、可爱、猫娘（喵~）、严肃、搞怪，每种有独特语气风格，即时切换并持久化偏好
 - **自动创建文档** — 用户要求写作时，AI 自动生成内容并创建新文档
+- **写作审阅** — AI 对文本质量进行审阅，并给出可执行修改建议
 - **提示词注入防护** — 检测并拦截越狱/DAN/指令泄露等攻击
 - **可拖拽悬浮按钮** — Sparkles 图标，可拖动位置，点击展开对话窗口
 - **主动问好** — 打开对话时，AI 以选中性格风格主动问候用户
+
+#### AI 设定脑库与语义 RAG
+- **AI 设定脑库** — 为世界观、角色、地点、概念等长期设定创建卡片，保持长篇写作一致性
+- **类别管理** — 支持创建、编辑、删除、颜色标记和拖拽排序设定类别
+- **手动引用** — 在对话中用 `@文档名` 引用文档，用 `#设定名` 引用脑库卡片
+- **语义引用** — 助手可根据当前输入自动推荐高置信度设定卡
+- **向量检索** — 基于 Milvus 对设定卡和文档分块进行语义检索
+- **自动重建索引** — 设定卡、文档编辑、删除和版本恢复后会自动更新向量索引
+- **降级可用** — Redis、Milvus 或 Embedding 服务不可用时，非向量功能继续可用，RAG 状态会显示降级
+
+#### 稳定性
+- **白屏保护** — 全局 React Error Boundary 阻止整页白屏，并提供重试 / 刷新操作
+- **安全深链** — 不存在的编辑器文档链接会回到文档中心，不会导致页面崩溃
+- **启动加固** — Redis 或 Milvus 等可选服务离线时，后端健康检查和基础 API 仍可用
 
 ### 技术栈
 
@@ -229,18 +302,21 @@ MIT
 | 后端 | Node.js, Express, TypeScript |
 | ORM | Prisma |
 | 数据库 | MySQL |
+| 缓存 / 限流 | Redis（可选，支持降级） |
+| 向量库 | Milvus / Zilliz SDK |
 | 认证 | JWT + bcryptjs |
-| AI | DeepSeek Chat API |
+| AI | DeepSeek Chat API + OpenAI 兼容 Embedding |
 | 文档解析 | Mammoth (.docx) |
 
 ### 项目结构
 
 ```
-cc_figma/
+MythWriter/
 ├── document/                  # 前端 (React + Tauri)
 │   ├── src/
-│   │   ├── pages/             # 7 个页面组件
-│   │   ├── components/        # 共享组件 (AIChatWidget, Particles 等)
+│   │   ├── pages/             # 文档、编辑器、脑库、设置、回收站、登录
+│   │   ├── components/        # 共享 UI、编辑器、AI 聊天、错误兜底
+│   │   ├── components/ui/     # Radix UI 封装组件
 │   │   ├── api.ts             # API 客户端
 │   │   ├── auth.tsx           # 认证上下文提供者
 │   │   ├── store.tsx          # 文档状态管理
@@ -250,7 +326,9 @@ cc_figma/
 │   ├── prisma/
 │   │   └── schema.prisma      # 数据库结构
 │   └── src/
-│       ├── routes/            # API 路由 (auth, documents, users, stats, ai)
+│       ├── routes/            # API 路由 (auth, documents, ai, rag, groups, users)
+│       ├── services/          # 业务逻辑与 RAG 服务
+│       ├── lib/               # Prisma、Redis、Milvus、Embedding
 │       └── middleware/        # JWT 认证中间件
 └── start.sh                   # 一键启动脚本
 ```
@@ -261,17 +339,26 @@ cc_figma/
 - Node.js >= 18
 - pnpm
 - MySQL 8+ 运行在 localhost:3306
+- 推荐安装 Redis 用于黑名单 / 限流缓存；未安装时应用可降级运行
+- Milvus 用于语义 RAG；离线时非向量功能仍可用
 
 #### 安装步骤
 
 ```bash
 # 1. 克隆仓库
-git clone https://github.com/Myth-0909/ZNWriter.git
-cd cc_figma
+git clone https://github.com/Myth-0909/MythWriter.git
+cd MythWriter
 
-# 2. 配置 MySQL
+# 2. 配置环境变量
 # 创建 MySQL 用户或使用 root，然后更新 server/.env：
 # DATABASE_URL="mysql://root:yourpassword@127.0.0.1:3306/prowriter"
+# JWT_SECRET="replace-with-a-long-random-string"
+# DEEPSEEK_API_KEY="sk-your-deepseek-api-key"
+# EMBEDDING_API_KEY="sk-your-embedding-key"
+# EMBEDDING_BASE_URL="http://your-embedding-service/v1"
+# EMBEDDING_MODEL="Qwen/Qwen3-Embedding-8B"
+# MILVUS_ADDRESS="http://127.0.0.1:19530"
+# MILVUS_TIMEOUT_MS=3000
 
 # 3. 安装依赖
 cd server && npm install && npx prisma db push && cd ..
@@ -305,9 +392,35 @@ cd document && pnpm install && cd ..
 | PATCH | `/api/documents/:id/favorite` | 切换收藏 |
 | PATCH | `/api/documents/:id/trash` | 移入回收站 |
 | PATCH | `/api/documents/:id/restore` | 从回收站恢复 |
+| GET | `/api/documents/:id/versions` | 获取文档版本列表 |
+| POST | `/api/documents/:id/versions` | 保存版本快照 |
+| PATCH | `/api/documents/:id/versions/:versionId/restore` | 恢复历史版本 |
+| GET | `/api/groups` | 获取文档分组 |
+| POST | `/api/groups` | 创建文档分组 |
+| PUT | `/api/groups/:id` | 重命名文档分组 |
+| DELETE | `/api/groups/:id` | 删除文档分组 |
 | GET | `/api/stats/weekly` | 每周写作统计 |
 | POST | `/api/ai/chat` | AI 对话（SSE 流式） |
 | POST | `/api/ai/greeting` | AI 性格化问候 |
+| POST | `/api/ai/writing-review` | AI 写作审阅 |
+| GET | `/api/ai/knowledge` | 获取 AI 设定卡 |
+| POST | `/api/ai/knowledge` | 创建 AI 设定卡 |
+| PUT | `/api/ai/knowledge/:id` | 更新 AI 设定卡 |
+| DELETE | `/api/ai/knowledge/:id` | 删除 AI 设定卡 |
+| GET | `/api/ai/categories` | 获取脑库类别 |
+| POST | `/api/ai/categories` | 创建脑库类别 |
+| PUT | `/api/ai/categories/:id` | 更新脑库类别 |
+| PUT | `/api/ai/categories/reorder` | 重排脑库类别 |
+| DELETE | `/api/ai/categories/:id` | 删除脑库类别 |
+| GET | `/api/rag/status` | 向量库可用状态 |
+| POST | `/api/rag/search-knowledge` | 语义检索设定卡 |
+| POST | `/api/rag/search-documents` | 语义检索文档分块 |
+| POST | `/api/rag/reindex-knowledge/:id` | 重建设定卡索引 |
+| POST | `/api/rag/reindex-document/:id` | 重建文档索引 |
+| POST | `/api/rag/reindex-all` | 重建全部设定卡索引 |
+| GET | `/api/users/me/apikey` | 获取 AI 服务配置 |
+| PUT | `/api/users/me/apikey` | 保存 AI 服务配置 |
+| GET | `/api/users/me/apikey/history` | 获取历史 AI 配置 |
 
 ### 开源协议
 
