@@ -11,8 +11,10 @@ import sessionRoutes from "./routes/session";
 import groupsRoutes from "./routes/groups";
 import aiKnowledgeRoutes from "./routes/aiKnowledge";
 import aiCategoryRoutes from "./routes/aiCategory";
+import ragRoutes from "./routes/rag";
 import { connectRedis } from "./lib/redis";
 import prisma from "./lib/prisma";
+import { getMilvusStatus } from "./lib/milvus";
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -34,6 +36,7 @@ app.use("/api/session", sessionRoutes);
 app.use("/api/groups", groupsRoutes);
 app.use("/api/ai/knowledge", aiKnowledgeRoutes);
 app.use("/api/ai/categories", aiCategoryRoutes);
+app.use("/api/rag", ragRoutes);
 
 // Health check
 app.get("/api/health", (_req, res) => {
@@ -50,6 +53,13 @@ async function start() {
   }
 
   await connectRedis();
+
+  const milvusStatus = await getMilvusStatus();
+  if (milvusStatus.available) {
+    console.log("[Milvus] Vector collections ready");
+  } else {
+    console.warn("[Milvus] Vector setup unavailable:", milvusStatus.error);
+  }
 
   app.listen(PORT, () => {
     console.log(`ZNWriter API server running on http://localhost:${PORT}`);

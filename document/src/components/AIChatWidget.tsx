@@ -38,6 +38,7 @@ const PERSONALITY_OPTIONS: { key: Personality; label: string; emoji: string }[] 
 
 const MEMORY_KEY = "znwriter_ai_memory";
 const PERSONALITY_KEY = "znwriter_ai_personality";
+const AUTO_RAG_KEY = "znwriter_ai_auto_rag";
 const MAX_MEMORY_MESSAGES = 20;
 
 interface Message {
@@ -54,7 +55,7 @@ interface ChatReference {
 }
 
 type DocumentReference = ChatReference & { type: "document" };
-type BrainReference = ChatReference & { type: "brain" };
+type BrainReference = ChatReference & { type: "brain"; auto?: boolean; score?: number };
 
 interface BrainKnowledge {
   id: string;
@@ -414,6 +415,9 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
   const [keyOk, setKeyOk] = useState(false);
   const [references, setReferences] = useState<DocumentReference[]>([]);
   const [brainReferences, setBrainReferences] = useState<BrainReference[]>([]);
+  const [autoBrainReferences, setAutoBrainReferences] = useState<BrainReference[]>([]);
+  const [autoReferenceEnabled, setAutoReferenceEnabled] = useState(() => localStorage.getItem(AUTO_RAG_KEY) !== "0");
+  const [autoReferenceLoading, setAutoReferenceLoading] = useState(false);
   const [brainKnowledges, setBrainKnowledges] = useState<BrainKnowledge[]>([]);
   const [mentionOpen, setMentionOpen] = useState(false);
   const [mentionIndex, setMentionIndex] = useState(0);
@@ -428,6 +432,7 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
   const [versions, setVersions] = useState<DocumentVersion[]>([]);
   const [restoringVersionId, setRestoringVersionId] = useState<string | null>(null);
   const [taskStage, setTaskStage] = useState<TaskStage>("idle");
+  const autoSearchSeq = useRef(0);
 
   // Automatically clear references when the corresponding document is deleted/removed
   useEffect(() => {
@@ -448,6 +453,43 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
       .then((res) => setBrainKnowledges(res.knowledges || []))
       .catch(() => setBrainKnowledges([]));
   }, [brainKnowledges.length, open]);
+
+  useEffect(() => {
+    const query = input.trim();
+    if (!open || !autoReferenceEnabled || loading || streaming || query.length < 4) {
+      setAutoBrainReferences([]);
+      setAutoReferenceLoading(false);
+      return;
+    }
+
+    const timer = window.setTimeout(async () => {
+      const seq = autoSearchSeq.current + 1;
+      autoSearchSeq.current = seq;
+      setAutoReferenceLoading(true);
+      try {
+        const res = await api.searchRagKnowledge({ query, topK: 3 });
+        if (autoSearchSeq.current !== seq) return;
+        const manualIds = new Set(brainReferences.map((ref) => ref.id));
+        const suggestions = res.results
+          .filter((item) => !manualIds.has(item.knowledgeId || item.id))
+          .slice(0, 3)
+          .map((item) => ({
+            type: "brain" as const,
+            id: item.knowledgeId || item.id,
+            title: item.title,
+            auto: true,
+            score: item.score,
+          }));
+        setAutoBrainReferences(uniqueReferences(suggestions));
+      } catch {
+        if (autoSearchSeq.current === seq) setAutoBrainReferences([]);
+      } finally {
+        if (autoSearchSeq.current === seq) setAutoReferenceLoading(false);
+      }
+    }, 350);
+
+    return () => window.clearTimeout(timer);
+  }, [input, open, autoReferenceEnabled, loading, streaming, brainReferences]);
 
   // Save conversation to DB
   const saveConversation = useCallback(async () => {
@@ -771,7 +813,7 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
     const referencedBrainsByText = brainKnowledges
       .filter((item) => text.includes(`#${item.title}`))
       .map((item) => ({ type: "brain" as const, id: item.id, title: item.title }));
-    const requestReferences = uniqueReferences([...currentReference, ...references, ...referencedByText, ...brainReferences, ...referencedBrainsByText]);
+    const requestReferences = uniqueReferences([...currentReference, ...references, ...referencedByText, ...brainReferences, ...autoBrainReferences, ...referencedBrainsByText]);
 
     const userMsg: Message = { role: "user", content: text, timestamp: formatTimestamp() };
     const withUser = [...messages, userMsg];
@@ -779,6 +821,7 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
     setInput("");
     setReferences([]);
     setBrainReferences([]);
+    setAutoBrainReferences([]);
     setMentionOpen(false);
     setBrainOpen(false);
     setCommandOpen(false);
@@ -939,7 +982,7 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
       setIsActing(false);
       setTaskStage((stage) => (stage === "preview" ? stage : "idle"));
     }
-  }, [input, loading, streaming, messages, currentDocumentId, createDocument, toast, t, documents, references, brainReferences, brainKnowledges, getDocument, loadDocument, updateDocument]);
+  }, [input, loading, streaming, messages, currentDocumentId, createDocument, toast, t, documents, references, brainReferences, autoBrainReferences, brainKnowledges, getDocument, loadDocument, updateDocument]);
 
   const handleStop = useCallback(() => {
     abortRef.current?.abort();
@@ -1235,6 +1278,19 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
     setBrainReferences((prev) => prev.filter((item) => item.id !== ref.id));
     const tokenPattern = new RegExp(`(^|\\s)#${escapeRegExp(ref.title)}(?=\\s|$)`, "g");
     setInput((prev) => prev.replace(tokenPattern, " ").replace(/\s{2,}/g, " ").trimStart());
+  };
+
+  const removeAutoBrainReference = (ref: BrainReference) => {
+    setAutoBrainReferences((prev) => prev.filter((item) => item.id !== ref.id));
+  };
+
+  const toggleAutoReference = () => {
+    setAutoReferenceEnabled((prev) => {
+      const next = !prev;
+      localStorage.setItem(AUTO_RAG_KEY, next ? "1" : "0");
+      if (!next) setAutoBrainReferences([]);
+      return next;
+    });
   };
 
   const selectCommand = (command: SlashCommand) => {
@@ -1802,7 +1858,7 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
                 ))}
               </div>
             )}
-            {brainReferences.length > 0 && (
+            {(brainReferences.length > 0 || autoBrainReferences.length > 0) && (
               <div className="mb-2 flex flex-wrap items-center gap-1.5">
                 <span className="text-[10px] font-medium text-surface-400">{t("ai.brainContext")}</span>
                 {brainReferences.map((ref) => (
@@ -1817,6 +1873,26 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
                       title={t("ai.removeBrainReference")}
                       onClick={() => removeBrainReference(ref)}
                       className="rounded-full p-0.5 text-amber-400 hover:bg-amber-100 hover:text-amber-700 dark:hover:bg-amber-900 dark:hover:text-amber-200"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </span>
+                ))}
+                {autoBrainReferences.map((ref) => (
+                  <span
+                    key={`auto-${ref.id}`}
+                    className="inline-flex max-w-[210px] items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-medium text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
+                  >
+                    <Sparkles className="h-3 w-3 shrink-0" />
+                    <span className="truncate">#{ref.title}</span>
+                    <span className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[9px] dark:bg-emerald-900">
+                      {t("rag.autoReference")}
+                    </span>
+                    <button
+                      type="button"
+                      title={t("ai.removeBrainReference")}
+                      onClick={() => removeAutoBrainReference(ref)}
+                      className="rounded-full p-0.5 text-emerald-400 hover:bg-emerald-100 hover:text-emerald-700 dark:hover:bg-emerald-900 dark:hover:text-emerald-200"
                     >
                       <X className="h-3 w-3" />
                     </button>
@@ -1932,6 +2008,21 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
                 <span>{t("ai.mentionHint")}</span>
                 <span>{t("ai.brainHint")}</span>
                 <span>{t("ai.commandHint")}</span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={toggleAutoReference}
+                  className={cn(
+                    "h-5 px-1.5 text-[10px]",
+                    autoReferenceEnabled
+                      ? "text-emerald-600 hover:text-emerald-700 dark:text-emerald-400"
+                      : "text-surface-400"
+                  )}
+                >
+                  <Sparkles className="mr-1 h-3 w-3" />
+                  {autoReferenceLoading ? t("rag.searching") : t("rag.autoReferenceToggle")}
+                </Button>
               </div>
             </div>
           </div>

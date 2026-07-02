@@ -7,11 +7,28 @@ import {
   permanentlyDelete, emptyTrash, createDocumentVersion, listDocumentVersions,
   restoreDocumentVersion,
 } from "../services/documentService";
+import { ragService } from "../services/ragService";
 
 const router = Router();
 
 function requestLang(req: AuthRequest) {
   return String(req.headers["accept-language"] || "").toLowerCase().startsWith("en") ? "en" : "zh";
+}
+
+function queueDocumentReindex(document: { id: string; userId: string; content: string }) {
+  void ragService.reindexDocument(document).then((result) => {
+    if (!result.indexed) {
+      console.warn(`[RAG] Failed to index document ${document.id}: ${result.error}`);
+    }
+  });
+}
+
+function queueDocumentVectorDelete(documentId: string) {
+  void ragService.deleteDocumentVectors(documentId).then((result) => {
+    if (!result.deleted) {
+      console.warn(`[RAG] Failed to delete document vector ${documentId}: ${result.error}`);
+    }
+  });
 }
 
 // All routes require authentication
@@ -114,6 +131,7 @@ router.get("/:id", async (req: AuthRequest, res: Response) => {
 router.post("/", async (req: AuthRequest, res: Response) => {
   try {
     const document = await createDocument(req.user!.userId, req.body);
+    queueDocumentReindex(document);
     res.status(201).json({ document });
   } catch (error) {
     console.error("Create document error:", error);
@@ -128,6 +146,9 @@ router.put("/:id", async (req: AuthRequest, res: Response) => {
     if (!document) {
       res.status(404).json({ error: "文档不存在" });
       return;
+    }
+    if (req.body?.content !== undefined) {
+      queueDocumentReindex(document);
     }
     res.json({ document });
   } catch (error) {
@@ -144,6 +165,7 @@ router.patch("/:id/favorite", async (req: AuthRequest, res: Response) => {
       res.status(404).json({ error: "文档不存在" });
       return;
     }
+    queueDocumentVectorDelete(document.id);
     res.json({ document });
   } catch (error) {
     console.error("Toggle favorite error:", error);
@@ -159,6 +181,7 @@ router.patch("/:id/trash", async (req: AuthRequest, res: Response) => {
       res.status(404).json({ error: "文档不存在" });
       return;
     }
+    queueDocumentReindex(document);
     res.json({ document });
   } catch (error) {
     console.error("Move to trash error:", error);
@@ -184,7 +207,9 @@ router.patch("/:id/restore", async (req: AuthRequest, res: Response) => {
 // DELETE /api/documents/trash/empty - Empty trash
 router.delete("/trash/empty", async (req: AuthRequest, res: Response) => {
   try {
+    const trashed = await listTrash(req.user!.userId);
     await emptyTrash(req.user!.userId);
+    trashed.forEach((document: { id: string }) => queueDocumentVectorDelete(document.id));
     res.json({ success: true });
   } catch (error) {
     console.error("Empty trash error:", error);
@@ -200,6 +225,7 @@ router.delete("/:id", async (req: AuthRequest, res: Response) => {
       res.status(404).json({ error: "文档不存在" });
       return;
     }
+    queueDocumentVectorDelete(String(req.params.id));
     res.json({ success: true });
   } catch (error) {
     console.error("Delete document error:", error);

@@ -10,6 +10,7 @@ import {
   logActivity, saveFeedback, getSemanticContext,
 } from "../services/aiService";
 import type { Personality } from "../services/aiService";
+import { formatBrainKnowledgeContext, RAG_SCORE_THRESHOLD, ragService } from "../services/ragService";
 
 const router = Router();
 const MAX_REFERENCE_DOCS = 4;
@@ -126,30 +127,33 @@ async function buildBrainKnowledgeContext(userId: string, text: string, referenc
         .filter((ref) => ref?.type === "brain" && typeof ref.id === "string")
         .map((ref) => ref.id as string)
     ));
-    const knowledges = await prisma.aIBrainKnowledge.findMany({
-      where: {
-        userId,
-        ...(referencedIds.length > 0 ? { id: { in: referencedIds } } : {}),
-      },
-      select: { id: true, title: true, description: true, category: true },
-    });
-    if (knowledges.length === 0) return "";
 
-    const lowerText = text.toLowerCase();
-    const matches = referencedIds.length > 0
-      ? referencedIds
-          .map((id) => knowledges.find((k: any) => k.id === id))
-          .filter(Boolean)
-      : knowledges.filter((k: any) => lowerText.includes(k.title.toLowerCase()));
-    if (matches.length === 0) return "";
+    if (referencedIds.length > 0) {
+      const knowledges = await prisma.aIBrainKnowledge.findMany({
+        where: { userId, id: { in: referencedIds } },
+        select: { id: true, title: true, description: true, category: true },
+      });
+      const ordered = referencedIds
+        .map((id) => knowledges.find((knowledge: any) => knowledge.id === id))
+        .filter(Boolean);
+      return formatBrainKnowledgeContext(ordered);
+    }
 
-    return [
-      "【关联背景设定库（请务必严格遵守以下设定，以保证故事前后逻辑连贯，切勿与这些设定相冲突）：】",
-      ...matches.map((k: any) => {
-        const catLabel = k.category ? `[${k.category}] ` : "";
-        return `* ${catLabel}${k.title}: ${k.description}`;
-      }),
-    ].join("\n");
+    if (!text.trim()) return "";
+
+    const result = await ragService.searchKnowledge(
+      userId,
+      text,
+      5,
+      () => prisma.aIBrainKnowledge.findMany({
+        where: { userId },
+        select: { id: true, title: true, description: true, category: true },
+      })
+    );
+    const matches = result.degraded
+      ? result.results
+      : result.results.filter((knowledge) => (knowledge.score || 0) > RAG_SCORE_THRESHOLD);
+    return formatBrainKnowledgeContext(matches);
   } catch (err) {
     console.error("Build brain knowledge context error:", err);
     return "";

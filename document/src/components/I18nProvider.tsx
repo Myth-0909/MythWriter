@@ -75,6 +75,19 @@ const translations = {
   "brain.persistOrderFailed": { zh: "保存排序失败", en: "Failed to save category order" },
   "brain.deleteSettingTitle": { zh: "确定要删除该设定项吗？", en: "Delete this setting?" },
   "brain.deleteSettingDesc": { zh: "该设定项一旦删除，将无法在AI写作时自动匹配背景，且此操作不可撤销。", en: "This setting will no longer be automatically matched during AI writing. This action cannot be undone." },
+
+  // RAG
+  "rag.autoReference": { zh: "AI 推荐", en: "AI suggested" },
+  "rag.autoReferenceToggle": { zh: "语义引用", en: "Semantic refs" },
+  "rag.searching": { zh: "检索设定中...", en: "Searching settings..." },
+  "rag.reindexAll": { zh: "重建全部索引", en: "Reindex all" },
+  "rag.reindexCard": { zh: "重建索引", en: "Reindex" },
+  "rag.reindexing": { zh: "重建中...", en: "Reindexing..." },
+  "rag.reindexDone": { zh: "索引已重建", en: "Index rebuilt" },
+  "rag.reindexFailed": { zh: "索引重建失败", en: "Failed to rebuild index" },
+  "rag.similarity": { zh: "相似度", en: "Similarity" },
+  "rag.indexed": { zh: "已索引", en: "Indexed" },
+  "rag.notIndexed": { zh: "未索引", en: "Not indexed" },
   
   // Document Groups
   "group.title": { zh: "文档分组", en: "Document Groups" },

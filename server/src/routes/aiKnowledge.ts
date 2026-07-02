@@ -1,8 +1,25 @@
 import { Router, Response } from "express";
 import { AuthRequest, authMiddleware } from "../middleware/auth";
 import prisma from "../lib/prisma";
+import { ragService } from "../services/ragService";
 
 const router = Router();
+
+function queueKnowledgeReindex(knowledge: { id: string; userId: string; title: string; description: string }) {
+  void ragService.reindexKnowledge(knowledge).then((result) => {
+    if (!result.indexed) {
+      console.warn(`[RAG] Failed to index knowledge ${knowledge.id}: ${result.error}`);
+    }
+  });
+}
+
+function queueKnowledgeVectorDelete(knowledgeId: string) {
+  void ragService.deleteKnowledgeVectors(knowledgeId).then((result) => {
+    if (!result.deleted) {
+      console.warn(`[RAG] Failed to delete knowledge vector ${knowledgeId}: ${result.error}`);
+    }
+  });
+}
 
 // All routes require authentication
 router.use(authMiddleware);
@@ -50,6 +67,7 @@ router.post("/", async (req: AuthRequest, res: Response) => {
       },
     });
 
+    queueKnowledgeReindex(knowledge);
     res.json({ knowledge });
   } catch (error) {
     console.error("Create brain knowledge error:", error);
@@ -90,6 +108,7 @@ router.put("/:id", async (req: AuthRequest, res: Response) => {
       },
     });
 
+    queueKnowledgeReindex(updated);
     res.json({ knowledge: updated });
   } catch (error) {
     console.error("Update brain knowledge error:", error);
@@ -113,6 +132,7 @@ router.delete("/:id", async (req: AuthRequest, res: Response) => {
       where: { id: knowledge.id },
     });
 
+    queueKnowledgeVectorDelete(knowledge.id);
     res.json({ success: true });
   } catch (error) {
     console.error("Delete brain knowledge error:", error);

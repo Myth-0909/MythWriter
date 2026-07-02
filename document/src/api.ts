@@ -19,6 +19,29 @@ export interface WritingReviewSuggestion {
   severity: "high" | "medium" | "low";
 }
 
+export interface RagKnowledgeResult {
+  id: string;
+  knowledgeId: string;
+  title: string;
+  description: string;
+  category?: string;
+  score: number;
+}
+
+export interface RagDocumentResult {
+  id: string;
+  documentId: string;
+  chunkIndex: number;
+  content: string;
+  score: number;
+}
+
+export interface RagSearchResponse<T> {
+  results: T[];
+  degraded: boolean;
+  error?: string;
+}
+
 function getToken(): string | null {
   return localStorage.getItem("token");
 }
@@ -274,6 +297,27 @@ export const api = {
 
   deleteBrainKnowledge: (id: string) =>
     request<{ success: boolean }>(`/ai/knowledge/${id}`, { method: "DELETE" }),
+
+  ragStatus: () =>
+    request<{ available: boolean; error?: string }>("/rag/status"),
+
+  searchRagKnowledge: (data: { query: string; topK?: number }) =>
+    request<RagSearchResponse<RagKnowledgeResult>>("/rag/search-knowledge", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  searchRagDocuments: (data: { query: string; topK?: number }) =>
+    request<RagSearchResponse<RagDocumentResult>>("/rag/search-documents", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  reindexBrainKnowledge: (id: string) =>
+    request<{ indexed: boolean; error?: string }>(`/rag/reindex-knowledge/${id}`, { method: "POST" }),
+
+  reindexAllBrainKnowledge: () =>
+    request<{ indexed: number; failed: number; total: number }>("/rag/reindex-all", { method: "POST" }),
 
   // AI Brain Categories API
   listBrainCategories: () =>

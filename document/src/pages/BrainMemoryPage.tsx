@@ -27,7 +27,7 @@ import { api } from "@/api";
 import { cn } from "@/lib/utils";
 import {
   Brain, Sparkles, Plus, Search, Edit2, Trash2, X, GripVertical,
-  Layers, Loader2, Check,
+  Layers, Loader2, Check, RefreshCw,
 } from "lucide-react";
 import { Tooltip } from "@/components/ui/tooltip";
 import {
@@ -163,6 +163,9 @@ export function BrainMemoryPage() {
   const [cards, setCards] = useState<SettingCard[]>([]);
   const [categories, setCategories] = useState<BrainCategory[]>([]);
   const [loading, setLoading] = useState(true);
+  const [ragAvailable, setRagAvailable] = useState(false);
+  const [reindexAllLoading, setReindexAllLoading] = useState(false);
+  const [reindexingIds, setReindexingIds] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
 
@@ -260,6 +263,9 @@ export function BrainMemoryPage() {
       ]);
       setCards(knowledgesRes.knowledges || []);
       setCategories(categoriesRes.categories || []);
+      api.ragStatus()
+        .then((status) => setRagAvailable(status.available))
+        .catch(() => setRagAvailable(false));
     } catch (err: any) {
       console.error("Failed to load brain data:", err);
       toast(err.message || t("brain.fetchFailed"), "error");
@@ -334,6 +340,37 @@ export function BrainMemoryPage() {
       fetchData();
     } catch (err: any) {
       toast(err.message || t("brain.deleteFailed"), "error");
+    }
+  };
+
+  const handleReindexCard = async (id: string) => {
+    setReindexingIds((prev) => new Set(prev).add(id));
+    try {
+      const result = await api.reindexBrainKnowledge(id);
+      if (!result.indexed) throw new Error(result.error || t("rag.reindexFailed"));
+      setRagAvailable(true);
+      toast(t("rag.reindexDone"), "success");
+    } catch (err: any) {
+      toast(err.message || t("rag.reindexFailed"), "error");
+    } finally {
+      setReindexingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    }
+  };
+
+  const handleReindexAll = async () => {
+    setReindexAllLoading(true);
+    try {
+      const result = await api.reindexAllBrainKnowledge();
+      setRagAvailable(result.failed === 0);
+      toast(`${t("rag.reindexDone")} (${result.indexed}/${result.total})`, result.failed === 0 ? "success" : "info");
+    } catch (err: any) {
+      toast(err.message || t("rag.reindexFailed"), "error");
+    } finally {
+      setReindexAllLoading(false);
     }
   };
 
@@ -422,6 +459,21 @@ export function BrainMemoryPage() {
             </p>
           </div>
           <div className="flex items-center gap-2 self-start">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleReindexAll}
+              disabled={reindexAllLoading || cards.length === 0}
+              className="h-9 gap-1.5 text-xs"
+            >
+              {reindexAllLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4" />
+              )}
+              <span>{reindexAllLoading ? t("rag.reindexing") : t("rag.reindexAll")}</span>
+            </Button>
             <button
               onClick={() => setManageDialogOpen(true)}
               className="flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold text-surface-700 border border-surface-200 hover:bg-surface-50 rounded-lg cursor-pointer transition-colors dark:text-surface-300 dark:border-surface-700 dark:hover:bg-surface-800"
@@ -518,7 +570,35 @@ export function BrainMemoryPage() {
                     </p>
                   </div>
 
-                  <div className="flex items-center justify-end gap-1.5 border-t border-surface-100 pt-3 dark:border-surface-800">
+                  <div className="flex items-center justify-between gap-2 border-t border-surface-100 pt-3 dark:border-surface-800">
+                    <span
+                      className={cn(
+                        "inline-flex min-w-0 items-center gap-1 rounded-full px-2 py-1 text-[10px] font-medium",
+                        ragAvailable
+                          ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300"
+                          : "bg-surface-100 text-surface-500 dark:bg-surface-800 dark:text-surface-400"
+                      )}
+                    >
+                      <Check className="h-3 w-3 shrink-0" />
+                      <span className="truncate">{ragAvailable ? t("rag.indexed") : t("rag.notIndexed")}</span>
+                    </span>
+                    <div className="flex items-center justify-end gap-1.5">
+                    <Tooltip content={t("rag.reindexCard")} delay={150}>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleReindexCard(card.id)}
+                        disabled={reindexingIds.has(card.id)}
+                        className="h-7 w-7 text-surface-400 hover:bg-emerald-50 hover:text-emerald-600 dark:hover:bg-emerald-950/30"
+                      >
+                        {reindexingIds.has(card.id) ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <RefreshCw className="h-3.5 w-3.5" />
+                        )}
+                      </Button>
+                    </Tooltip>
                     <Tooltip content={t("brain.edit")} delay={150}>
                       <button
                         onClick={() => handleOpenEdit(card)}
@@ -535,6 +615,7 @@ export function BrainMemoryPage() {
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>
                     </Tooltip>
+                    </div>
                   </div>
                 </div>
               );
