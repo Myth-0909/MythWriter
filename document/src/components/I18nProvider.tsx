@@ -236,6 +236,13 @@ const translations = {
   "login.orContinue": { zh: "或使用以下方式继续", en: "or continue with" },
   "login.noAccount": { zh: "还没有账户？", en: "Don't have an account?" },
   "login.hasAccount": { zh: "已有账户？", en: "Already have an account?" },
+  "login.fillEmailPassword": { zh: "请填写邮箱和密码", en: "Please enter your email and password" },
+  "login.fillName": { zh: "请填写姓名", en: "Please enter your name" },
+  "login.welcomeUser": { zh: "欢迎回来，{name}", en: "Welcome back, {name}" },
+  "login.registerSuccessUser": { zh: "注册成功，欢迎你，{name}", en: "Account created. Welcome, {name}" },
+  "login.actionFailed": { zh: "操作失败", en: "Action failed" },
+  "login.emailNotRegistered": { zh: "该邮箱尚未注册", en: "This email is not registered" },
+  "login.emailNotRegisteredCreate": { zh: "该邮箱尚未注册，请先创建账户", en: "This email is not registered. Please create an account first" },
 
   // Trash Page
   "trash.title": { zh: "回收站", en: "Trash" },

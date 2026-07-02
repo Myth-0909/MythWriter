@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ForgotPasswordModal } from "@/components/ForgotPasswordModal";
-import { AmbientBackground } from "@/components/AmbientBackground";
+import { DataCityLoginBackground } from "@/components/DataCityLoginBackground";
 import { ShinyText } from "@/components/ShinyText";
 import { BrandLogo } from "@/components/BrandLogo";
 import { MagneticCard } from "@/components/MagneticCard";
@@ -44,12 +44,12 @@ export function LoginPage({ onLogin }: LoginPageProps) {
     if (submitting) return;
 
     if (!email || !password) {
-      toast("请填写邮箱和密码", "error");
+      toast(t("login.fillEmailPassword"), "error");
       return;
     }
 
     if (mode === "register" && !name) {
-      toast("请填写姓名", "error");
+      toast(t("login.fillName"), "error");
       return;
     }
 
@@ -58,20 +58,20 @@ export function LoginPage({ onLogin }: LoginPageProps) {
       if (mode === "login") {
         const res = await api.login({ email, password });
         setToken(res.token);
-        toast(`欢迎回来，${res.user.name}`, "success");
+        toast(t("login.welcomeUser").replace("{name}", res.user.name), "success");
         onLogin?.(res.user);
       } else {
         const res = await api.register({ name, email, password });
         setToken(res.token);
-        toast(`注册成功，欢迎你，${res.user.name}`, "success");
+        toast(t("login.registerSuccessUser").replace("{name}", res.user.name), "success");
         onLogin?.(res.user);
       }
     } catch (error: any) {
-      const errMsg = error.message || "操作失败";
+      const errMsg = error.message || t("login.actionFailed");
 
       // Not registered → switch to register mode with email pre-filled
-      if (mode === "login" && errMsg === "该邮箱尚未注册") {
-        toast("该邮箱尚未注册，请先创建账户", "info");
+      if (mode === "login" && errMsg === t("login.emailNotRegistered")) {
+        toast(t("login.emailNotRegisteredCreate"), "info");
         setMode("register");
         return;
       }
@@ -108,8 +108,8 @@ export function LoginPage({ onLogin }: LoginPageProps) {
           z-index: 2;
         }
       `}</style>
-      {/* Ambient background — paper texture + AI light + subtle grid */}
-      <AmbientBackground className="z-0" />
+      {/* GPGPU data city background */}
+      <DataCityLoginBackground className="z-0" />
 
       {/* Top-right controls */}
       <div className="absolute top-6 right-6 z-20 flex items-center gap-3">
