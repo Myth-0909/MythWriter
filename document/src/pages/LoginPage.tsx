@@ -469,8 +469,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
 
           <div className="relative">
             <Button
-              type="button"
-              onClick={handleSubmit}
+              type="submit"
               className={cn(
                 "relative mt-2 h-10 w-full cursor-pointer font-semibold transition-all hover:-translate-y-px active:translate-y-0 active:scale-[0.98]",
                 isLight
