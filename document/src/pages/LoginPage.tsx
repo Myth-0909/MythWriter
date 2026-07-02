@@ -37,8 +37,10 @@ export function LoginPage({ onLogin }: LoginPageProps) {
   const subtleTextClass = isLight ? "text-surface-500" : "text-cyan-100/52";
   const linkTextClass = isLight ? "text-surface-800 hover:text-surface-950" : "text-amber-100 hover:text-amber-50";
   const registering = mode === "register";
-  const cardPositionStyle = {
+  const authLayoutStyle = {
     "--login-card-left": registering ? "clamp(3.5rem, 5vw, 5rem)" : "calc(100% - 420px - clamp(3.5rem, 5vw, 5rem))",
+    "--login-hero-width": "min(680px, calc(100% - 560px))",
+    "--login-hero-left": registering ? "calc(100% - var(--login-hero-width) - clamp(3.5rem, 5vw, 5rem))" : "clamp(3.5rem, 5vw, 5rem)",
   } as CSSProperties;
 
   // Form fields
@@ -217,11 +219,12 @@ export function LoginPage({ onLogin }: LoginPageProps) {
       <main className="relative z-10 grid min-h-[100dvh] grid-cols-1 items-center gap-6 px-5 py-24 lg:grid-cols-[440px_minmax(0,1fr)] lg:gap-10 lg:px-14 xl:px-20">
         <section
           className={cn(
-            "hidden max-w-[680px] transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] lg:block",
-            registering ? "lg:order-2 lg:justify-self-end lg:text-right" : "lg:order-1 lg:justify-self-start lg:text-left"
+            "hidden max-w-[680px] transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] lg:absolute lg:top-1/2 lg:left-[var(--login-hero-left)] lg:block lg:w-[var(--login-hero-width)] lg:-translate-y-1/2",
+            registering ? "lg:text-right" : "lg:text-left"
           )}
+          style={authLayoutStyle}
         >
-          <h1 className={cn("max-w-[640px] text-5xl font-black leading-[0.95] tracking-normal xl:text-7xl", isLight ? "text-surface-950" : "text-white")}>
+          <h1 className={cn("max-w-[640px] text-5xl font-black leading-[0.95] tracking-normal xl:text-7xl", registering ? "lg:ml-auto" : "", isLight ? "text-surface-950" : "text-white")}>
             {registering ? t("login.registerHeroTitle") : t("login.heroTitle")}
           </h1>
           <p className={cn("mt-6 max-w-[430px] text-sm leading-7", registering ? "lg:ml-auto" : "", isLight ? "text-surface-600" : "text-cyan-100/62")}>
@@ -234,7 +237,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
         className={cn(
           "relative z-10 flex w-full justify-center transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] lg:absolute lg:top-1/2 lg:left-[var(--login-card-left)] lg:w-[420px] lg:-translate-y-1/2 lg:justify-start"
         )}
-        style={cardPositionStyle}
+        style={authLayoutStyle}
       >
         <div
           className={cn("relative w-full max-w-[420px] overflow-hidden rounded-[2rem] p-1.5", isLight ? "bg-white/45 shadow-[0_24px_80px_rgba(73,98,130,0.2)] ring-1 ring-white/70" : "bg-white/8 shadow-[0_24px_80px_rgba(0,0,0,0.48),0_0_80px_rgba(74,144,217,0.16)] ring-1 ring-cyan-100/16")}
