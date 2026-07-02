@@ -237,7 +237,7 @@ function formatTimestamp(): string {
 function buildMemoryContext(memory: Message[]): string {
   if (memory.length === 0) return "";
   return memory.map((m) => {
-    const role = m.role === "user" ? "用户" : "助手";
+    const role = m.role === "user" ? "用户" : "小安";
     return `${role}: ${m.content.slice(0, 200)}`;
   }).join("\n");
 }
@@ -635,16 +635,18 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
         saveMemory(memoryRef.current);
       })
       .catch(() => {
+        const name = user?.name || t("common.user");
+        const formatGreeting = (template: string) => template.replace("{name}", name);
         const fallbacks: Record<Personality, string> = {
-          normal: `${user?.name || '用户'} 您好！我是小麦，很高兴见到您！`,
-          cute: `${user?.name || '用户'} 您好呀~ 我是小麦呢 💕 一起开心地写作吧！🌸✨`,
-          catgirl: `${user?.name || '用户'} 您好喵~！我是小麦喵~ 今天想写点什么呢？`,
-          serious: `${user?.name || '用户'}，您好。我是小麦，请说明您的需求。`,
-          silly: `哇哦！${user?.name || '用户'} 来了！我是小麦——您的写作小伙伴！`,
+          normal: formatGreeting(t("ai.fallbackGreetingNormal")),
+          cute: formatGreeting(t("ai.fallbackGreetingCute")),
+          catgirl: formatGreeting(t("ai.fallbackGreetingCatgirl")),
+          serious: formatGreeting(t("ai.fallbackGreetingSerious")),
+          silly: formatGreeting(t("ai.fallbackGreetingSilly")),
         };
         setMessages([{ role: "assistant", content: fallbacks[pers] || fallbacks.normal, timestamp: ts }]);
       });
-  }, [user?.name]);
+  }, [t, user?.name]);
 
   // Handle scroll events for smart scroll detection
   const handleScrollEvent = useCallback((_instance: any, event: Event) => {
@@ -1484,7 +1486,7 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
                 </div>
                 <div>
                   <h3 className="text-sm font-semibold text-surface-900 dark:text-surface-100">{t("ai.title")}</h3>
-                  <p className="text-[10px] text-surface-500">小麦 · {currentPersonality.label}</p>
+                  <p className="text-[10px] text-surface-500">{t("ai.title")} · {currentPersonality.label}</p>
                 </div>
               </div>
               <div className="flex items-center gap-1">

@@ -56,7 +56,7 @@ A full-stack cross-platform writing application — an intelligent document work
 - **Export to HTML** — Download document as standalone HTML file
 - **File Import** — Import TXT, MD, DOCX files as new documents
 
-#### AI Writing Assistant (ZNWriter AI)
+#### AI Writing Assistant (XiaoAn)
 - **Smart Conversations** — Multi-turn dialogue with short-term and long-term memory
 - **Streaming Output** — Real-time typewriter effect via SSE (Server-Sent Events)
 - **5 Personalities** — Normal, Cute, Catgirl (喵~), Serious, Silly — each with distinct tone and style, instantly switchable with persistent preference
@@ -70,7 +70,7 @@ A full-stack cross-platform writing application — an intelligent document work
 - **AI Brain Base** — Create worldbuilding, character, location, and concept cards for consistent long-form writing
 - **Category Management** — Create, edit, delete, color-code, and drag-reorder brain categories
 - **Manual References** — Mention documents with `@title` and brain cards with `#title` in chat
-- **Semantic References** — The assistant can automatically suggest high-confidence brain cards from the current prompt
+- **Semantic References** — XiaoAn can automatically suggest high-confidence brain cards from the current prompt
 - **Vector Search** — Milvus-backed semantic search for brain cards and document chunks
 - **Automatic Reindexing** — Knowledge cards and documents are reindexed after edits, deletes, and version restores
 - **Graceful Degradation** — If Redis, Milvus, or embedding services are unavailable, non-vector features keep working and RAG reports degraded status
@@ -266,7 +266,7 @@ MIT
 - **导出 HTML** — 将文档下载为独立 HTML 文件
 - **文件导入** — 支持导入 TXT、MD、DOCX 文件并创建为新文档
 
-#### AI 写作助手（ZN助手）
+#### AI 写作助手（小安）
 - **智能对话** — 支持多轮对话，具备短期记忆和长期记忆
 - **流式输出** — 基于 SSE 的实时打字机效果，可随时中断生成
 - **5 种性格** — 正常、可爱、猫娘（喵~）、严肃、搞怪，每种有独特语气风格，即时切换并持久化偏好
@@ -280,7 +280,7 @@ MIT
 - **AI 设定脑库** — 为世界观、角色、地点、概念等长期设定创建卡片，保持长篇写作一致性
 - **类别管理** — 支持创建、编辑、删除、颜色标记和拖拽排序设定类别
 - **手动引用** — 在对话中用 `@文档名` 引用文档，用 `#设定名` 引用脑库卡片
-- **语义引用** — 助手可根据当前输入自动推荐高置信度设定卡
+- **语义引用** — 小安可根据当前输入自动推荐高置信度设定卡
 - **向量检索** — 基于 Milvus 对设定卡和文档分块进行语义检索
 - **自动重建索引** — 设定卡、文档编辑、删除和版本恢复后会自动更新向量索引
 - **降级可用** — Redis、Milvus 或 Embedding 服务不可用时，非向量功能继续可用，RAG 状态会显示降级
