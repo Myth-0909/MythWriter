@@ -5,7 +5,7 @@ import { ForgotPasswordModal } from "@/components/ForgotPasswordModal";
 import { DataCityLoginBackground } from "@/components/DataCityLoginBackground";
 import { ShinyText } from "@/components/ShinyText";
 import { BrandLogo } from "@/components/BrandLogo";
-import { SplitText } from "@/components/SplitText";
+import { TextType } from "@/components/TextType";
 import { TargetCursor } from "@/components/TargetCursor";
 import { cn } from "@/lib/utils";
 import { Eye, EyeOff, Mail, Lock, User, ArrowRight, Loader2, Globe, Monitor, Moon, Sun } from "lucide-react";
@@ -39,6 +39,19 @@ export function LoginPage({ onLogin }: LoginPageProps) {
   const subtleTextClass = isLight ? "text-surface-500" : "text-slate-300/62";
   const linkTextClass = isLight ? "text-surface-800 hover:text-surface-950" : "text-indigo-200 hover:text-white";
   const registering = mode === "register";
+  const heroTitle = registering ? t("login.registerHeroTitle") : t("login.heroTitle");
+  const heroSubtitle = registering ? t("login.registerHeroSubtitle") : t("login.heroSubtitle");
+  const heroTitleTypingSpeed = lang === "zh" ? 54 : 24;
+  const heroSubtitleTypingSpeed = lang === "zh" ? 18 : 11;
+  const heroSubtitleDelay = 420 + Math.min(1800, Array.from(heroTitle).length * heroTitleTypingSpeed);
+  const titleCursorClass = cn(
+    "text-[0.76em] font-light",
+    isLight ? "text-[#b46c08]" : "text-amber-200"
+  );
+  const subtitleCursorClass = cn(
+    "text-[0.92em] font-light",
+    isLight ? "text-[#17435f]" : "text-indigo-200"
+  );
   const authLayoutStyle = {
     "--login-card-left": registering ? "clamp(3.5rem, 5vw, 5rem)" : "calc(100% - 420px - clamp(3.5rem, 5vw, 5rem))",
     "--login-hero-width": "min(760px, calc(100% - 560px))",
@@ -228,27 +241,36 @@ export function LoginPage({ onLogin }: LoginPageProps) {
           style={authLayoutStyle}
         >
           <h1 className={cn("max-w-[760px] [font-family:var(--font-zn-display)] [font-weight:650] text-[clamp(2.85rem,4.35vw,4.85rem)] leading-[1.14] tracking-[0.022em]", registering ? "lg:ml-auto" : "", isLight ? "text-surface-950" : "text-white")}>
-            <SplitText
-              key={`title-${mode}-${lang}`}
-              text={registering ? t("login.registerHeroTitle") : t("login.heroTitle")}
-              color={isLight ? "#10283d" : "#f4fbff"}
-              splitBy={lang === "zh" ? "characters" : "words"}
-              direction={registering ? "down" : "up"}
-              staggerDelay={lang === "zh" ? 18 : 50}
-              duration={780}
+            <TextType
+              key={`title-type-${mode}-${lang}`}
+              text={heroTitle}
+              typingSpeed={heroTitleTypingSpeed}
+              initialDelay={220}
+              pauseDuration={2400}
+              deletingSpeed={18}
+              loop={false}
+              showCursor
+              hideCursorOnComplete
+              cursorClassName={titleCursorClass}
+              cursorBlinkDuration={0.58}
               className="block"
+              aria-label={heroTitle}
             />
           </h1>
           <p className={cn("mt-8 max-w-[600px] [font-family:var(--font-zn-sans)] [font-weight:450] text-[clamp(1rem,1.28vw,1.18rem)] leading-[1.95] tracking-[0.055em]", registering ? "lg:ml-auto" : "", isLight ? "text-surface-600" : "text-slate-300/78")}>
-            <SplitText
-              key={`subtitle-${mode}-${lang}`}
-              text={registering ? t("login.registerHeroSubtitle") : t("login.heroSubtitle")}
-              color={isLight ? "#4a5f72" : "#cbd5e1"}
-              splitBy={lang === "zh" ? "characters" : "words"}
-              direction={registering ? "up" : "down"}
-              staggerDelay={lang === "zh" ? 5 : 20}
-              duration={680}
+            <TextType
+              key={`subtitle-type-${mode}-${lang}`}
+              text={heroSubtitle}
+              typingSpeed={heroSubtitleTypingSpeed}
+              initialDelay={heroSubtitleDelay}
+              pauseDuration={2600}
+              deletingSpeed={12}
+              loop={false}
+              showCursor
+              cursorClassName={subtitleCursorClass}
+              cursorBlinkDuration={0.7}
               className="block"
+              aria-label={heroSubtitle}
             />
           </p>
         </section>
