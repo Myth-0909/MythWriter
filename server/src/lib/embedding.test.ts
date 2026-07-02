@@ -61,6 +61,30 @@ describe("embedding client", () => {
     });
   });
 
+  it("ignores undefined partial config fields when generating embeddings", async () => {
+    const calls: Array<{ url: string; init: any }> = [];
+    await generateEmbeddings(
+      ["alpha"],
+      {
+        apiKey: "test-key",
+        baseUrl: "http://embedding.local/v1",
+        model: undefined,
+      },
+      async (url: string, init: any) => {
+        calls.push({ url, init });
+        return {
+          ok: true,
+          json: async () => ({ data: [{ embedding: [0.1, 0.2] }] }),
+        };
+      }
+    );
+
+    assert.deepEqual(JSON.parse(calls[0].init.body), {
+      model: DEFAULT_EMBEDDING_MODEL,
+      input: ["alpha"],
+    });
+  });
+
   it("loads user embedding settings through an injectable loader", async () => {
     const config = await getUserEmbeddingConfig("user-1", async (userId) => {
       assert.equal(userId, "user-1");
@@ -79,7 +103,7 @@ describe("embedding client", () => {
   });
 
   it("unwraps a single embedding vector", async () => {
-    const vector = await generateEmbedding("alpha", undefined, async () => ({
+    const vector = await generateEmbedding("alpha", { apiKey: "test-key" }, async () => ({
       ok: true,
       json: async () => ({ data: [{ embedding: [1, 2, 3] }] }),
     }));
@@ -87,9 +111,25 @@ describe("embedding client", () => {
     assert.deepEqual(vector, [1, 2, 3]);
   });
 
+  it("requires an API key before sending embedding requests", async () => {
+    let called = false;
+
+    await assert.rejects(
+      () => generateEmbeddings(["alpha"], { apiKey: "" }, async () => {
+        called = true;
+        return {
+          ok: true,
+          json: async () => ({ data: [{ embedding: [1, 2, 3] }] }),
+        };
+      }),
+      /Embedding API key is not configured/
+    );
+    assert.equal(called, false);
+  });
+
   it("throws when the embedding service returns malformed data", async () => {
     await assert.rejects(
-      () => generateEmbeddings(["alpha"], undefined, async () => ({
+      () => generateEmbeddings(["alpha"], { apiKey: "test-key" }, async () => ({
         ok: true,
         json: async () => ({ data: [{ embedding: ["bad"] }] }),
       })),

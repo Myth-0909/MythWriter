@@ -3,7 +3,7 @@ import prisma from "./prisma";
 export const DEFAULT_EMBEDDING_BASE_URL =
   process.env.EMBEDDING_BASE_URL || "http://172.16.76.112:8001/v1";
 export const DEFAULT_EMBEDDING_API_KEY =
-  process.env.EMBEDDING_API_KEY || "sk-4f8a7b2c9d1e6f3a5b8c2d7e9f4a6b3c";
+  process.env.EMBEDDING_API_KEY?.trim() || "";
 export const DEFAULT_EMBEDDING_MODEL =
   process.env.EMBEDDING_MODEL || "Qwen/Qwen3-Embedding-8B";
 
@@ -102,10 +102,13 @@ export async function generateEmbeddings(
 ): Promise<number[][]> {
   if (texts.length === 0) return [];
 
-  const resolved = {
-    ...resolveEmbeddingConfig(),
-    ...config,
-  };
+  const resolved = resolveEmbeddingConfig();
+  if (config.apiKey !== undefined) resolved.apiKey = config.apiKey;
+  if (config.baseUrl !== undefined) resolved.baseUrl = config.baseUrl;
+  if (config.model !== undefined) resolved.model = config.model;
+  if (!resolved.apiKey.trim()) {
+    throw new Error("Embedding API key is not configured");
+  }
 
   const response = await fetcher(buildEmbeddingsUrl(resolved.baseUrl), {
     method: "POST",

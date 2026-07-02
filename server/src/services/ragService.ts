@@ -124,8 +124,8 @@ export function createRagService(deps: RagDependencies = defaultDependencies) {
       description: string;
     }): Promise<{ indexed: boolean; error?: string }> {
       try {
-        await deps.deleteKnowledge(knowledge.id);
         const vector = await deps.generateEmbedding(`${knowledge.title}\n\n${knowledge.description}`, knowledge.userId);
+        await deps.deleteKnowledge(knowledge.id);
         await deps.insertKnowledge(
           knowledge.userId,
           knowledge.id,
@@ -145,11 +145,14 @@ export function createRagService(deps: RagDependencies = defaultDependencies) {
       content: string;
     }): Promise<{ indexed: boolean; chunks?: number; error?: string }> {
       try {
-        await deps.deleteDocumentChunks(document.id);
         const chunks = deps.chunkDocument(document.content);
-        if (chunks.length === 0) return { indexed: true, chunks: 0 };
+        if (chunks.length === 0) {
+          await deps.deleteDocumentChunks(document.id);
+          return { indexed: true, chunks: 0 };
+        }
 
         const vectors = await deps.generateEmbeddings(chunks.map((chunk) => chunk.content), document.userId);
+        await deps.deleteDocumentChunks(document.id);
         await deps.insertDocumentChunks(
           document.userId,
           document.id,

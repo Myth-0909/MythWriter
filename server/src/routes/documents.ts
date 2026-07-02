@@ -105,6 +105,7 @@ router.patch("/:id/versions/:versionId/restore", async (req: AuthRequest, res: R
       res.status(404).json({ error: t(requestLang(req), "版本不存在", "Version not found") });
       return;
     }
+    queueDocumentReindex(document);
     res.json({ document });
   } catch (error) {
     console.error("Restore document version error:", error);

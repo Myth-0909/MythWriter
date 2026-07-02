@@ -40,6 +40,7 @@ const MEMORY_KEY = "znwriter_ai_memory";
 const PERSONALITY_KEY = "znwriter_ai_personality";
 const AUTO_RAG_KEY = "znwriter_ai_auto_rag";
 const MAX_MEMORY_MESSAGES = 20;
+const AUTO_RAG_SCORE_THRESHOLD = 0.3;
 
 interface Message {
   role: "user" | "assistant";
@@ -52,6 +53,8 @@ interface ChatReference {
   type: "document" | "brain";
   id: string;
   title: string;
+  auto?: boolean;
+  score?: number;
 }
 
 type DocumentReference = ChatReference & { type: "document" };
@@ -470,8 +473,9 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
         const res = await api.searchRagKnowledge({ query, topK: 3 });
         if (autoSearchSeq.current !== seq) return;
         const manualIds = new Set(brainReferences.map((ref) => ref.id));
-        const suggestions = res.results
+        const suggestions = (res.degraded ? [] : res.results)
           .filter((item) => !manualIds.has(item.knowledgeId || item.id))
+          .filter((item) => item.score > AUTO_RAG_SCORE_THRESHOLD)
           .slice(0, 3)
           .map((item) => ({
             type: "brain" as const,

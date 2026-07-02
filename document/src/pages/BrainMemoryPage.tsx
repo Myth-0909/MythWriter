@@ -27,7 +27,7 @@ import { api } from "@/api";
 import { cn } from "@/lib/utils";
 import {
   Brain, Sparkles, Plus, Search, Edit2, Trash2, X, GripVertical,
-  Layers, Loader2, Check, RefreshCw,
+  Layers, Loader2, Check, RefreshCw, AlertCircle,
 } from "lucide-react";
 import { Tooltip } from "@/components/ui/tooltip";
 import {
@@ -254,6 +254,15 @@ export function BrainMemoryPage() {
     }
   };
 
+  const refreshRagAvailability = async () => {
+    try {
+      const status = await api.ragStatus();
+      setRagAvailable(status.available);
+    } catch {
+      setRagAvailable(false);
+    }
+  };
+
   const fetchData = async () => {
     try {
       setLoading(true);
@@ -263,9 +272,7 @@ export function BrainMemoryPage() {
       ]);
       setCards(knowledgesRes.knowledges || []);
       setCategories(categoriesRes.categories || []);
-      api.ragStatus()
-        .then((status) => setRagAvailable(status.available))
-        .catch(() => setRagAvailable(false));
+      void refreshRagAvailability();
     } catch (err: any) {
       console.error("Failed to load brain data:", err);
       toast(err.message || t("brain.fetchFailed"), "error");
@@ -348,7 +355,7 @@ export function BrainMemoryPage() {
     try {
       const result = await api.reindexBrainKnowledge(id);
       if (!result.indexed) throw new Error(result.error || t("rag.reindexFailed"));
-      setRagAvailable(true);
+      void refreshRagAvailability();
       toast(t("rag.reindexDone"), "success");
     } catch (err: any) {
       toast(err.message || t("rag.reindexFailed"), "error");
@@ -365,7 +372,7 @@ export function BrainMemoryPage() {
     setReindexAllLoading(true);
     try {
       const result = await api.reindexAllBrainKnowledge();
-      setRagAvailable(result.failed === 0);
+      void refreshRagAvailability();
       toast(`${t("rag.reindexDone")} (${result.indexed}/${result.total})`, result.failed === 0 ? "success" : "info");
     } catch (err: any) {
       toast(err.message || t("rag.reindexFailed"), "error");
@@ -579,8 +586,14 @@ export function BrainMemoryPage() {
                           : "bg-surface-100 text-surface-500 dark:bg-surface-800 dark:text-surface-400"
                       )}
                     >
-                      <Check className="h-3 w-3 shrink-0" />
-                      <span className="truncate">{ragAvailable ? t("rag.indexed") : t("rag.notIndexed")}</span>
+                      {ragAvailable ? (
+                        <Check className="h-3 w-3 shrink-0" />
+                      ) : (
+                        <AlertCircle className="h-3 w-3 shrink-0" />
+                      )}
+                      <span className="truncate">
+                        {ragAvailable ? t("rag.serviceAvailable") : t("rag.serviceUnavailable")}
+                      </span>
                     </span>
                     <div className="flex items-center justify-end gap-1.5">
                     <Tooltip content={t("rag.reindexCard")} delay={150}>

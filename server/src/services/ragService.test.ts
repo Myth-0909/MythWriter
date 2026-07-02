@@ -73,7 +73,7 @@ describe("rag service", () => {
     });
   });
 
-  it("rebuilds a knowledge vector by deleting the old row before insert", async () => {
+  it("rebuilds a knowledge vector after generating the replacement vector", async () => {
     const { deps, calls } = createDeps();
     const rag = createRagService(deps);
 
@@ -85,9 +85,28 @@ describe("rag service", () => {
     });
 
     assert.deepEqual(result, { indexed: true });
-    assert.deepEqual(calls.map((call) => call.method), ["deleteKnowledge", "generateEmbedding", "insertKnowledge"]);
-    assert.deepEqual(calls[1].args, ["Alpha\n\nLore", "user-1"]);
+    assert.deepEqual(calls.map((call) => call.method), ["generateEmbedding", "deleteKnowledge", "insertKnowledge"]);
+    assert.deepEqual(calls[0].args, ["Alpha\n\nLore", "user-1"]);
     assert.deepEqual(calls[2].args, ["user-1", "knowledge-1", "Alpha", "Lore", [0.1, 0.2]]);
+  });
+
+  it("does not delete the old knowledge vector when embedding generation fails", async () => {
+    const { deps, calls } = createDeps({
+      generateEmbedding: async () => {
+        throw new Error("embedding offline");
+      },
+    });
+    const rag = createRagService(deps);
+
+    const result = await rag.reindexKnowledge({
+      userId: "user-1",
+      id: "knowledge-1",
+      title: "Alpha",
+      description: "Lore",
+    });
+
+    assert.deepEqual(result, { indexed: false, error: "embedding offline" });
+    assert.deepEqual(calls.map((call) => call.method), []);
   });
 
   it("rebuilds document chunk vectors from chunked content", async () => {
@@ -102,11 +121,11 @@ describe("rag service", () => {
 
     assert.deepEqual(result, { indexed: true, chunks: 2 });
     assert.deepEqual(calls.map((call) => call.method), [
-      "deleteDocumentChunks",
       "generateEmbeddings",
+      "deleteDocumentChunks",
       "insertDocumentChunks",
     ]);
-    assert.deepEqual(calls[1].args, [["abcde", "fghij"], "user-1"]);
+    assert.deepEqual(calls[0].args, [["abcde", "fghij"], "user-1"]);
     assert.deepEqual(calls[2].args, [
       "user-1",
       "doc-1",
@@ -115,6 +134,41 @@ describe("rag service", () => {
         { index: 1, content: "fghij", vector: [0.3, 0.4] },
       ],
     ]);
+  });
+
+  it("does not delete old document chunks when embedding generation fails", async () => {
+    const { deps, calls } = createDeps({
+      generateEmbeddings: async () => {
+        throw new Error("embedding offline");
+      },
+    });
+    const rag = createRagService(deps);
+
+    const result = await rag.reindexDocument({
+      userId: "user-1",
+      id: "doc-1",
+      content: "abcdefghij",
+    });
+
+    assert.deepEqual(result, { indexed: false, error: "embedding offline" });
+    assert.deepEqual(calls.map((call) => call.method), []);
+  });
+
+  it("deletes stale document chunks when rebuilt content has no chunks", async () => {
+    const { deps, calls } = createDeps({
+      chunkDocument: () => [],
+    });
+    const rag = createRagService(deps);
+
+    const result = await rag.reindexDocument({
+      userId: "user-1",
+      id: "doc-1",
+      content: "",
+    });
+
+    assert.deepEqual(result, { indexed: true, chunks: 0 });
+    assert.deepEqual(calls.map((call) => call.method), ["deleteDocumentChunks"]);
+    assert.deepEqual(calls[0].args, ["doc-1"]);
   });
 
   it("deletes stale vectors through service helpers", async () => {

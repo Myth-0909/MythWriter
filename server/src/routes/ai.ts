@@ -10,18 +10,13 @@ import {
   logActivity, saveFeedback, getSemanticContext,
 } from "../services/aiService";
 import type { Personality } from "../services/aiService";
+import { selectReferencedBrainIds, type ChatReference } from "../services/aiReferences";
 import { formatBrainKnowledgeContext, RAG_SCORE_THRESHOLD, ragService } from "../services/ragService";
 
 const router = Router();
 const MAX_REFERENCE_DOCS = 4;
 const MAX_REFERENCE_CHARS = 6000;
 const MAX_TOTAL_REFERENCE_CHARS = 16000;
-
-type ChatReference = {
-  type?: string;
-  id?: string;
-  title?: string;
-};
 
 type ReferenceDocument = {
   id: string;
@@ -122,11 +117,7 @@ async function buildReferenceContext(userId: string, references: ChatReference[]
 
 async function buildBrainKnowledgeContext(userId: string, text: string, references?: ChatReference[]): Promise<string> {
   try {
-    const referencedIds = Array.from(new Set(
-      (Array.isArray(references) ? references : [])
-        .filter((ref) => ref?.type === "brain" && typeof ref.id === "string")
-        .map((ref) => ref.id as string)
-    ));
+    const referencedIds = selectReferencedBrainIds(references);
 
     if (referencedIds.length > 0) {
       const knowledges = await prisma.aIBrainKnowledge.findMany({

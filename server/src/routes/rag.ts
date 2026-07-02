@@ -3,9 +3,18 @@ import { AuthRequest, authMiddlewareWithBlacklist } from "../middleware/auth";
 import { t } from "../lib/i18n";
 import prisma from "../lib/prisma";
 import { getMilvusStatus } from "../lib/milvus";
+import { mapWithConcurrency } from "../lib/asyncPool";
 import { ragService } from "../services/ragService";
 
 const router = Router();
+const REINDEX_ALL_CONCURRENCY = 3;
+
+type ReindexableKnowledge = {
+  id: string;
+  title: string;
+  description: string;
+  userId: string;
+};
 
 function requestLang(req: AuthRequest) {
   return String(req.headers["accept-language"] || "").toLowerCase().startsWith("en") ? "en" : "zh";
@@ -96,15 +105,15 @@ router.post("/reindex-all", async (req: AuthRequest, res: Response) => {
   const knowledges = await prisma.aIBrainKnowledge.findMany({
     where: { userId: req.user!.userId },
     select: { id: true, title: true, description: true, userId: true },
-  });
+  }) as ReindexableKnowledge[];
 
-  let indexed = 0;
-  let failed = 0;
-  for (const knowledge of knowledges) {
-    const result = await ragService.reindexKnowledge(knowledge);
-    if (result.indexed) indexed += 1;
-    else failed += 1;
-  }
+  const results = await mapWithConcurrency(
+    knowledges,
+    REINDEX_ALL_CONCURRENCY,
+    (knowledge) => ragService.reindexKnowledge(knowledge)
+  );
+  const indexed = results.filter((result) => result.indexed).length;
+  const failed = results.length - indexed;
 
   res.json({ indexed, failed, total: knowledges.length });
 });

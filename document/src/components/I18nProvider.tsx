@@ -86,8 +86,8 @@ const translations = {
   "rag.reindexDone": { zh: "索引已重建", en: "Index rebuilt" },
   "rag.reindexFailed": { zh: "索引重建失败", en: "Failed to rebuild index" },
   "rag.similarity": { zh: "相似度", en: "Similarity" },
-  "rag.indexed": { zh: "已索引", en: "Indexed" },
-  "rag.notIndexed": { zh: "未索引", en: "Not indexed" },
+  "rag.serviceAvailable": { zh: "向量库在线", en: "Vector store ready" },
+  "rag.serviceUnavailable": { zh: "向量库离线", en: "Vector store offline" },
   
   // Document Groups
   "group.title": { zh: "文档分组", en: "Document Groups" },
