@@ -41,7 +41,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
   const registering = mode === "register";
   const authLayoutStyle = {
     "--login-card-left": registering ? "clamp(3.5rem, 5vw, 5rem)" : "calc(100% - 420px - clamp(3.5rem, 5vw, 5rem))",
-    "--login-hero-width": "min(680px, calc(100% - 560px))",
+    "--login-hero-width": "min(760px, calc(100% - 560px))",
     "--login-hero-left": registering ? "calc(100% - var(--login-hero-width) - clamp(3.5rem, 5vw, 5rem))" : "clamp(3.5rem, 5vw, 5rem)",
   } as CSSProperties;
 
@@ -227,7 +227,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
           )}
           style={authLayoutStyle}
         >
-          <h1 className={cn("max-w-[640px] text-5xl font-black leading-[0.95] tracking-normal xl:text-7xl", registering ? "lg:ml-auto" : "", isLight ? "text-surface-950" : "text-white")}>
+          <h1 className={cn("max-w-[760px] [font-family:var(--font-zn-display)] [font-weight:650] text-[clamp(2.85rem,4.35vw,4.85rem)] leading-[1.14] tracking-[0.022em]", registering ? "lg:ml-auto" : "", isLight ? "text-surface-950" : "text-white")}>
             <SplitText
               key={`title-${mode}-${lang}`}
               text={registering ? t("login.registerHeroTitle") : t("login.heroTitle")}
@@ -235,12 +235,12 @@ export function LoginPage({ onLogin }: LoginPageProps) {
               shineColor={isLight ? "#b46c08" : "#9ee7ff"}
               splitBy={lang === "zh" ? "characters" : "words"}
               direction={registering ? "down" : "up"}
-              staggerDelay={lang === "zh" ? 24 : 58}
+              staggerDelay={lang === "zh" ? 18 : 50}
               duration={780}
               className="block"
             />
           </h1>
-          <p className={cn("mt-6 max-w-[430px] text-sm leading-7", registering ? "lg:ml-auto" : "", isLight ? "text-surface-600" : "text-cyan-100/62")}>
+          <p className={cn("mt-8 max-w-[600px] [font-family:var(--font-zn-sans)] [font-weight:450] text-[clamp(1rem,1.28vw,1.18rem)] leading-[1.95] tracking-[0.055em]", registering ? "lg:ml-auto" : "", isLight ? "text-surface-600" : "text-cyan-100/68")}>
             <SplitText
               key={`subtitle-${mode}-${lang}`}
               text={registering ? t("login.registerHeroSubtitle") : t("login.heroSubtitle")}
@@ -248,7 +248,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
               shineColor={isLight ? "#10283d" : "#fff0b8"}
               splitBy={lang === "zh" ? "characters" : "words"}
               direction={registering ? "up" : "down"}
-              staggerDelay={lang === "zh" ? 8 : 22}
+              staggerDelay={lang === "zh" ? 5 : 20}
               duration={680}
               className="block"
             />
