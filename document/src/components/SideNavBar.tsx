@@ -6,6 +6,7 @@ import {
   Trash2,
   Settings,
   Brain,
+  LayoutDashboard,
   Folder,
   Plus,
   type LucideIcon,
@@ -25,15 +26,16 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { LogoClickEffect } from "@/components/LogoClickEffect";
 
-export type NavId = "documents" | "favorites" | "trash" | "settings" | "brain";
+export type NavId = "workbench" | "documents" | "favorites" | "trash" | "settings" | "brain";
 
 interface NavItem {
   id: NavId;
-  labelKey: "nav.documents" | "nav.favorites" | "nav.trash" | "nav.settings" | "nav.brain";
+  labelKey: "nav.workbench" | "nav.documents" | "nav.favorites" | "nav.trash" | "nav.settings" | "nav.brain";
   icon: LucideIcon;
 }
 
 const navItems: NavItem[] = [
+  { id: "workbench", labelKey: "nav.workbench", icon: LayoutDashboard },
   { id: "documents", labelKey: "nav.documents", icon: FileText },
   { id: "favorites", labelKey: "nav.favorites", icon: Star },
   { id: "brain", labelKey: "nav.brain", icon: Brain },
@@ -243,7 +245,7 @@ export function SideNavBar({
                                           onRenameGroup(group.id, group.name);
                                         }}
                                       >
-                                        <span>重命名</span>
+                                        <span>{t("group.renameGroup")}</span>
                                       </DropdownMenuItem>
                                       <DropdownMenuSeparator />
                                       <DropdownMenuItem
@@ -253,7 +255,7 @@ export function SideNavBar({
                                         }}
                                         className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950"
                                       >
-                                        <span>删除分组</span>
+                                        <span>{t("group.deleteGroup")}</span>
                                       </DropdownMenuItem>
                                     </DropdownMenuContent>
                                   </DropdownMenu>

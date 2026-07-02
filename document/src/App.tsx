@@ -25,9 +25,9 @@ import { formatFullDateTime } from "@/lib/date";
 import { escapeHtml, sanitizeHtml } from "@/lib/html";
 import "./App.css";
 
-type Page = "editor" | "documents" | "favorites" | "share" | "login" | "trash" | "settings" | "brain" | "notfound";
+type Page = "editor" | "workbench" | "documents" | "favorites" | "share" | "login" | "trash" | "settings" | "brain" | "notfound";
 
-const VALID_PAGES = new Set<string>(["documents", "favorites", "trash", "settings", "login", "brain"]);
+const VALID_PAGES = new Set<string>(["workbench", "documents", "favorites", "trash", "settings", "login", "brain"]);
 
 function pageFromHash(hash: string): { page: Page; editorId?: string } | null {
   const name = hash.replace(/^#\//, "");
@@ -41,8 +41,8 @@ function pageFromHash(hash: string): { page: Page; editorId?: string } | null {
 }
 
 function hashFromPage(page: Page, editorDocId?: string): string {
-  if (page === "editor") return editorDocId ? `#/editor/${editorDocId}` : "#/documents";
-  if (page === "share" || page === "notfound") return window.location.hash || "#/documents";
+  if (page === "editor") return editorDocId ? `#/editor/${editorDocId}` : "#/workbench";
+  if (page === "share" || page === "notfound") return window.location.hash || "#/workbench";
   return `#/${page}`;
 }
 
@@ -208,12 +208,13 @@ export default function App() {
   const [currentPage, setCurrentPage] = useState<Page>(() => {
     const fromHash = pageFromHash(window.location.hash);
     if (fromHash) return fromHash.page;
-    return checkLoggedIn() ? "documents" : "login";
+    return checkLoggedIn() ? "workbench" : "login";
   });
   const [activeNav, setActiveNav] = useState<NavId>(() => {
     const fromHash = pageFromHash(window.location.hash);
+    if (fromHash?.page === "editor") return "documents";
     if (fromHash && fromHash.page !== "login" && fromHash.page !== "notfound") return fromHash.page as NavId;
-    return "documents";
+    return "workbench";
   });
   const [logoutConfirm, setLogoutConfirm] = useState(false);
   const [editorDocId, setEditorDocId] = useState<string>(() => {
@@ -240,9 +241,9 @@ export default function App() {
     const doc = getDocument(editorDocId);
     if (doc?.isDeleted) {
       setEditorDocId("");
-      setCurrentPage("documents");
-      setActiveNav("documents");
-      window.location.hash = "#/documents";
+      setCurrentPage("workbench");
+      setActiveNav("workbench");
+      window.location.hash = "#/workbench";
       return;
     }
     if (doc || loading) return;
@@ -252,9 +253,9 @@ export default function App() {
       if (cancelled || getDocument(editorDocId)) return;
       if (!loadedDoc || loadedDoc.isDeleted) {
         setEditorDocId("");
-        setCurrentPage("documents");
-        setActiveNav("documents");
-        window.location.hash = "#/documents";
+        setCurrentPage("workbench");
+        setActiveNav("workbench");
+        window.location.hash = "#/workbench";
       }
     });
 
@@ -286,13 +287,14 @@ export default function App() {
           setActiveNav(fromHash.page as NavId);
         }
         if (fromHash.page === "login" && checkLoggedIn()) {
-          setCurrentPage("documents");
-          window.location.hash = "#/documents";
+          setCurrentPage("workbench");
+          setActiveNav("workbench");
+          window.location.hash = "#/workbench";
         }
       } else {
-        const defaultPage = checkLoggedIn() ? "documents" : "login";
+        const defaultPage = checkLoggedIn() ? "workbench" : "login";
         setCurrentPage(defaultPage);
-        if (defaultPage === "documents") setActiveNav("documents");
+        if (defaultPage === "workbench") setActiveNav("workbench");
       }
     };
     window.addEventListener("hashchange", onHashChange);
@@ -300,6 +302,9 @@ export default function App() {
   }, []);
 
   const handleNavChange = (id: NavId) => {
+    if (id === "workbench") {
+      setActiveGroupId(null);
+    }
     navigateTo(id, id);
   };
 
@@ -324,9 +329,10 @@ export default function App() {
   const handleLogin = (user: { id: string; name: string; email: string; avatar: string | null }) => {
     updateUser(user);
     setIsLoggedIn(true);
-    setCurrentPage("documents");
-    setActiveNav("documents");
-    window.location.hash = "#/documents";
+    setActiveGroupId(null);
+    setCurrentPage("workbench");
+    setActiveNav("workbench");
+    window.location.hash = "#/workbench";
     refreshDocuments();
   };
 
@@ -444,10 +450,21 @@ export default function App() {
             {currentPage === "editor" && (
               <EditorPageContent activeDocId={editorDocId} onSelectDoc={handleOpenDoc} />
             )}
-            {currentPage === "documents" && (
+            {currentPage === "workbench" && (
               <DocumentCenterPage
+                mode="workbench"
                 onOpenDoc={handleOpenDoc}
                 onOpenAgentWrite={() => setAgentWriteOpen(true)}
+                onOpenBrain={() => handleNavChange("brain")}
+                groups={groups}
+              />
+            )}
+            {currentPage === "documents" && (
+              <DocumentCenterPage
+                mode="documents"
+                onOpenDoc={handleOpenDoc}
+                onOpenAgentWrite={() => setAgentWriteOpen(true)}
+                onOpenBrain={() => handleNavChange("brain")}
                 groups={groups}
                 activeGroupId={activeGroupId}
                 setActiveGroupId={setActiveGroupId}
@@ -466,7 +483,7 @@ export default function App() {
               <BrainMemoryPage />
             )}
             {currentPage === "notfound" && (
-              <NotFoundPage onGoHome={() => navigateTo("documents", "documents")} />
+              <NotFoundPage onGoHome={() => navigateTo("workbench", "workbench")} />
             )}
           </PageTransition>
         </div>
