@@ -1,11 +1,10 @@
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ForgotPasswordModal } from "@/components/ForgotPasswordModal";
 import { DataCityLoginBackground } from "@/components/DataCityLoginBackground";
 import { ShinyText } from "@/components/ShinyText";
 import { BrandLogo } from "@/components/BrandLogo";
-import { MagneticCard } from "@/components/MagneticCard";
 import { cn } from "@/lib/utils";
 import { Eye, EyeOff, Mail, Lock, User, ArrowRight, Loader2, Globe, Monitor, Moon, Sun } from "lucide-react";
 import { useI18n } from "@/components/I18nProvider";
@@ -38,6 +37,9 @@ export function LoginPage({ onLogin }: LoginPageProps) {
   const subtleTextClass = isLight ? "text-surface-500" : "text-cyan-100/52";
   const linkTextClass = isLight ? "text-surface-800 hover:text-surface-950" : "text-amber-100 hover:text-amber-50";
   const registering = mode === "register";
+  const cardPositionStyle = {
+    "--login-card-left": registering ? "clamp(3.5rem, 5vw, 5rem)" : "calc(100% - 420px - clamp(3.5rem, 5vw, 5rem))",
+  } as CSSProperties;
 
   // Form fields
   const [name, setName] = useState("");
@@ -47,8 +49,13 @@ export function LoginPage({ onLogin }: LoginPageProps) {
   // Forgot password
   const [forgotOpen, setForgotOpen] = useState(false);
 
-  const switchMode = () => {
-    setMode((prev) => (prev === "login" ? "register" : "login"));
+  const showLogin = () => {
+    setMode("login");
+    setPassword("");
+  };
+
+  const showRegister = () => {
+    setMode("register");
     setPassword("");
   };
 
@@ -214,9 +221,6 @@ export function LoginPage({ onLogin }: LoginPageProps) {
             registering ? "lg:order-2 lg:justify-self-end lg:text-right" : "lg:order-1 lg:justify-self-start lg:text-left"
           )}
         >
-          <div className={cn("mb-6 inline-flex rounded-full px-3 py-1 text-[10px] font-medium uppercase tracking-[0.2em]", isLight ? "bg-white/60 text-surface-700 ring-1 ring-white/70" : "bg-white/8 text-cyan-100/72 ring-1 ring-white/10")}>
-            {t("login.themeLabel")}
-          </div>
           <h1 className={cn("max-w-[640px] text-5xl font-black leading-[0.95] tracking-normal xl:text-7xl", isLight ? "text-surface-950" : "text-white")}>
             {registering ? t("login.registerHeroTitle") : t("login.heroTitle")}
           </h1>
@@ -225,13 +229,12 @@ export function LoginPage({ onLogin }: LoginPageProps) {
           </p>
         </section>
 
-      {/* Login card — 3D magnetic tilt */}
-      <MagneticCard
+      {/* Login card */}
+      <div
         className={cn(
-          "w-full justify-self-center transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)]",
-          registering ? "lg:order-1 lg:justify-self-start" : "lg:order-2 lg:justify-self-end"
+          "relative z-10 flex w-full justify-center transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] lg:absolute lg:top-1/2 lg:left-[var(--login-card-left)] lg:w-[420px] lg:-translate-y-1/2 lg:justify-start"
         )}
-        intensity={5}
+        style={cardPositionStyle}
       >
         <div
           className={cn("relative w-full max-w-[420px] overflow-hidden rounded-[2rem] p-1.5", isLight ? "bg-white/45 shadow-[0_24px_80px_rgba(73,98,130,0.2)] ring-1 ring-white/70" : "bg-white/8 shadow-[0_24px_80px_rgba(0,0,0,0.48),0_0_80px_rgba(74,144,217,0.16)] ring-1 ring-cyan-100/16")}
@@ -275,7 +278,9 @@ export function LoginPage({ onLogin }: LoginPageProps) {
           />
           <button
             type="button"
-            onClick={() => setMode("login")}
+            onPointerDown={showLogin}
+            onMouseDown={showLogin}
+            onClick={showLogin}
             className={cn(
               "relative z-10 rounded-md py-2 text-sm font-medium transition-colors duration-300 cursor-pointer",
               "active:scale-[0.97]",
@@ -290,7 +295,9 @@ export function LoginPage({ onLogin }: LoginPageProps) {
           </button>
           <button
             type="button"
-            onClick={() => setMode("register")}
+            onPointerDown={showRegister}
+            onMouseDown={showRegister}
+            onClick={showRegister}
             className={cn(
               "relative z-10 rounded-md py-2 text-sm font-medium transition-colors duration-300 cursor-pointer",
               "active:scale-[0.97]",
@@ -416,7 +423,8 @@ export function LoginPage({ onLogin }: LoginPageProps) {
 
           <div className="relative">
             <Button
-              type="submit"
+              type="button"
+              onClick={handleSubmit}
               className={cn(
                 "relative mt-2 h-10 w-full cursor-pointer font-medium text-white transition-transform hover:brightness-110 active:scale-[0.98]",
                 isLight
@@ -442,7 +450,9 @@ export function LoginPage({ onLogin }: LoginPageProps) {
                 {t("login.noAccount")}{" "}
                 <button
                   type="button"
-                  onClick={switchMode}
+                  onPointerDown={showRegister}
+                  onMouseDown={showRegister}
+                  onClick={showRegister}
                   className={cn("cursor-pointer font-medium transition-transform hover:underline active:scale-[0.97]", linkTextClass)}
                 >
                   {t("login.register")}
@@ -454,7 +464,9 @@ export function LoginPage({ onLogin }: LoginPageProps) {
                 {t("login.hasAccount")}{" "}
                 <button
                   type="button"
-                  onClick={switchMode}
+                  onPointerDown={showLogin}
+                  onMouseDown={showLogin}
+                  onClick={showLogin}
                   className={cn("cursor-pointer font-medium transition-transform hover:underline active:scale-[0.97]", linkTextClass)}
                 >
                   {t("login.signIn")}
@@ -466,7 +478,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
         </form>
         </div>
 	      </div>
-      </MagneticCard>
+      </div>
       </main>
 
       {/* Forgot Password Modal */}
