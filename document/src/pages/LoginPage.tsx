@@ -29,13 +29,16 @@ export function LoginPage({ onLogin }: LoginPageProps) {
   const [submitting, setSubmitting] = useState(false);
   const isLight = theme === "light";
   const fieldClass = cn(
-    "h-10 pl-10 text-sm",
+    "uiverse-auth-input peer relative z-[1] h-[58px] rounded-[1rem] border-0 bg-transparent px-12 pb-2.5 pt-6 text-[0.94rem] font-medium shadow-none outline-none transition-colors focus-visible:ring-0",
     isLight
-      ? "border-surface-200/70 bg-white/70 text-surface-900 placeholder:text-surface-400 focus:border-surface-400"
-      : "border-white/10 bg-white/8 text-slate-50 placeholder:text-slate-300/45 focus:border-indigo-300/45"
+      ? "text-surface-950 caret-[#17435f] placeholder:text-transparent"
+      : "text-white caret-amber-200 placeholder:text-transparent"
   );
   const passwordFieldClass = cn(fieldClass, "pr-10");
-  const iconClass = cn("absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2", isLight ? "text-surface-400" : "text-slate-300/55");
+  const iconClass = cn(
+    "pointer-events-none absolute left-4 top-1/2 z-10 h-4 w-4 -translate-y-1/2 transition-all duration-300 group-focus-within:-translate-y-[1.05rem] group-focus-within:scale-90",
+    isLight ? "text-surface-500 group-focus-within:text-[#17435f]" : "text-slate-300/60 group-focus-within:text-amber-200"
+  );
   const subtleTextClass = isLight ? "text-surface-500" : "text-slate-300/62";
   const linkTextClass = isLight ? "text-surface-800 hover:text-surface-950" : "text-indigo-200 hover:text-white";
   const registering = mode === "register";
@@ -121,27 +124,115 @@ export function LoginPage({ onLogin }: LoginPageProps) {
   return (
     <div className={cn("relative grid min-h-[100dvh] w-full overflow-hidden", isLight ? "bg-[#eef4fb] text-surface-950" : "bg-[#030712] text-white")}>
       <style>{`
-        .magnetic-glow::after {
+        .uiverse-auth-form {
+          --uiverse-field-bg: rgba(33, 33, 33, 0.9);
+          --uiverse-field-edge: rgba(255, 255, 255, 0.16);
+          --uiverse-field-shadow: rgba(0, 0, 0, 0.42);
+          --uiverse-field-line: rgba(246, 184, 61, 0.9);
+          --uiverse-field-line-alt: rgba(165, 180, 252, 0.88);
+          --uiverse-label: rgba(226, 232, 240, 0.64);
+          --uiverse-label-active: rgba(255, 255, 255, 0.92);
+        }
+        .uiverse-auth-form-light {
+          --uiverse-field-bg: rgba(255, 255, 255, 0.82);
+          --uiverse-field-edge: rgba(16, 40, 61, 0.16);
+          --uiverse-field-shadow: rgba(23, 67, 95, 0.14);
+          --uiverse-field-line: rgba(180, 108, 8, 0.86);
+          --uiverse-field-line-alt: rgba(23, 67, 95, 0.86);
+          --uiverse-label: rgba(71, 85, 105, 0.7);
+          --uiverse-label-active: rgba(15, 23, 42, 0.94);
+        }
+        .uiverse-auth-field {
+          position: relative;
+          isolation: isolate;
+          overflow: hidden;
+          border-radius: 1rem;
+          border: 1px solid var(--uiverse-field-edge);
+          background: var(--uiverse-field-bg);
+          box-shadow:
+            inset 0 1px 0 rgba(255, 255, 255, 0.1),
+            0 14px 0 -10px var(--uiverse-field-shadow),
+            0 18px 34px rgba(0, 0, 0, 0.18);
+          transform: translateZ(0);
+          transition: transform 260ms ease, box-shadow 260ms ease, background 260ms ease;
+        }
+        .uiverse-auth-field::before {
           content: '';
           position: absolute;
           inset: 0;
-          border-radius: inherit;
-          background: radial-gradient(circle at var(--mx, 50%) var(--my, 50%), rgba(129,140,248,0.2) 0%, rgba(168,85,247,0.1) 32%, transparent 58%);
-          pointer-events: none;
-          opacity: 0;
-          transition: opacity 0.3s ease;
           z-index: 0;
+          border-radius: inherit;
+          background:
+            radial-gradient(circle at 14% 0%, rgba(255, 255, 255, 0.22), transparent 34%),
+            linear-gradient(135deg, rgba(255, 255, 255, 0.08), transparent 48%);
+          opacity: 0.86;
+          pointer-events: none;
         }
-        .magnetic-glow:hover::after {
+        .uiverse-auth-field::after {
+          content: '';
+          position: absolute;
+          left: 1rem;
+          right: 1rem;
+          bottom: 0.54rem;
+          height: 2px;
+          border-radius: 999px;
+          background: linear-gradient(90deg, transparent, var(--uiverse-field-line), var(--uiverse-field-line-alt), transparent);
+          opacity: 0.54;
+          transform: scaleX(0.22);
+          transform-origin: left center;
+          transition: transform 320ms cubic-bezier(0.32, 0.72, 0, 1), opacity 320ms ease;
+        }
+        .uiverse-auth-field:hover,
+        .uiverse-auth-field:focus-within {
+          transform: translateY(-2px);
+          box-shadow:
+            inset 0 1px 0 rgba(255, 255, 255, 0.14),
+            0 18px 0 -11px var(--uiverse-field-shadow),
+            0 22px 44px rgba(0, 0, 0, 0.24);
+        }
+        .uiverse-auth-field:focus-within::after {
           opacity: 1;
+          transform: scaleX(1);
         }
-        .magnetic-glow > input {
-          position: relative;
-          z-index: 1;
+        .uiverse-auth-label {
+          position: absolute;
+          left: 3rem;
+          top: 50%;
+          z-index: 10;
+          max-width: calc(100% - 5.4rem);
+          overflow: hidden;
+          color: var(--uiverse-label);
+          font-size: 0.86rem;
+          font-weight: 500;
+          letter-spacing: 0.02em;
+          line-height: 1;
+          pointer-events: none;
+          text-overflow: ellipsis;
+          transform: translate3d(0, -50%, 0);
+          transform-origin: left top;
+          transition: transform 260ms cubic-bezier(0.32, 0.72, 0, 1), color 260ms ease, font-size 260ms ease, letter-spacing 260ms ease;
+          white-space: nowrap;
         }
-        .magnetic-glow > svg,
-        .magnetic-glow > button {
-          z-index: 2;
+        .uiverse-auth-input:focus ~ .uiverse-auth-label,
+        .uiverse-auth-input:not(:placeholder-shown) ~ .uiverse-auth-label {
+          color: var(--uiverse-label-active);
+          font-size: 0.72rem;
+          letter-spacing: 0.08em;
+          transform: translate3d(0, -1.15rem, 0);
+        }
+        .uiverse-auth-input:-webkit-autofill {
+          -webkit-text-fill-color: ${isLight ? "#0f172a" : "#ffffff"};
+          box-shadow: 0 0 0 1000px transparent inset;
+          transition: background-color 9999s ease-out;
+        }
+        .uiverse-auth-submit::before {
+          content: '';
+          position: absolute;
+          inset: 1px;
+          border-radius: inherit;
+          background: linear-gradient(135deg, rgba(255, 255, 255, 0.18), transparent 42%, rgba(255, 255, 255, 0.08));
+          opacity: 0.82;
+          pointer-events: none;
         }
       `}</style>
       <DataCityLoginBackground
@@ -361,7 +452,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
         {/* Form */}
         <form
           onSubmit={(e) => { e.preventDefault(); handleSubmit(); }}
-          className="flex flex-col gap-4"
+          className={cn("uiverse-auth-form flex flex-col gap-4", isLight && "uiverse-auth-form-light")}
         >
           {/* Name field — always rendered, height animated via grid */}
           <div
@@ -371,73 +462,52 @@ export function LoginPage({ onLogin }: LoginPageProps) {
             )}
           >
             <div className="overflow-hidden">
-              <div
-                className="relative rounded-md magnetic-glow"
-                onMouseMove={(e) => {
-                  const rect = e.currentTarget.getBoundingClientRect();
-                  const x = ((e.clientX - rect.left) / rect.width) * 100;
-                  const y = ((e.clientY - rect.top) / rect.height) * 100;
-                  e.currentTarget.style.setProperty("--mx", `${x}%`);
-                  e.currentTarget.style.setProperty("--my", `${y}%`);
-                }}
-              >
+              <div className="uiverse-auth-field group">
                 <User className={iconClass} />
                 <Input
                   type="text"
-                  placeholder={t("login.fullName")}
+                  placeholder=" "
+                  aria-label={t("login.fullName")}
                   className={fieldClass}
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   required={mode === "register"}
                 />
+                <span className="uiverse-auth-label">{t("login.fullName")}</span>
               </div>
             </div>
           </div>
 
-          <div
-            className="relative rounded-md magnetic-glow"
-            onMouseMove={(e) => {
-              const rect = e.currentTarget.getBoundingClientRect();
-              const x = ((e.clientX - rect.left) / rect.width) * 100;
-              const y = ((e.clientY - rect.top) / rect.height) * 100;
-              e.currentTarget.style.setProperty("--mx", `${x}%`);
-              e.currentTarget.style.setProperty("--my", `${y}%`);
-            }}
-          >
+          <div className="uiverse-auth-field group">
             <Mail className={iconClass} />
             <Input
               type="email"
-              placeholder={t("login.email")}
+              placeholder=" "
+              aria-label={t("login.email")}
               className={fieldClass}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
             />
+            <span className="uiverse-auth-label">{t("login.email")}</span>
           </div>
 
-          <div
-            className="relative rounded-md magnetic-glow"
-            onMouseMove={(e) => {
-              const rect = e.currentTarget.getBoundingClientRect();
-              const x = ((e.clientX - rect.left) / rect.width) * 100;
-              const y = ((e.clientY - rect.top) / rect.height) * 100;
-              e.currentTarget.style.setProperty("--mx", `${x}%`);
-              e.currentTarget.style.setProperty("--my", `${y}%`);
-            }}
-          >
+          <div className="uiverse-auth-field group">
             <Lock className={iconClass} />
             <Input
               type={showPassword ? "text" : "password"}
-              placeholder={t("login.password")}
+              placeholder=" "
+              aria-label={t("login.password")}
               className={passwordFieldClass}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
             />
+            <span className="uiverse-auth-label">{t("login.password")}</span>
             <button
               type="button"
               onClick={() => setShowPassword(!showPassword)}
-              className={cn("absolute right-3 top-1/2 -translate-y-1/2 cursor-pointer transition-transform active:scale-90", isLight ? "text-surface-400 hover:text-surface-700" : "text-slate-300/55 hover:text-white")}
+              className={cn("absolute right-4 top-1/2 z-20 -translate-y-1/2 cursor-pointer transition-transform active:scale-90", isLight ? "text-surface-500 hover:text-[#17435f]" : "text-slate-300/60 hover:text-amber-100")}
             >
               {showPassword ? (
                 <EyeOff className="h-4 w-4" />
@@ -471,20 +541,22 @@ export function LoginPage({ onLogin }: LoginPageProps) {
             <Button
               type="submit"
               className={cn(
-                "relative mt-2 h-10 w-full cursor-pointer font-semibold transition-all hover:-translate-y-px active:translate-y-0 active:scale-[0.98]",
+                "uiverse-auth-submit relative mt-1 h-12 w-full cursor-pointer overflow-hidden rounded-[1.05rem] border font-semibold tracking-[0.02em] transition-all hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.98]",
                 isLight
-                  ? "bg-[linear-gradient(135deg,#10283d,#1f6ea6_48%,#b46c08)] text-white shadow-[0_16px_34px_rgba(16,40,61,0.22)]"
-                  : "border border-indigo-200/35 bg-[linear-gradient(135deg,#eef2ff_0%,#c7d2fe_48%,#a78bfa_100%)] text-[#111827] shadow-[0_16px_42px_rgba(99,102,241,0.24),0_0_30px_rgba(168,85,247,0.16)] hover:border-white/70 hover:shadow-[0_18px_46px_rgba(129,140,248,0.32),0_0_36px_rgba(168,85,247,0.22)]"
+                  ? "border-[#10283d]/20 bg-[#212121] text-white shadow-[0_16px_0_-10px_rgba(23,67,95,0.22),0_18px_36px_rgba(23,67,95,0.22)] hover:shadow-[0_18px_0_-10px_rgba(23,67,95,0.28),0_24px_44px_rgba(23,67,95,0.26)]"
+                  : "border-white/18 bg-[#f5f7fb] text-[#111827] shadow-[0_16px_0_-10px_rgba(246,184,61,0.32),0_18px_44px_rgba(99,102,241,0.24),0_0_34px_rgba(246,184,61,0.16)] hover:border-white/55 hover:shadow-[0_18px_0_-10px_rgba(246,184,61,0.42),0_24px_52px_rgba(129,140,248,0.3),0_0_40px_rgba(246,184,61,0.2)]"
               )}
               disabled={submitting}
             >
-            {submitting ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : mode === "login" ? (
-              t("login.signIn")
-            ) : (
-              t("login.createAccountBtn")
-            )}
+            <span className="relative z-10 inline-flex items-center justify-center">
+              {submitting ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : mode === "login" ? (
+                t("login.signIn")
+              ) : (
+                t("login.createAccountBtn")
+              )}
+            </span>
           </Button>
           </div>
 
