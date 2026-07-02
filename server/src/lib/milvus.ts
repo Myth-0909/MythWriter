@@ -1,3 +1,4 @@
+import net from "node:net";
 import {
   DataType,
   IndexType,
@@ -45,9 +46,91 @@ export type MilvusLikeClient = {
 };
 
 export type MilvusStore = ReturnType<typeof createMilvusStore>;
+export type MilvusEndpoint = { host: string; port: number };
+export type MilvusReachabilityProbe = (endpoint: MilvusEndpoint, timeoutMs: number) => Promise<void>;
+export type MilvusStatusDependencies = {
+  checkReachable?: () => Promise<void>;
+  initCollections?: () => Promise<void>;
+};
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+export function isMilvusSdkError(error: unknown): boolean {
+  const message = errorMessage(error);
+  const stack = error instanceof Error ? error.stack || "" : "";
+  return (
+    message.includes("DEADLINE_EXCEEDED") ||
+    stack.includes("@zilliz/milvus2-sdk-node") ||
+    stack.includes("@grpc/grpc-js")
+  );
+}
+
+function installMilvusUnhandledRejectionGuard() {
+  const marker = "__mythwriterMilvusUnhandledRejectionGuard";
+  const globalState = globalThis as Record<string, unknown>;
+  if (globalState[marker]) return;
+  globalState[marker] = true;
+
+  process.on("unhandledRejection", (reason) => {
+    if (isMilvusSdkError(reason)) {
+      console.warn("[Milvus] SDK request failed:", errorMessage(reason));
+      return;
+    }
+
+    setImmediate(() => {
+      throw reason instanceof Error ? reason : new Error(String(reason));
+    });
+  });
+}
+
+installMilvusUnhandledRejectionGuard();
 
 function normalizeMilvusAddress(address: string): string {
   return address.trim().replace(/^https?:\/\//i, "").replace(/\/+$/, "");
+}
+
+export function parseMilvusEndpoint(address: string): MilvusEndpoint {
+  const trimmed = address.trim();
+  const parsed = new URL(/^[a-z]+:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`);
+  return {
+    host: parsed.hostname,
+    port: Number(parsed.port || 19530),
+  };
+}
+
+export function socketMilvusReachabilityProbe(endpoint: MilvusEndpoint, timeoutMs: number): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const socket = net.createConnection({ host: endpoint.host, port: endpoint.port });
+    let settled = false;
+    const finish = (error?: Error) => {
+      if (settled) return;
+      settled = true;
+      socket.removeAllListeners();
+      socket.destroy();
+      if (error) reject(error);
+      else resolve();
+    };
+
+    socket.setTimeout(timeoutMs);
+    socket.once("connect", () => finish());
+    socket.once("timeout", () => finish(new Error(`connection timed out after ${timeoutMs}ms`)));
+    socket.once("error", (error) => finish(error));
+  });
+}
+
+async function ensureDefaultMilvusReachable(
+  probe: MilvusReachabilityProbe = socketMilvusReachabilityProbe
+) {
+  const endpoint = parseMilvusEndpoint(DEFAULT_MILVUS_ADDRESS);
+  const timeoutMs = Number(process.env.MILVUS_CONNECT_TIMEOUT_MS || process.env.MILVUS_TIMEOUT_MS || 3000);
+  try {
+    await probe(endpoint, timeoutMs);
+  } catch (error) {
+    const message = errorMessage(error);
+    throw new Error(`Milvus ${endpoint.host}:${endpoint.port} unavailable: ${message}`);
+  }
 }
 
 function truncate(value: string, maxLength: number): string {
@@ -255,6 +338,7 @@ function getDefaultStore(): MilvusStore {
 }
 
 export async function initCollections() {
+  await ensureDefaultMilvusReachable();
   return getDefaultStore().initCollections();
 }
 
@@ -265,37 +349,46 @@ export async function insertKnowledge(
   description: string,
   vector: number[]
 ) {
+  await ensureDefaultMilvusReachable();
   return getDefaultStore().insertKnowledge(userId, knowledgeId, title, description, vector);
 }
 
 export async function insertDocumentChunks(userId: string, documentId: string, chunks: DocumentChunkVector[]) {
+  await ensureDefaultMilvusReachable();
   return getDefaultStore().insertDocumentChunks(userId, documentId, chunks);
 }
 
 export async function deleteKnowledge(knowledgeId: string) {
+  await ensureDefaultMilvusReachable();
   return getDefaultStore().deleteKnowledge(knowledgeId);
 }
 
 export async function deleteDocumentChunks(documentId: string) {
+  await ensureDefaultMilvusReachable();
   return getDefaultStore().deleteDocumentChunks(documentId);
 }
 
 export async function searchKnowledge(userId: string, queryVector: number[], topK = 5) {
+  await ensureDefaultMilvusReachable();
   return getDefaultStore().searchKnowledge(userId, queryVector, topK);
 }
 
 export async function searchDocuments(userId: string, queryVector: number[], topK = 5) {
+  await ensureDefaultMilvusReachable();
   return getDefaultStore().searchDocuments(userId, queryVector, topK);
 }
 
-export async function getMilvusStatus(): Promise<{ available: boolean; error?: string }> {
+export async function getMilvusStatus(
+  deps: MilvusStatusDependencies = {}
+): Promise<{ available: boolean; error?: string }> {
   try {
-    await initCollections();
+    if (deps.checkReachable) await deps.checkReachable();
+    await (deps.initCollections || initCollections)();
     return { available: true };
   } catch (error) {
     return {
       available: false,
-      error: error instanceof Error ? error.message : String(error),
+      error: errorMessage(error),
     };
   }
 }

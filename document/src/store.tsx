@@ -121,8 +121,13 @@ export function DocumentStoreProvider({ children }: { children: ReactNode }) {
       const { document: doc } = await api.getDocument(id);
       updateLocalDoc(doc);
       return doc;
-    } catch (error) {
-      console.error("Failed to fetch document:", error);
+    } catch (error: any) {
+      const message = error?.message || "";
+      if (message.includes("文档不存在") || message.includes("Document not found")) {
+        console.warn("Document is no longer available:", message);
+      } else {
+        console.error("Failed to fetch document:", error);
+      }
       return undefined;
     }
   }, [updateLocalDoc]);

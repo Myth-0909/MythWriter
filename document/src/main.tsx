@@ -10,23 +10,26 @@ import { I18nProvider } from "@/components/I18nProvider";
 import { AuthProvider } from "@/auth";
 import { DocumentStoreProvider } from "@/store";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { AppErrorBoundary } from "@/components/AppErrorBoundary";
 
 gsap.registerPlugin(useGSAP);
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
     <I18nProvider>
-      <ThemeProvider>
-        <ToastProvider>
-          <AuthProvider>
-            <DocumentStoreProvider>
-              <TooltipProvider>
-                <App />
-              </TooltipProvider>
-            </DocumentStoreProvider>
-          </AuthProvider>
-        </ToastProvider>
-      </ThemeProvider>
+      <AppErrorBoundary>
+        <ThemeProvider>
+          <ToastProvider>
+            <AuthProvider>
+              <DocumentStoreProvider>
+                <TooltipProvider>
+                  <App />
+                </TooltipProvider>
+              </DocumentStoreProvider>
+            </AuthProvider>
+          </ToastProvider>
+        </ThemeProvider>
+      </AppErrorBoundary>
     </I18nProvider>
   </React.StrictMode>,
 );

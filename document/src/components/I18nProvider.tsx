@@ -126,6 +126,10 @@ const translations = {
   "common.copied": { zh: "已复制", en: "Copied" },
   "common.loading": { zh: "加载中...", en: "Loading..." },
   "common.close": { zh: "关闭", en: "Close" },
+  "errorBoundary.title": { zh: "页面暂时无法显示", en: "Page temporarily unavailable" },
+  "errorBoundary.description": { zh: "我们已阻止空白页。请重试或刷新页面。", en: "A blank screen was prevented. Please retry or refresh the page." },
+  "errorBoundary.retry": { zh: "重试", en: "Retry" },
+  "errorBoundary.reload": { zh: "刷新页面", en: "Reload page" },
 
   // Dates
   "date.separator": { zh: " · ", en: " · " },

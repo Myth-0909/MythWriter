@@ -5,6 +5,9 @@ import {
   KNOWLEDGE_COLLECTION,
   VECTOR_DIMENSION,
   createMilvusStore,
+  getMilvusStatus,
+  isMilvusSdkError,
+  parseMilvusEndpoint,
 } from "./milvus";
 
 function createFakeClient() {
@@ -57,6 +60,58 @@ function createFakeClient() {
 }
 
 describe("milvus store", () => {
+  it("parses Milvus endpoints with or without a protocol", () => {
+    assert.deepEqual(parseMilvusEndpoint("http://172.16.0.44:19530"), {
+      host: "172.16.0.44",
+      port: 19530,
+    });
+    assert.deepEqual(parseMilvusEndpoint("localhost"), {
+      host: "localhost",
+      port: 19530,
+    });
+    assert.deepEqual(parseMilvusEndpoint("milvus.local:19531"), {
+      host: "milvus.local",
+      port: 19531,
+    });
+  });
+
+  it("classifies Milvus SDK errors without matching ordinary errors", () => {
+    assert.equal(isMilvusSdkError(new Error("4 DEADLINE_EXCEEDED: Deadline exceeded")), true);
+    assert.equal(isMilvusSdkError(Object.assign(new Error("boom"), { stack: "at @grpc/grpc-js/src/call.ts" })), true);
+    assert.equal(isMilvusSdkError(new Error("ordinary application failure")), false);
+  });
+
+  it("reports Milvus as unavailable when startup checks fail", async () => {
+    let initCalled = false;
+    const result = await getMilvusStatus({
+      checkReachable: async () => {
+        throw new Error("network unreachable");
+      },
+      initCollections: async () => {
+        initCalled = true;
+      },
+    });
+
+    assert.deepEqual(result, {
+      available: false,
+      error: "network unreachable",
+    });
+    assert.equal(initCalled, false);
+  });
+
+  it("reports Milvus initialization failures without throwing", async () => {
+    const result = await getMilvusStatus({
+      initCollections: async () => {
+        throw new Error("collection setup failed");
+      },
+    });
+
+    assert.deepEqual(result, {
+      available: false,
+      error: "collection setup failed",
+    });
+  });
+
   it("creates and loads vector collections when they are missing", async () => {
     const { client, calls } = createFakeClient();
     const store = createMilvusStore(client);
