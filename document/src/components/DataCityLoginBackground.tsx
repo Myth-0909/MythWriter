@@ -18,6 +18,15 @@ type Shockwave = {
   origin: THREE.Vector2;
 };
 
+type CityBlock = {
+  x: number;
+  z: number;
+  width: number;
+  depth: number;
+  height: number;
+  tier: number;
+};
+
 const positionShader = `
   uniform float time;
   uniform sampler2D velocityTexture;
@@ -50,21 +59,26 @@ const velocityShader = `
     vec3 textTarget = texture2D(textTargetTexture, uv).xyz;
 
     float mouseDistance = distance(position.xz, mouse);
-    float mouseField = smoothstep(3.0, 0.0, mouseDistance) * mouseActive;
-    float textMix = clamp(mouseField * (0.35 + mouseSpeed * 0.65), 0.0, 1.0);
+    float mouseField = smoothstep(5.2, 0.0, mouseDistance) * mouseActive;
+    float textMix = clamp(mouseField * (0.55 + mouseSpeed * 0.95), 0.0, 1.0);
     vec3 target = mix(cityTarget, textTarget, textMix);
 
-    vec3 spring = (target - position) * (0.016 + textMix * 0.028);
+    vec3 spring = (target - position) * (0.026 + textMix * 0.062);
+    vec2 away2 = normalize(position.xz - mouse + vec2(0.001));
+    float swirl = sin(time * 4.0 + position.y * 1.7 + position.x * 0.4);
     velocity += spring;
-    velocity.y -= 0.0009;
-    velocity *= 0.928;
+    velocity += vec3(away2.y, 0.0, -away2.x) * mouseField * swirl * (0.018 + mouseSpeed * 0.035);
+    velocity += vec3(away2.x, 1.35, away2.y) * mouseField * (0.018 + mouseSpeed * 0.045);
+    velocity.y -= 0.00045;
+    velocity *= 0.902;
 
     if (shockTime >= 0.0 && shockTime <= 2.0) {
-      float radius = shockTime * 5.7;
-      float wave = smoothstep(0.7, 0.0, abs(mouseDistance - radius));
+      float shockDistance = distance(position.xz, shockOrigin);
+      float radius = shockTime * 7.2;
+      float wave = smoothstep(0.92, 0.0, abs(shockDistance - radius));
       vec2 away2 = normalize(position.xz - shockOrigin + vec2(0.001));
       vec3 away = vec3(away2.x, 0.34, away2.y);
-      velocity += away * wave * (1.0 - shockTime / 2.0) * 0.19;
+      velocity += away * wave * (1.0 - shockTime / 2.0) * 0.36;
     }
 
     gl_FragColor = vec4(velocity, 1.0);
@@ -155,29 +169,123 @@ function createTextTargets() {
   return points;
 }
 
-function createCityGeometry() {
-  const geometries: THREE.BufferGeometry[] = [];
+function generateCityBlocks() {
+  const blocks: CityBlock[] = [];
   const random = mulberry32(18);
 
-  for (let x = -5; x <= 5; x++) {
-    for (let z = -4; z <= 4; z++) {
-      const distance = Math.hypot(x * 0.78, z * 0.9);
-      const height = Math.max(0.8, 5.8 - distance * 0.72 + random() * 2.0);
-      const width = 0.45 + random() * 0.42;
-      const depth = 0.45 + random() * 0.42;
-      const geometry = new THREE.BoxGeometry(width, height, depth, 3, 10, 3);
-      geometry.translate(x * 0.86 + (random() - 0.5) * 0.15, height / 2, z * 0.86 + (random() - 0.5) * 0.15);
-      geometries.push(geometry);
+  for (let x = -8; x <= 8; x++) {
+    for (let z = -5; z <= 5; z++) {
+      const distance = Math.hypot(x * 0.58, z * 0.82);
+      const core = Math.max(0, 1 - distance / 7.0);
+      const skyline = Math.pow(core, 1.85) * 10.5;
+      const towerChance = random();
+      const height = Math.max(0.65, 1.2 + skyline + random() * 3.4 + (towerChance > 0.92 ? random() * 5.5 : 0));
+      const width = 0.34 + random() * 0.44;
+      const depth = 0.34 + random() * 0.5;
+      blocks.push({
+        x: x * 0.67 + (random() - 0.5) * 0.16,
+        z: z * 0.72 + (random() - 0.5) * 0.16,
+        width,
+        depth,
+        height,
+        tier: core,
+      });
     }
   }
 
-  const spire = new THREE.CylinderGeometry(0.34, 0.7, 8.2, 8, 14);
-  spire.translate(0, 4.1, 0);
-  geometries.push(spire);
+  blocks.push({ x: 0, z: 0, width: 0.78, depth: 0.78, height: 16.8, tier: 1 });
+  blocks.push({ x: -0.72, z: 0.34, width: 0.42, depth: 0.42, height: 13.8, tier: 1 });
+  blocks.push({ x: 0.72, z: -0.34, width: 0.42, depth: 0.42, height: 12.6, tier: 1 });
+  return blocks;
+}
+
+function createCityGeometry() {
+  const geometries: THREE.BufferGeometry[] = [];
+  const blocks = generateCityBlocks();
+
+  blocks.forEach((block) => {
+    const geometry = new THREE.BoxGeometry(block.width, block.height, block.depth, 4, 18, 4);
+    geometry.translate(block.x, block.height / 2, block.z);
+    geometries.push(geometry);
+  });
 
   const merged = mergeGeometries(geometries, false);
   geometries.forEach((geometry) => geometry.dispose());
   return merged;
+}
+
+function createCitySilhouette() {
+  const blocks = generateCityBlocks();
+  const group = new THREE.Group();
+  const bodyGeometry = new THREE.BoxGeometry(1, 1, 1);
+  const bodyMaterial = new THREE.MeshStandardMaterial({
+    color: "#071527",
+    emissive: "#0d3d74",
+    emissiveIntensity: 0.32,
+    roughness: 0.42,
+    metalness: 0.62,
+    transparent: true,
+    opacity: 0.5,
+    depthWrite: false,
+  });
+  const bodyMesh = new THREE.InstancedMesh(bodyGeometry, bodyMaterial, blocks.length);
+  const matrix = new THREE.Matrix4();
+  const color = new THREE.Color();
+
+  blocks.forEach((block, index) => {
+    matrix.compose(
+      new THREE.Vector3(block.x, block.height / 2 - 0.02, block.z),
+      new THREE.Quaternion(),
+      new THREE.Vector3(block.width, block.height, block.depth),
+    );
+    bodyMesh.setMatrixAt(index, matrix);
+    color.set("#0a1c32").lerp(new THREE.Color("#143d69"), block.tier);
+    bodyMesh.setColorAt(index, color);
+  });
+  group.add(bodyMesh);
+
+  const edgePositions: number[] = [];
+  blocks.forEach((block) => {
+    const x0 = block.x - block.width / 2;
+    const x1 = block.x + block.width / 2;
+    const z0 = block.z - block.depth / 2;
+    const z1 = block.z + block.depth / 2;
+    const y0 = 0;
+    const y1 = block.height;
+    edgePositions.push(
+      x0, y0, z0, x0, y1, z0,
+      x1, y0, z0, x1, y1, z0,
+      x1, y0, z1, x1, y1, z1,
+      x0, y0, z1, x0, y1, z1,
+      x0, y1, z0, x1, y1, z0,
+      x1, y1, z0, x1, y1, z1,
+      x1, y1, z1, x0, y1, z1,
+      x0, y1, z1, x0, y1, z0,
+    );
+  });
+  const edgeGeometry = new THREE.BufferGeometry();
+  edgeGeometry.setAttribute("position", new THREE.Float32BufferAttribute(edgePositions, 3));
+  const edgeMaterial = new THREE.LineBasicMaterial({
+    color: "#62c9ff",
+    transparent: true,
+    opacity: 0.22,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+  });
+  group.add(new THREE.LineSegments(edgeGeometry, edgeMaterial));
+
+  const antennaMaterial = new THREE.LineBasicMaterial({
+    color: "#f6b83d",
+    transparent: true,
+    opacity: 0.7,
+    blending: THREE.AdditiveBlending,
+  });
+  const antennaGeometry = new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(0, 16.2, 0),
+    new THREE.Vector3(0, 20.2, 0),
+  ]);
+  group.add(new THREE.Line(antennaGeometry, antennaMaterial));
+  return group;
 }
 
 function createLogoSprite() {
@@ -324,19 +432,73 @@ function createStars() {
 }
 
 function createGrid() {
-  const grid = new THREE.GridHelper(24, 48, "#4a90d9", "#7b2fbe");
+  const grid = new THREE.GridHelper(34, 68, "#4a90d9", "#7b2fbe");
   grid.material.transparent = true;
-  grid.material.opacity = 0.35;
+  grid.material.opacity = 0.42;
   grid.position.y = -0.03;
   return grid;
 }
 
+function createCursorHalo() {
+  const group = new THREE.Group();
+  const ringMaterial = new THREE.MeshBasicMaterial({
+    color: "#66d9ff",
+    transparent: true,
+    opacity: 0,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  });
+  const ring = new THREE.Mesh(new THREE.RingGeometry(0.55, 0.62, 96), ringMaterial);
+  ring.rotation.x = -Math.PI / 2;
+  group.add(ring);
+
+  const coreMaterial = new THREE.MeshBasicMaterial({
+    color: "#f6b83d",
+    transparent: true,
+    opacity: 0,
+    blending: THREE.AdditiveBlending,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  });
+  const core = new THREE.Mesh(new THREE.RingGeometry(0.08, 0.12, 48), coreMaterial);
+  core.rotation.x = -Math.PI / 2;
+  group.add(core);
+
+  const light = new THREE.PointLight("#66d9ff", 0, 5.5, 2);
+  light.position.y = 1.1;
+  group.add(light);
+  group.position.set(1000, 0.06, 1000);
+  return group;
+}
+
+function createShockRings(count: number) {
+  return Array.from({ length: count }, () => {
+    const material = new THREE.MeshBasicMaterial({
+      color: "#f6b83d",
+      transparent: true,
+      opacity: 0,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    });
+    const ring = new THREE.Mesh(new THREE.RingGeometry(0.94, 1, 128), material);
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.y = 0.12;
+    ring.visible = false;
+    return ring;
+  });
+}
+
 function createLights(scene: THREE.Scene) {
-  scene.add(new THREE.AmbientLight("#6b8cff", 0.38));
+  scene.add(new THREE.AmbientLight("#6b8cff", 0.22));
+  const keyLight = new THREE.DirectionalLight("#9bdcff", 1.2);
+  keyLight.position.set(-5, 12, 10);
+  scene.add(keyLight);
   const random = mulberry32(168);
-  for (let i = 0; i < 18; i++) {
-    const light = new THREE.PointLight("#f6b83d", 0.55 + random() * 0.8, 4.5, 2);
-    light.position.set((random() - 0.5) * 8.8, 2.2 + random() * 5.8, (random() - 0.5) * 7.2);
+  for (let i = 0; i < 36; i++) {
+    const light = new THREE.PointLight(random() > 0.38 ? "#f6b83d" : "#62c9ff", 0.35 + random() * 0.9, 5.8, 2);
+    light.position.set((random() - 0.5) * 12.8, 1.8 + random() * 11.5, (random() - 0.5) * 8.6);
     scene.add(light);
   }
 }
@@ -401,11 +563,11 @@ export function DataCityLoginBackground({ className = "" }: DataCityLoginBackgro
     container.appendChild(renderer.domElement);
 
     const scene = new THREE.Scene();
-    scene.fog = new THREE.FogExp2("#070b16", 0.035);
+    scene.fog = new THREE.FogExp2("#040813", 0.044);
 
-    const camera = new THREE.PerspectiveCamera(44, container.clientWidth / container.clientHeight, 0.1, 90);
-    camera.position.set(0, 6.3, 15.4);
-    camera.lookAt(0, 3.4, 0);
+    const camera = new THREE.PerspectiveCamera(42, container.clientWidth / container.clientHeight, 0.1, 110);
+    camera.position.set(0, 7.4, 18.2);
+    camera.lookAt(0, 5.2, 0);
 
     const cityTargets = sampleCity();
     const textTargets = createTextTargets();
@@ -450,6 +612,9 @@ export function DataCityLoginBackground({ className = "" }: DataCityLoginBackgro
     const particles = new THREE.Points(particleGeometry, particleMaterial);
     scene.add(particles);
 
+    const citySilhouette = createCitySilhouette();
+    scene.add(citySilhouette);
+
     const stars = createStars();
     scene.add(stars);
 
@@ -458,6 +623,12 @@ export function DataCityLoginBackground({ className = "" }: DataCityLoginBackgro
 
     const logo = createLogoSprite();
     scene.add(logo);
+
+    const cursorHalo = createCursorHalo();
+    scene.add(cursorHalo);
+
+    const shockRings = createShockRings(4);
+    shockRings.forEach((ring) => scene.add(ring));
 
     createLights(scene);
 
@@ -554,15 +725,52 @@ export function DataCityLoginBackground({ className = "" }: DataCityLoginBackgro
 
       const gridMaterial = grid.material as THREE.Material & { color: THREE.Color; opacity: number };
       gridMaterial.color.lerpColors(new THREE.Color("#4a90d9"), new THREE.Color("#7b2fbe"), 0.5 + Math.sin(time * 0.7) * 0.5);
-      gridMaterial.opacity = 0.22 + Math.sin(time * 1.2) * 0.08;
+      gridMaterial.opacity = 0.3 + Math.sin(time * 1.2) * 0.1;
+
+      cursorHalo.position.set(mouse.x, 0.1, mouse.y);
+      cursorHalo.visible = Boolean(mouseActive);
+      cursorHalo.scale.setScalar(1.0 + Math.sin(time * 5.5) * 0.08 + mouseSpeed * 0.45);
+      cursorHalo.children.forEach((child, index) => {
+        if (child instanceof THREE.Mesh) {
+          const material = child.material as THREE.MeshBasicMaterial;
+          material.opacity = mouseActive ? (index === 0 ? 0.42 : 0.86) : 0;
+        }
+        if (child instanceof THREE.PointLight) {
+          child.intensity = mouseActive ? 2.3 + mouseSpeed * 4.5 : 0;
+        }
+      });
+
+      shockRings.forEach((ring, index) => {
+        const shockwave = shockwaves[shockwaves.length - 1 - index];
+        const material = ring.material as THREE.MeshBasicMaterial;
+        if (!shockwave) {
+          ring.visible = false;
+          material.opacity = 0;
+          return;
+        }
+        const age = time - shockwave.startedAt;
+        if (age < 0 || age > 2) {
+          ring.visible = false;
+          material.opacity = 0;
+          return;
+        }
+        ring.visible = true;
+        ring.position.x = shockwave.origin.x;
+        ring.position.z = shockwave.origin.y;
+        ring.scale.setScalar(0.8 + age * 7.2);
+        material.opacity = (1 - age / 2) * 0.78;
+      });
 
       const logoPulse = mouseActive ? 1.0 + Math.sin(time * 6.5) * 0.08 : 1.0 + Math.sin(time * 1.4) * 0.025;
-      logo.scale.set(3.8 * logoPulse, 0.95 * logoPulse, 1);
+      logo.scale.set(4.4 * logoPulse, 1.1 * logoPulse, 1);
       const logoMaterial = logo.material as THREE.SpriteMaterial;
-      logoMaterial.opacity = mouseActive ? 0.95 : 0.72;
+      logoMaterial.opacity = mouseActive ? 1 : 0.82;
 
-      camera.position.x = Math.sin(time * 0.08) * 0.55;
-      camera.lookAt(0, 3.4, 0);
+      citySilhouette.rotation.y = Math.sin(time * 0.08) * 0.055;
+
+      camera.position.x = Math.sin(time * 0.08) * 0.72 + (mouseActive ? THREE.MathUtils.clamp(mouse.x * 0.035, -0.35, 0.35) : 0);
+      camera.position.y = 7.4 + Math.sin(time * 0.11) * 0.28;
+      camera.lookAt(0, 5.05, 0);
       renderer.render(scene, camera);
     };
 
@@ -583,6 +791,30 @@ export function DataCityLoginBackground({ className = "" }: DataCityLoginBackgro
       (grid.material as THREE.Material).dispose();
       (logo.material as THREE.SpriteMaterial).map?.dispose();
       (logo.material as THREE.Material).dispose();
+      citySilhouette.traverse((object) => {
+        if (object instanceof THREE.Mesh || object instanceof THREE.Line || object instanceof THREE.LineSegments) {
+          object.geometry.dispose();
+          if (Array.isArray(object.material)) {
+            object.material.forEach((material) => material.dispose());
+          } else {
+            object.material.dispose();
+          }
+        }
+      });
+      cursorHalo.traverse((object) => {
+        if (object instanceof THREE.Mesh) {
+          object.geometry.dispose();
+          if (Array.isArray(object.material)) {
+            object.material.forEach((material) => material.dispose());
+          } else {
+            object.material.dispose();
+          }
+        }
+      });
+      shockRings.forEach((ring) => {
+        ring.geometry.dispose();
+        (ring.material as THREE.Material).dispose();
+      });
       renderer.dispose();
       renderer.domElement.remove();
     };
@@ -594,7 +826,8 @@ export function DataCityLoginBackground({ className = "" }: DataCityLoginBackgro
       className={`pointer-events-auto absolute inset-0 overflow-hidden bg-[#050814] ${className}`}
       aria-hidden="true"
     >
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_38%,rgba(74,144,217,0.18),transparent_42%),linear-gradient(180deg,rgba(5,8,20,0.12),rgba(5,8,20,0.72))]" />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_28%,rgba(246,184,61,0.14),transparent_20%),radial-gradient(circle_at_50%_45%,rgba(74,144,217,0.26),transparent_44%),linear-gradient(180deg,rgba(2,6,18,0.04),rgba(2,6,18,0.86))]" />
+      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(180deg,rgba(255,255,255,0.025)_1px,transparent_1px)] bg-[size:96px_96px] opacity-40" />
     </div>
   );
 }

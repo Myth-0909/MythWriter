@@ -7,9 +7,8 @@ import { ShinyText } from "@/components/ShinyText";
 import { BrandLogo } from "@/components/BrandLogo";
 import { MagneticCard } from "@/components/MagneticCard";
 import { cn } from "@/lib/utils";
-import { Eye, EyeOff, Mail, Lock, User, ArrowRight, Loader2, Globe, Sun, Moon, Monitor } from "lucide-react";
+import { Eye, EyeOff, Mail, Lock, User, ArrowRight, Loader2, Globe } from "lucide-react";
 import { useI18n } from "@/components/I18nProvider";
-import { useTheme } from "@/components/ThemeProvider";
 import { useToast } from "@/components/Toast";
 import { api, setToken } from "@/api";
 
@@ -21,7 +20,6 @@ interface LoginPageProps {
 
 export function LoginPage({ onLogin }: LoginPageProps) {
   const { t, lang, toggleLang } = useI18n();
-  const { themeMode, setThemeMode } = useTheme();
   const { toast } = useToast();
   const [mode, setMode] = useState<Mode>("login");
   const [showPassword, setShowPassword] = useState(false);
@@ -83,14 +81,14 @@ export function LoginPage({ onLogin }: LoginPageProps) {
   };
 
   return (
-    <div className="relative flex h-screen w-full items-center justify-center overflow-hidden bg-surface-50 dark:bg-surface-950">
+    <div className="relative flex h-screen w-full items-center justify-center overflow-hidden bg-[#020612]">
       <style>{`
         .magnetic-glow::after {
           content: '';
           position: absolute;
           inset: 0;
           border-radius: inherit;
-          background: radial-gradient(circle at var(--mx, 50%) var(--my, 50%), rgba(168,139,89,0.12) 0%, transparent 55%);
+          background: radial-gradient(circle at var(--mx, 50%) var(--my, 50%), rgba(102,217,255,0.18) 0%, rgba(246,184,61,0.08) 32%, transparent 58%);
           pointer-events: none;
           opacity: 0;
           transition: opacity 0.3s ease;
@@ -113,51 +111,10 @@ export function LoginPage({ onLogin }: LoginPageProps) {
 
       {/* Top-right controls */}
       <div className="absolute top-6 right-6 z-20 flex items-center gap-3">
-        {/* Theme switch — same as settings page */}
-        <div className="relative grid w-[116px] grid-cols-3 gap-1 rounded-lg bg-white/70 p-1 backdrop-blur-md dark:bg-surface-900/70">
-          <div
-            className="absolute left-1 top-1 h-8 w-8 rounded-md bg-white shadow-sm transition-transform duration-300 ease-out dark:bg-surface-700"
-            style={{ transform: `translateX(${themeMode === "system" ? 0 : themeMode === "light" ? 36 : 72}px)` }}
-          />
-          <button
-            onClick={() => setThemeMode("system")}
-            className={`relative z-10 flex h-8 w-8 items-center justify-center rounded-md transition-colors cursor-pointer ${
-              themeMode === "system"
-                ? "text-surface-900 dark:text-surface-100"
-                : "text-surface-400 hover:text-surface-600 dark:hover:text-surface-300"
-            }`}
-            title={t("nav.followSystem")}
-          >
-            <Monitor className="h-4 w-4" />
-          </button>
-          <button
-            onClick={() => setThemeMode("light")}
-            className={`relative z-10 flex h-8 w-8 items-center justify-center rounded-md transition-colors cursor-pointer ${
-              themeMode === "light"
-                ? "text-amber-500"
-                : "text-surface-400 hover:text-surface-600 dark:hover:text-surface-300"
-            }`}
-            title={t("nav.lightMode")}
-          >
-            <Sun className="h-4 w-4" />
-          </button>
-          <button
-            onClick={() => setThemeMode("dark")}
-            className={`relative z-10 flex h-8 w-8 items-center justify-center rounded-md transition-colors cursor-pointer ${
-              themeMode === "dark"
-                ? "text-brand-500 dark:text-brand-400"
-                : "text-surface-400 hover:text-surface-600 dark:hover:text-surface-300"
-            }`}
-            title={t("nav.darkMode")}
-          >
-            <Moon className="h-4 w-4" />
-          </button>
-        </div>
-
         {/* Language switch */}
         <button
           onClick={toggleLang}
-          className="inline-flex items-center gap-1.5 rounded-full border border-surface-200/60 bg-white/70 backdrop-blur-md px-3 py-1.5 text-xs font-medium text-surface-600 shadow-sm transition-all duration-300 hover:bg-white hover:text-surface-900 hover:shadow-md active:scale-95 dark:border-surface-700/60 dark:bg-surface-900/70 dark:text-surface-400 dark:hover:bg-surface-900 dark:hover:text-surface-200"
+          className="inline-flex items-center gap-1.5 rounded-full border border-cyan-200/25 bg-[#071326]/70 px-3 py-1.5 text-xs font-medium text-cyan-50 shadow-[0_0_28px_rgba(74,144,217,0.22)] backdrop-blur-md transition-all duration-300 hover:border-amber-200/40 hover:bg-[#0b1e38]/80 hover:text-amber-100 active:scale-95"
         >
           <Globe className="h-3.5 w-3.5" />
           <span>{lang === "zh" ? "English" : "中文"}</span>
@@ -165,36 +122,36 @@ export function LoginPage({ onLogin }: LoginPageProps) {
       </div>
 
       {/* Login card — 3D magnetic tilt */}
-      <MagneticCard className="z-10 w-full max-w-[420px]" intensity={4}>
+      <MagneticCard className="z-10 w-full max-w-[420px] px-4 sm:px-0" intensity={5}>
         <div
-          className="w-full rounded-2xl border border-surface-200/80 bg-white/85 p-8 shadow-xl backdrop-blur-xl dark:border-surface-700/80 dark:bg-surface-900/85"
+          className="relative w-full overflow-hidden rounded-2xl border border-cyan-100/16 bg-[#07101f]/72 p-8 shadow-[0_24px_80px_rgba(0,0,0,0.48),0_0_80px_rgba(74,144,217,0.16),inset_0_1px_0_rgba(255,255,255,0.14)] backdrop-blur-2xl before:pointer-events-none before:absolute before:inset-0 before:bg-[linear-gradient(135deg,rgba(255,255,255,0.16),transparent_32%,rgba(246,184,61,0.08)_65%,transparent)] before:opacity-70"
         >
         {/* Logo */}
-        <div className="mb-8 text-center">
+        <div className="relative mb-8 text-center">
           <div className="mb-3 flex justify-center">
             <BrandLogo size="lg" />
           </div>
           <div>
             <ShinyText
               text={t("app.name")}
-              color={themeMode === "dark" ? "#e2e8f0" : "#0f172a"}
-              shineColor={themeMode === "dark" ? "#d8bd73" : "#b9954e"}
+                color="#e7eefc"
+                shineColor="#f6b83d"
               speed={2.5}
               direction="right"
               className="text-2xl font-bold tracking-normal"
             />
           </div>
-          <p className="mt-1 text-sm text-surface-500">
+          <p className="mt-1 text-sm text-cyan-100/62">
             {mode === "login" ? t("login.welcomeBack") : t("login.createAccount")}
           </p>
         </div>
 
         {/* Tabs */}
         <div
-          className="relative mb-6 grid grid-cols-2 gap-1 rounded-lg bg-surface-100 p-1 dark:bg-surface-800"
+          className="relative mb-6 grid grid-cols-2 gap-1 rounded-lg border border-white/8 bg-white/8 p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]"
         >
           <div
-            className="absolute bottom-1 left-1 top-1 w-[calc(50%-6px)] rounded-md bg-white shadow-sm transition-transform duration-300 ease-out dark:bg-surface-700"
+            className="absolute bottom-1 left-1 top-1 w-[calc(50%-6px)] rounded-md bg-[linear-gradient(135deg,rgba(102,217,255,0.3),rgba(246,184,61,0.22))] shadow-[0_0_24px_rgba(102,217,255,0.16)] transition-transform duration-300 ease-out"
             style={{ transform: mode === "register" ? "translateX(calc(100% + 4px))" : "translateX(0)" }}
           />
           <button
@@ -203,8 +160,8 @@ export function LoginPage({ onLogin }: LoginPageProps) {
               "relative z-10 rounded-md py-2 text-sm font-medium transition-colors duration-300 cursor-pointer",
               "active:scale-[0.97]",
               mode === "login"
-                ? "text-surface-900 dark:text-surface-100"
-                : "text-surface-500 hover:text-surface-700 dark:hover:text-surface-300"
+                ? "text-white"
+                : "text-cyan-100/52 hover:text-cyan-50"
             )}
           >
             {t("login.signIn")}
@@ -215,8 +172,8 @@ export function LoginPage({ onLogin }: LoginPageProps) {
               "relative z-10 rounded-md py-2 text-sm font-medium transition-colors duration-300 cursor-pointer",
               "active:scale-[0.97]",
               mode === "register"
-                ? "text-surface-900 dark:text-surface-100"
-                : "text-surface-500 hover:text-surface-700 dark:hover:text-surface-300"
+                ? "text-white"
+                : "text-cyan-100/52 hover:text-cyan-50"
             )}
           >
             {t("login.register")}
@@ -246,11 +203,11 @@ export function LoginPage({ onLogin }: LoginPageProps) {
                   e.currentTarget.style.setProperty("--my", `${y}%`);
                 }}
               >
-                <User className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-surface-400" />
+                <User className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-cyan-100/50" />
                 <Input
                   type="text"
                   placeholder={t("login.fullName")}
-                  className="pl-10 h-10 text-sm"
+                  className="h-10 border-white/10 bg-white/8 pl-10 text-sm text-cyan-50 placeholder:text-cyan-100/34 focus:border-cyan-200/35"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   required={mode === "register"}
@@ -269,11 +226,11 @@ export function LoginPage({ onLogin }: LoginPageProps) {
               e.currentTarget.style.setProperty("--my", `${y}%`);
             }}
           >
-            <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-surface-400" />
+            <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-cyan-100/50" />
             <Input
               type="email"
               placeholder={t("login.email")}
-              className="pl-10 h-10 text-sm"
+              className="h-10 border-white/10 bg-white/8 pl-10 text-sm text-cyan-50 placeholder:text-cyan-100/34 focus:border-cyan-200/35"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
@@ -290,11 +247,11 @@ export function LoginPage({ onLogin }: LoginPageProps) {
               e.currentTarget.style.setProperty("--my", `${y}%`);
             }}
           >
-            <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-surface-400" />
+            <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-cyan-100/50" />
             <Input
               type={showPassword ? "text" : "password"}
               placeholder={t("login.password")}
-              className="pl-10 pr-10 h-10 text-sm"
+              className="h-10 border-white/10 bg-white/8 pl-10 pr-10 text-sm text-cyan-50 placeholder:text-cyan-100/34 focus:border-cyan-200/35"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
@@ -302,7 +259,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
             <button
               type="button"
               onClick={() => setShowPassword(!showPassword)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-surface-400 hover:text-surface-600 cursor-pointer active:scale-90 transition-transform"
+              className="absolute right-3 top-1/2 -translate-y-1/2 cursor-pointer text-cyan-100/45 transition-transform hover:text-cyan-50 active:scale-90"
             >
               {showPassword ? (
                 <EyeOff className="h-4 w-4" />
@@ -324,7 +281,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
                 <button
                   type="button"
                   onClick={() => setForgotOpen(true)}
-                  className="text-xs text-surface-500 hover:text-surface-700 hover:underline cursor-pointer active:scale-[0.97] transition-transform dark:hover:text-surface-300"
+	                  className="cursor-pointer text-xs text-cyan-100/48 transition-transform hover:text-cyan-50 hover:underline active:scale-[0.97]"
                 >
                   {t("login.forgot")}
                 </button>
@@ -335,7 +292,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
           <div className="relative">
             <Button
               type="submit"
-              className="relative mt-2 h-10 w-full font-medium shadow-[0_10px_22px_rgba(15,42,35,0.16)] active:scale-[0.98] transition-transform cursor-pointer"
+	              className="relative mt-2 h-10 w-full cursor-pointer bg-[linear-gradient(135deg,#0b2d45,#123526_48%,#6b4b16)] font-medium text-white shadow-[0_14px_36px_rgba(0,0,0,0.35),0_0_28px_rgba(246,184,61,0.16)] transition-transform hover:brightness-110 active:scale-[0.98]"
               disabled={submitting}
             >
             {submitting ? (
@@ -349,14 +306,14 @@ export function LoginPage({ onLogin }: LoginPageProps) {
           </div>
 
           {/* Switch mode */}
-          <p className="mt-4 text-center text-xs text-surface-500">
+	          <p className="mt-4 text-center text-xs text-cyan-100/52">
             {mode === "login" ? (
               <>
                 {t("login.noAccount")}{" "}
                 <button
                   type="button"
                   onClick={switchMode}
-                  className="font-medium text-surface-900 hover:underline cursor-pointer active:scale-[0.97] transition-transform dark:text-surface-300"
+	                  className="cursor-pointer font-medium text-amber-100 transition-transform hover:underline active:scale-[0.97]"
                 >
                   {t("login.register")}
                   <ArrowRight className="ml-1 inline-block h-3 w-3" />
@@ -368,7 +325,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
                 <button
                   type="button"
                   onClick={switchMode}
-                  className="font-medium text-surface-900 hover:underline cursor-pointer active:scale-[0.97] transition-transform dark:text-surface-300"
+	                  className="cursor-pointer font-medium text-amber-100 transition-transform hover:underline active:scale-[0.97]"
                 >
                   {t("login.signIn")}
                   <ArrowRight className="ml-1 inline-block h-3 w-3" />
