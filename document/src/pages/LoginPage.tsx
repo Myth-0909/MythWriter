@@ -5,7 +5,7 @@ import { ForgotPasswordModal } from "@/components/ForgotPasswordModal";
 import { DataCityLoginBackground } from "@/components/DataCityLoginBackground";
 import { ShinyText } from "@/components/ShinyText";
 import { BrandLogo } from "@/components/BrandLogo";
-import { RotatingText } from "@/components/RotatingText";
+import { SplitText } from "@/components/SplitText";
 import { TargetCursor } from "@/components/TargetCursor";
 import { cn } from "@/lib/utils";
 import { Eye, EyeOff, Mail, Lock, User, ArrowRight, Loader2, Globe, Monitor, Moon, Sun } from "lucide-react";
@@ -228,26 +228,28 @@ export function LoginPage({ onLogin }: LoginPageProps) {
           style={authLayoutStyle}
         >
           <h1 className={cn("max-w-[640px] text-5xl font-black leading-[0.95] tracking-normal xl:text-7xl", registering ? "lg:ml-auto" : "", isLight ? "text-surface-950" : "text-white")}>
-            <RotatingText
+            <SplitText
               key={`title-${mode}-${lang}`}
-              texts={[registering ? t("login.registerHeroTitle") : t("login.heroTitle")]}
+              text={registering ? t("login.registerHeroTitle") : t("login.heroTitle")}
               color={isLight ? "#10283d" : "#f4fbff"}
               shineColor={isLight ? "#b46c08" : "#9ee7ff"}
-              splitBy="characters"
+              splitBy={lang === "zh" ? "characters" : "words"}
               direction={registering ? "down" : "up"}
-              staggerDelay={lang === "zh" ? 24 : 42}
+              staggerDelay={lang === "zh" ? 24 : 58}
+              duration={780}
               className="block"
             />
           </h1>
           <p className={cn("mt-6 max-w-[430px] text-sm leading-7", registering ? "lg:ml-auto" : "", isLight ? "text-surface-600" : "text-cyan-100/62")}>
-            <RotatingText
+            <SplitText
               key={`subtitle-${mode}-${lang}`}
-              texts={[registering ? t("login.registerHeroSubtitle") : t("login.heroSubtitle")]}
+              text={registering ? t("login.registerHeroSubtitle") : t("login.heroSubtitle")}
               color={isLight ? "#4a5f72" : "#b8d9ec"}
               shineColor={isLight ? "#10283d" : "#fff0b8"}
               splitBy={lang === "zh" ? "characters" : "words"}
               direction={registering ? "up" : "down"}
               staggerDelay={lang === "zh" ? 8 : 22}
+              duration={680}
               className="block"
             />
           </p>
