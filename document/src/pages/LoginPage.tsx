@@ -5,6 +5,8 @@ import { ForgotPasswordModal } from "@/components/ForgotPasswordModal";
 import { DataCityLoginBackground } from "@/components/DataCityLoginBackground";
 import { ShinyText } from "@/components/ShinyText";
 import { BrandLogo } from "@/components/BrandLogo";
+import { RotatingText } from "@/components/RotatingText";
+import { TargetCursor } from "@/components/TargetCursor";
 import { cn } from "@/lib/utils";
 import { Eye, EyeOff, Mail, Lock, User, ArrowRight, Loader2, Globe, Monitor, Moon, Sun } from "lucide-react";
 import { useI18n } from "@/components/I18nProvider";
@@ -135,6 +137,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
         stageSide={registering ? "right" : "left"}
         className="z-0"
       />
+      <TargetCursor />
 
       <div className={cn("pointer-events-none absolute inset-0 z-[1]", isLight ? "bg-[linear-gradient(90deg,rgba(238,244,251,0.9)_0%,rgba(238,244,251,0.42)_44%,rgba(238,244,251,0.05)_100%)]" : "bg-[linear-gradient(90deg,rgba(2,6,18,0.9)_0%,rgba(2,6,18,0.38)_48%,rgba(2,6,18,0.1)_100%)]")} />
       <div
@@ -225,10 +228,28 @@ export function LoginPage({ onLogin }: LoginPageProps) {
           style={authLayoutStyle}
         >
           <h1 className={cn("max-w-[640px] text-5xl font-black leading-[0.95] tracking-normal xl:text-7xl", registering ? "lg:ml-auto" : "", isLight ? "text-surface-950" : "text-white")}>
-            {registering ? t("login.registerHeroTitle") : t("login.heroTitle")}
+            <RotatingText
+              key={`title-${mode}-${lang}`}
+              texts={[registering ? t("login.registerHeroTitle") : t("login.heroTitle")]}
+              color={isLight ? "#10283d" : "#f4fbff"}
+              shineColor={isLight ? "#b46c08" : "#9ee7ff"}
+              splitBy="characters"
+              direction={registering ? "down" : "up"}
+              staggerDelay={lang === "zh" ? 24 : 42}
+              className="block"
+            />
           </h1>
           <p className={cn("mt-6 max-w-[430px] text-sm leading-7", registering ? "lg:ml-auto" : "", isLight ? "text-surface-600" : "text-cyan-100/62")}>
-            {registering ? t("login.registerHeroSubtitle") : t("login.heroSubtitle")}
+            <RotatingText
+              key={`subtitle-${mode}-${lang}`}
+              texts={[registering ? t("login.registerHeroSubtitle") : t("login.heroSubtitle")]}
+              color={isLight ? "#4a5f72" : "#b8d9ec"}
+              shineColor={isLight ? "#10283d" : "#fff0b8"}
+              splitBy={lang === "zh" ? "characters" : "words"}
+              direction={registering ? "up" : "down"}
+              staggerDelay={lang === "zh" ? 8 : 22}
+              className="block"
+            />
           </p>
         </section>
 
@@ -429,10 +450,10 @@ export function LoginPage({ onLogin }: LoginPageProps) {
               type="button"
               onClick={handleSubmit}
               className={cn(
-                "relative mt-2 h-10 w-full cursor-pointer font-medium text-white transition-transform hover:brightness-110 active:scale-[0.98]",
+                "relative mt-2 h-10 w-full cursor-pointer font-semibold transition-all hover:-translate-y-px active:translate-y-0 active:scale-[0.98]",
                 isLight
-                  ? "bg-[linear-gradient(135deg,#10283d,#1f6ea6_48%,#b46c08)] shadow-[0_16px_34px_rgba(16,40,61,0.22)]"
-                  : "bg-[linear-gradient(135deg,#0b2d45,#123526_48%,#6b4b16)] shadow-[0_14px_36px_rgba(0,0,0,0.35),0_0_28px_rgba(246,184,61,0.16)]"
+                  ? "bg-[linear-gradient(135deg,#10283d,#1f6ea6_48%,#b46c08)] text-white shadow-[0_16px_34px_rgba(16,40,61,0.22)]"
+                  : "border border-cyan-50/40 bg-[linear-gradient(135deg,#f7fbff_0%,#bdeaff_48%,#f6c15d_100%)] text-[#03101f] shadow-[0_16px_42px_rgba(141,215,255,0.22),0_0_30px_rgba(246,184,61,0.16)] hover:border-white/80 hover:shadow-[0_18px_46px_rgba(141,215,255,0.32),0_0_36px_rgba(246,184,61,0.22)]"
               )}
               disabled={submitting}
             >
