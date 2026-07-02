@@ -22,14 +22,14 @@ type Palette = {
 
 const palettes: Record<LoginTheme, Palette> = {
   dark: {
-    background: "#030713",
-    fog: "#06101f",
-    base: "#071326",
-    tower: "#12365e",
-    glass: "#8fd7ff",
-    accent: "#f6b83d",
-    secondary: "#5ebdff",
-    line: "#e9f7ff",
+    background: "#030712",
+    fog: "#0f172a",
+    base: "#111827",
+    tower: "#27324a",
+    glass: "#a5b4fc",
+    accent: "#c4b5fd",
+    secondary: "#818cf8",
+    line: "#eef2ff",
   },
   light: {
     background: "#f7fbff",
