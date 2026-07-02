@@ -244,12 +244,8 @@ const translations = {
   "login.emailNotRegistered": { zh: "该邮箱尚未注册", en: "This email is not registered" },
   "login.emailNotRegisteredCreate": { zh: "该邮箱尚未注册，请先创建账户", en: "This email is not registered. Please create an account first" },
   "login.heroTitle": { zh: "把灵感写进一座数据城市", en: "Write ideas into a data city" },
-  "login.heroSubtitle": { zh: "选择不同登录视觉，预览 ZNWriter 的三种空间气质。", en: "Switch visual templates and preview three spatial moods for ZNWriter." },
-  "login.templateLabel": { zh: "视觉模板", en: "Visual Template" },
+  "login.heroSubtitle": { zh: "一座为写作者而生的光学高楼，承载文档、灵感与 AI 记忆。", en: "An optical skyline for writers, carrying documents, ideas, and AI memory." },
   "login.themeLabel": { zh: "主题", en: "Theme" },
-  "login.templateMimo": { zh: "天际晶塔", en: "Crystal Skyline" },
-  "login.templateNoir": { zh: "夜航矩阵", en: "Noir Matrix" },
-  "login.templatePaper": { zh: "晨雾书城", en: "Paper City" },
 
   // Trash Page
   "trash.title": { zh: "回收站", en: "Trash" },

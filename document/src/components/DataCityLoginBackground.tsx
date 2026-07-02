@@ -1,13 +1,12 @@
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
 
-export type LoginVisualTemplate = "mimo" | "noir" | "paper";
 type LoginTheme = "light" | "dark";
 
 interface DataCityLoginBackgroundProps {
   className?: string;
-  template?: LoginVisualTemplate;
   theme?: LoginTheme;
+  stageSide?: "left" | "right";
 }
 
 type Palette = {
@@ -21,76 +20,30 @@ type Palette = {
   line: string;
 };
 
-const palettes: Record<LoginVisualTemplate, Record<LoginTheme, Palette>> = {
-  mimo: {
-    dark: {
-      background: "#050814",
-      fog: "#06101e",
-      base: "#071326",
-      tower: "#15365a",
-      glass: "#8fd7ff",
-      accent: "#f6b83d",
-      secondary: "#5ebdff",
-      line: "#d8efff",
-    },
-    light: {
-      background: "#eef5ff",
-      fog: "#eef5ff",
-      base: "#dce9f7",
-      tower: "#b8cfe8",
-      glass: "#2f7fbd",
-      accent: "#b67818",
-      secondary: "#71a7dc",
-      line: "#163650",
-    },
+const palettes: Record<LoginTheme, Palette> = {
+  dark: {
+    background: "#030713",
+    fog: "#06101f",
+    base: "#071326",
+    tower: "#12365e",
+    glass: "#8fd7ff",
+    accent: "#f6b83d",
+    secondary: "#5ebdff",
+    line: "#e9f7ff",
   },
-  noir: {
-    dark: {
-      background: "#020309",
-      fog: "#03040b",
-      base: "#050915",
-      tower: "#0b1b2e",
-      glass: "#7cf4ff",
-      accent: "#ffffff",
-      secondary: "#245cff",
-      line: "#95fbff",
-    },
-    light: {
-      background: "#e9edf4",
-      fog: "#edf2f8",
-      base: "#d9e1eb",
-      tower: "#b7c5d6",
-      glass: "#20324b",
-      accent: "#0f172a",
-      secondary: "#4b6bff",
-      line: "#172033",
-    },
-  },
-  paper: {
-    dark: {
-      background: "#080915",
-      fog: "#0a0b17",
-      base: "#131927",
-      tower: "#263247",
-      glass: "#e8d7aa",
-      accent: "#d8bd73",
-      secondary: "#8ab4f8",
-      line: "#f5e6bf",
-    },
-    light: {
-      background: "#f1f4f0",
-      fog: "#f1f4f0",
-      base: "#dfe6df",
-      tower: "#cbd7d1",
-      glass: "#806018",
-      accent: "#b9954e",
-      secondary: "#6f9ac8",
-      line: "#2a332d",
-    },
+  light: {
+    background: "#f7fbff",
+    fog: "#eaf3fb",
+    base: "#ddeaf7",
+    tower: "#9ebbd8",
+    glass: "#1f6ea6",
+    accent: "#b46c08",
+    secondary: "#2e7fc3",
+    line: "#10283d",
   },
 };
 
-function createMimoCrystal(palette: Palette) {
+function createCrystalSkyline(palette: Palette) {
   const group = new THREE.Group();
   const body = new THREE.MeshBasicMaterial({ color: palette.tower, transparent: true, opacity: 0.76 });
   const glass = new THREE.MeshBasicMaterial({
@@ -125,79 +78,12 @@ function createMimoCrystal(palette: Palette) {
   return group;
 }
 
-function createNoirCore(palette: Palette) {
-  const group = new THREE.Group();
-  const body = new THREE.MeshBasicMaterial({ color: palette.tower, transparent: true, opacity: 0.86 });
-  const line = new THREE.LineBasicMaterial({ color: palette.line, transparent: true, opacity: 0.42, blending: THREE.AdditiveBlending });
-  const glass = new THREE.MeshBasicMaterial({ color: palette.glass, transparent: true, opacity: 0.25, blending: THREE.AdditiveBlending, depthWrite: false });
-
-  const slabs = [
-    [3.8, 0.72, 3.8, 1.0],
-    [3.0, 0.72, 3.0, 2.2],
-    [2.2, 0.72, 2.2, 3.4],
-    [1.4, 4.8, 1.4, 6.0],
-  ];
-  slabs.forEach(([w, h, d, y], index) => {
-    const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), body.clone());
-    mesh.position.y = y;
-    mesh.rotation.y = index * 0.18;
-    group.add(mesh);
-    const edges = new THREE.LineSegments(new THREE.EdgesGeometry(mesh.geometry), line);
-    edges.position.copy(mesh.position);
-    edges.rotation.copy(mesh.rotation);
-    group.add(edges);
-  });
-
-  for (let i = 0; i < 9; i++) {
-    const blade = new THREE.Mesh(new THREE.BoxGeometry(0.08, 5.4, 2.8), glass.clone());
-    blade.position.y = 4.8;
-    blade.rotation.y = (i / 9) * Math.PI;
-    group.add(blade);
-  }
-
-  return group;
-}
-
-function createPaperCity(palette: Palette) {
-  const group = new THREE.Group();
-  const paper = new THREE.MeshBasicMaterial({ color: palette.tower, transparent: true, opacity: 0.74 });
-  const ink = new THREE.LineBasicMaterial({ color: palette.line, transparent: true, opacity: 0.36 });
-  const accent = new THREE.MeshBasicMaterial({ color: palette.accent, transparent: true, opacity: 0.28, depthWrite: false });
-
-  for (let i = 0; i < 7; i++) {
-    const w = 5.6 - i * 0.46;
-    const d = 3.2 - i * 0.22;
-    const sheet = new THREE.Mesh(new THREE.BoxGeometry(w, 0.16, d), paper.clone());
-    sheet.position.set((i - 3) * 0.18, 1.0 + i * 0.72, (i - 3) * -0.12);
-    sheet.rotation.y = (i - 3) * 0.08;
-    sheet.rotation.z = (i - 3) * 0.018;
-    group.add(sheet);
-    const edges = new THREE.LineSegments(new THREE.EdgesGeometry(sheet.geometry), ink);
-    edges.position.copy(sheet.position);
-    edges.rotation.copy(sheet.rotation);
-    group.add(edges);
-  }
-
-  for (let i = 0; i < 11; i++) {
-    const column = new THREE.Mesh(new THREE.BoxGeometry(0.16, 1.6 + (i % 4) * 0.54, 0.16), accent.clone());
-    column.position.set((i - 5) * 0.42, 3.1 + (i % 4) * 0.24, -0.7 + (i % 3) * 0.58);
-    group.add(column);
-  }
-  return group;
-}
-
-function createExhibit(template: LoginVisualTemplate, palette: Palette) {
-  if (template === "noir") return createNoirCore(palette);
-  if (template === "paper") return createPaperCity(palette);
-  return createMimoCrystal(palette);
-}
-
-function createGround(template: LoginVisualTemplate, palette: Palette) {
+function createGround(palette: Palette) {
   const group = new THREE.Group();
   const ringMaterial = new THREE.MeshBasicMaterial({
     color: palette.secondary,
     transparent: true,
-    opacity: template === "paper" ? 0.16 : 0.25,
+    opacity: 0.25,
     blending: THREE.AdditiveBlending,
     depthWrite: false,
     side: THREE.DoubleSide,
@@ -220,8 +106,40 @@ function createGround(template: LoginVisualTemplate, palette: Palette) {
   return group;
 }
 
-function createStars(palette: Palette, template: LoginVisualTemplate) {
-  const count = template === "paper" ? 260 : 520;
+function createPointerFocus(palette: Palette) {
+  const group = new THREE.Group();
+  const ring = new THREE.Mesh(
+    new THREE.RingGeometry(0.42, 0.5, 96),
+    new THREE.MeshBasicMaterial({
+      color: palette.accent,
+      transparent: true,
+      opacity: 0,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    }),
+  );
+  ring.rotation.x = -Math.PI / 2;
+  group.add(ring);
+
+  const sweep = new THREE.Mesh(
+    new THREE.PlaneGeometry(3.8, 0.12),
+    new THREE.MeshBasicMaterial({
+      color: palette.line,
+      transparent: true,
+      opacity: 0,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    }),
+  );
+  sweep.position.y = 3.8;
+  group.add(sweep);
+  return group;
+}
+
+function createStars(palette: Palette) {
+  const count = 520;
   const geometry = new THREE.BufferGeometry();
   const positions = new Float32Array(count * 3);
   const random = mulberry32(202);
@@ -235,9 +153,9 @@ function createStars(palette: Palette, template: LoginVisualTemplate) {
     geometry,
     new THREE.PointsMaterial({
       color: palette.line,
-      size: template === "paper" ? 0.018 : 0.026,
+      size: 0.026,
       transparent: true,
-      opacity: template === "paper" ? 0.22 : 0.42,
+      opacity: 0.42,
       depthWrite: false,
     }),
   );
@@ -252,9 +170,9 @@ function mulberry32(seed: number) {
   };
 }
 
-export function DataCityLoginBackground({ className = "", template = "mimo", theme = "dark" }: DataCityLoginBackgroundProps) {
+export function DataCityLoginBackground({ className = "", theme = "dark", stageSide = "left" }: DataCityLoginBackgroundProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const palette = palettes[template][theme];
+  const palette = palettes[theme];
 
   useEffect(() => {
     const container = containerRef.current;
@@ -270,36 +188,51 @@ export function DataCityLoginBackground({ className = "", template = "mimo", the
     scene.fog = new THREE.FogExp2(palette.fog, theme === "light" ? 0.03 : 0.045);
 
     const camera = new THREE.PerspectiveCamera(38, container.clientWidth / container.clientHeight, 0.1, 80);
-    camera.position.set(0, template === "paper" ? 6.2 : 6.8, template === "noir" ? 18.5 : 16.5);
+    camera.position.set(0, 6.8, 16.5);
     camera.lookAt(0, 4.2, 0);
+    const side = stageSide === "left" ? -1 : 1;
+    const stageX = 4.2 * side;
+    const stageZ = -1.8;
 
-    const exhibit = createExhibit(template, palette);
-    exhibit.position.set(template === "paper" ? 4.8 : 4.2, template === "paper" ? 0.1 : -0.4, template === "noir" ? -2.4 : -1.8);
+    const exhibit = createCrystalSkyline(palette);
+    exhibit.position.set(stageX, -0.4, stageZ);
     scene.add(exhibit);
 
-    const ground = createGround(template, palette);
-    ground.position.set(template === "paper" ? 4.8 : 4.2, -0.35, template === "noir" ? -2.4 : -1.8);
+    const ground = createGround(palette);
+    ground.position.set(stageX, -0.35, stageZ);
     scene.add(ground);
 
-    const stars = createStars(palette, template);
+    const stars = createStars(palette);
     scene.add(stars);
 
     const halo = new THREE.Mesh(
       new THREE.RingGeometry(2.8, 3.0, 128),
       new THREE.MeshBasicMaterial({ color: palette.accent, transparent: true, opacity: 0.28, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }),
     );
-    halo.position.set(template === "paper" ? 4.8 : 4.2, template === "paper" ? 4.8 : 7.4, template === "noir" ? -2.4 : -1.8);
+    halo.position.set(stageX, 7.4, stageZ);
     halo.rotation.x = Math.PI / 2;
     scene.add(halo);
 
+    const pointerFocus = createPointerFocus(palette);
+    pointerFocus.position.set(stageX, 0.04, stageZ);
+    scene.add(pointerFocus);
+
     const clock = new THREE.Clock();
     const pointer = new THREE.Vector2(0, 0);
+    const pointerTarget = new THREE.Vector2(0, 0);
+    let pointerActive = 0;
     let disposed = false;
 
     const onPointerMove = (event: PointerEvent) => {
       const rect = container.getBoundingClientRect();
-      pointer.x = ((event.clientX - rect.left) / rect.width - 0.5) * 2;
-      pointer.y = ((event.clientY - rect.top) / rect.height - 0.5) * 2;
+      pointerTarget.x = ((event.clientX - rect.left) / rect.width - 0.5) * 2;
+      pointerTarget.y = ((event.clientY - rect.top) / rect.height - 0.5) * 2;
+      pointerActive = 1;
+    };
+
+    const onPointerLeave = () => {
+      pointerActive = 0;
+      pointerTarget.set(0, 0);
     };
 
     const onResize = () => {
@@ -314,20 +247,37 @@ export function DataCityLoginBackground({ className = "", template = "mimo", the
     };
 
     container.addEventListener("pointermove", onPointerMove);
+    container.addEventListener("pointerleave", onPointerLeave);
     window.addEventListener("resize", onResize);
     document.addEventListener("visibilitychange", onVisibilityChange);
 
     const animate = () => {
       if (disposed) return;
       const time = clock.elapsedTime;
-      exhibit.rotation.y = time * (template === "paper" ? 0.045 : template === "noir" ? 0.12 : 0.08) + pointer.x * 0.16;
-      exhibit.rotation.x = pointer.y * 0.035;
+      pointer.lerp(pointerTarget, 0.12);
+      exhibit.rotation.y = time * 0.08 + pointer.x * 0.16;
+      exhibit.rotation.x = pointer.y * 0.085;
+      exhibit.position.y = -0.4 + Math.sin(time * 1.2) * 0.035 + pointerActive * 0.16;
       ground.rotation.y = -time * 0.055;
       halo.rotation.z = time * 0.18;
-      halo.scale.setScalar(1 + Math.sin(time * 1.3) * 0.035);
-      camera.position.x = pointer.x * 0.55;
-      camera.position.y += ((template === "paper" ? 6.2 : 6.8) + pointer.y * 0.28 - camera.position.y) * 0.04;
-      camera.lookAt(2.7 + pointer.x * 0.3, 4.1 - pointer.y * 0.18, -1.8);
+      halo.scale.setScalar(1 + Math.sin(time * 1.3) * 0.035 + pointerActive * 0.12);
+      const haloMaterial = halo.material as THREE.MeshBasicMaterial;
+      haloMaterial.opacity = 0.22 + pointerActive * 0.22;
+
+      pointerFocus.position.x = stageX + pointer.x * 2.2;
+      pointerFocus.position.z = stageZ - pointer.y * 1.4;
+      pointerFocus.scale.setScalar(1 + pointerActive * 1.35);
+      pointerFocus.children.forEach((child, index) => {
+        if (child instanceof THREE.Mesh) {
+          const material = child.material as THREE.MeshBasicMaterial;
+          material.opacity = pointerActive ? (index === 0 ? 0.46 : 0.34) : 0;
+          child.rotation.z = index === 0 ? time * 0.9 : -pointer.x * 0.5;
+        }
+      });
+
+      camera.position.x = pointer.x * 0.9 + side * 0.2;
+      camera.position.y += (6.8 + pointer.y * 0.42 - camera.position.y) * 0.06;
+      camera.lookAt(stageX * 0.62 + pointer.x * 0.55, 4.1 - pointer.y * 0.32, stageZ);
       renderer.render(scene, camera);
     };
 
@@ -337,6 +287,7 @@ export function DataCityLoginBackground({ className = "", template = "mimo", the
       disposed = true;
       renderer.setAnimationLoop(null);
       container.removeEventListener("pointermove", onPointerMove);
+      container.removeEventListener("pointerleave", onPointerLeave);
       window.removeEventListener("resize", onResize);
       document.removeEventListener("visibilitychange", onVisibilityChange);
       scene.traverse((object) => {
@@ -349,7 +300,7 @@ export function DataCityLoginBackground({ className = "", template = "mimo", the
       renderer.dispose();
       renderer.domElement.remove();
     };
-  }, [template, theme, palette]);
+  }, [theme, stageSide, palette]);
 
   return (
     <div

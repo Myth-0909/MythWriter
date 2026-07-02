@@ -12,15 +12,8 @@ import { useI18n } from "@/components/I18nProvider";
 import { useTheme } from "@/components/ThemeProvider";
 import { useToast } from "@/components/Toast";
 import { api, setToken } from "@/api";
-import type { LoginVisualTemplate } from "@/components/DataCityLoginBackground";
 
 type Mode = "login" | "register";
-
-const visualTemplates: { id: LoginVisualTemplate; key: "login.templateMimo" | "login.templateNoir" | "login.templatePaper" }[] = [
-  { id: "mimo", key: "login.templateMimo" },
-  { id: "noir", key: "login.templateNoir" },
-  { id: "paper", key: "login.templatePaper" },
-];
 
 interface LoginPageProps {
   onLogin?: (user: { id: string; name: string; email: string; avatar: string | null }) => void;
@@ -31,7 +24,6 @@ export function LoginPage({ onLogin }: LoginPageProps) {
   const { theme, themeMode, setThemeMode } = useTheme();
   const { toast } = useToast();
   const [mode, setMode] = useState<Mode>("login");
-  const [visualTemplate, setVisualTemplate] = useState<LoginVisualTemplate>("mimo");
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const isLight = theme === "light";
@@ -45,6 +37,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
   const iconClass = cn("absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2", isLight ? "text-surface-400" : "text-cyan-100/50");
   const subtleTextClass = isLight ? "text-surface-500" : "text-cyan-100/52";
   const linkTextClass = isLight ? "text-surface-800 hover:text-surface-950" : "text-amber-100 hover:text-amber-50";
+  const registering = mode === "register";
 
   // Form fields
   const [name, setName] = useState("");
@@ -127,9 +120,23 @@ export function LoginPage({ onLogin }: LoginPageProps) {
           z-index: 2;
         }
       `}</style>
-      <DataCityLoginBackground key={`${visualTemplate}-${theme}`} template={visualTemplate} theme={theme} className="z-0" />
+      <DataCityLoginBackground
+        key={`${theme}-${registering ? "register" : "login"}`}
+        theme={theme}
+        stageSide={registering ? "right" : "left"}
+        className="z-0"
+      />
 
       <div className={cn("pointer-events-none absolute inset-0 z-[1]", isLight ? "bg-[linear-gradient(90deg,rgba(238,244,251,0.9)_0%,rgba(238,244,251,0.42)_44%,rgba(238,244,251,0.05)_100%)]" : "bg-[linear-gradient(90deg,rgba(2,6,18,0.9)_0%,rgba(2,6,18,0.38)_48%,rgba(2,6,18,0.1)_100%)]")} />
+      <div
+        className={cn(
+          "pointer-events-none absolute top-0 z-[2] hidden h-full w-[34vw] transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] lg:block",
+          registering ? "left-[50%]" : "left-[16%]",
+          isLight
+            ? "bg-[linear-gradient(90deg,transparent,rgba(255,255,255,0.38),transparent)]"
+            : "bg-[linear-gradient(90deg,transparent,rgba(102,217,255,0.1),transparent)]"
+        )}
+      />
 
       {/* Top-right controls */}
       <div className="absolute top-6 right-6 z-20 flex items-center gap-3">
@@ -139,22 +146,50 @@ export function LoginPage({ onLogin }: LoginPageProps) {
             style={{ transform: `translateX(${themeMode === "system" ? 0 : themeMode === "light" ? 36 : 72}px)` }}
           />
           <button
+            type="button"
             onClick={() => setThemeMode("system")}
-            className={cn("relative z-10 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full transition-colors", themeMode === "system" ? (isLight ? "text-surface-900" : "text-white") : "text-cyan-100/45 hover:text-cyan-50")}
+            className={cn(
+              "relative z-10 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full transition-colors",
+              themeMode === "system"
+                ? isLight
+                  ? "text-surface-950"
+                  : "text-white"
+                : isLight
+                  ? "text-surface-500 hover:text-surface-950"
+                  : "text-cyan-100/45 hover:text-cyan-50"
+            )}
             title={t("nav.followSystem")}
           >
             <Monitor className="h-4 w-4" />
           </button>
           <button
+            type="button"
             onClick={() => setThemeMode("light")}
-            className={cn("relative z-10 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full transition-colors", themeMode === "light" ? "text-amber-500" : "text-cyan-100/45 hover:text-cyan-50")}
+            className={cn(
+              "relative z-10 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full transition-colors",
+              themeMode === "light"
+                ? "text-amber-600"
+                : isLight
+                  ? "text-surface-500 hover:text-surface-950"
+                  : "text-cyan-100/45 hover:text-cyan-50"
+            )}
             title={t("nav.lightMode")}
           >
             <Sun className="h-4 w-4" />
           </button>
           <button
+            type="button"
             onClick={() => setThemeMode("dark")}
-            className={cn("relative z-10 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full transition-colors", themeMode === "dark" ? "text-cyan-100" : "text-cyan-100/45 hover:text-cyan-50")}
+            className={cn(
+              "relative z-10 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full transition-colors",
+              themeMode === "dark"
+                ? isLight
+                  ? "text-surface-950"
+                  : "text-cyan-100"
+                : isLight
+                  ? "text-surface-500 hover:text-surface-950"
+                  : "text-cyan-100/45 hover:text-cyan-50"
+            )}
             title={t("nav.darkMode")}
           >
             <Moon className="h-4 w-4" />
@@ -163,6 +198,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
 
         {/* Language switch */}
         <button
+          type="button"
           onClick={toggleLang}
           className={cn("inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium shadow-[0_0_28px_rgba(74,144,217,0.18)] backdrop-blur-md transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] active:scale-95", isLight ? "border border-white/70 bg-white/55 text-surface-700 hover:text-surface-950" : "border border-cyan-200/20 bg-[#071326]/70 text-cyan-50 hover:border-amber-200/40 hover:text-amber-100")}
         >
@@ -171,42 +207,32 @@ export function LoginPage({ onLogin }: LoginPageProps) {
         </button>
       </div>
 
-      <main className="relative z-10 grid min-h-[100dvh] grid-cols-1 items-center gap-6 px-5 py-24 lg:grid-cols-[minmax(0,1fr)_440px] lg:gap-10 lg:px-14 xl:px-20">
-        <section className="hidden max-w-[680px] lg:block">
+      <main className="relative z-10 grid min-h-[100dvh] grid-cols-1 items-center gap-6 px-5 py-24 lg:grid-cols-[440px_minmax(0,1fr)] lg:gap-10 lg:px-14 xl:px-20">
+        <section
+          className={cn(
+            "hidden max-w-[680px] transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)] lg:block",
+            registering ? "lg:order-2 lg:justify-self-end lg:text-right" : "lg:order-1 lg:justify-self-start lg:text-left"
+          )}
+        >
           <div className={cn("mb-6 inline-flex rounded-full px-3 py-1 text-[10px] font-medium uppercase tracking-[0.2em]", isLight ? "bg-white/60 text-surface-700 ring-1 ring-white/70" : "bg-white/8 text-cyan-100/72 ring-1 ring-white/10")}>
-            {t("login.templateLabel")}
+            {t("login.themeLabel")}
           </div>
           <h1 className={cn("max-w-[640px] text-5xl font-black leading-[0.95] tracking-normal xl:text-7xl", isLight ? "text-surface-950" : "text-white")}>
             {t("login.heroTitle")}
           </h1>
-          <p className={cn("mt-6 max-w-[430px] text-sm leading-7", isLight ? "text-surface-600" : "text-cyan-100/62")}>
+          <p className={cn("mt-6 max-w-[430px] text-sm leading-7", registering ? "lg:ml-auto" : "", isLight ? "text-surface-600" : "text-cyan-100/62")}>
             {t("login.heroSubtitle")}
           </p>
-          <div className="mt-8 flex flex-wrap gap-2">
-            {visualTemplates.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => setVisualTemplate(item.id)}
-                className={cn(
-                  "rounded-full px-4 py-2 text-xs font-medium transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] active:scale-[0.98]",
-                  visualTemplate === item.id
-                    ? isLight
-                      ? "bg-surface-950 text-white shadow-[0_16px_32px_rgba(15,23,42,0.18)]"
-                      : "bg-white text-[#07101f] shadow-[0_0_34px_rgba(246,184,61,0.18)]"
-                    : isLight
-                      ? "bg-white/55 text-surface-600 ring-1 ring-white/70 hover:text-surface-950"
-                      : "bg-white/8 text-cyan-100/58 ring-1 ring-white/10 hover:text-cyan-50"
-                )}
-              >
-                {t(item.key)}
-              </button>
-            ))}
-          </div>
         </section>
 
       {/* Login card — 3D magnetic tilt */}
-      <MagneticCard className="w-full justify-self-center lg:justify-self-end" intensity={5}>
+      <MagneticCard
+        className={cn(
+          "w-full justify-self-center transition-all duration-700 ease-[cubic-bezier(0.32,0.72,0,1)]",
+          registering ? "lg:order-1 lg:justify-self-start" : "lg:order-2 lg:justify-self-end"
+        )}
+        intensity={5}
+      >
         <div
           className={cn("relative w-full max-w-[420px] overflow-hidden rounded-[2rem] p-1.5", isLight ? "bg-white/45 shadow-[0_24px_80px_rgba(73,98,130,0.2)] ring-1 ring-white/70" : "bg-white/8 shadow-[0_24px_80px_rgba(0,0,0,0.48),0_0_80px_rgba(74,144,217,0.16)] ring-1 ring-cyan-100/16")}
         >
@@ -233,32 +259,46 @@ export function LoginPage({ onLogin }: LoginPageProps) {
 
         {/* Tabs */}
         <div
-          className="relative mb-6 grid grid-cols-2 gap-1 rounded-lg border border-white/8 bg-white/8 p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]"
+          className={cn(
+            "relative mb-6 grid grid-cols-2 gap-1 rounded-lg p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]",
+            isLight ? "border border-surface-200/70 bg-surface-100/70" : "border border-white/8 bg-white/8"
+          )}
         >
           <div
-            className="absolute bottom-1 left-1 top-1 w-[calc(50%-6px)] rounded-md bg-[linear-gradient(135deg,rgba(102,217,255,0.3),rgba(246,184,61,0.22))] shadow-[0_0_24px_rgba(102,217,255,0.16)] transition-transform duration-300 ease-out"
+            className={cn(
+              "absolute bottom-1 left-1 top-1 w-[calc(50%-6px)] rounded-md transition-transform duration-300 ease-out",
+              isLight
+                ? "bg-[linear-gradient(135deg,#17435f,#b46c08)] shadow-[0_12px_28px_rgba(23,67,95,0.18)]"
+                : "bg-[linear-gradient(135deg,rgba(102,217,255,0.3),rgba(246,184,61,0.22))] shadow-[0_0_24px_rgba(102,217,255,0.16)]"
+            )}
             style={{ transform: mode === "register" ? "translateX(calc(100% + 4px))" : "translateX(0)" }}
           />
           <button
+            type="button"
             onClick={() => setMode("login")}
             className={cn(
               "relative z-10 rounded-md py-2 text-sm font-medium transition-colors duration-300 cursor-pointer",
               "active:scale-[0.97]",
               mode === "login"
                 ? "text-white"
-                : "text-cyan-100/52 hover:text-cyan-50"
+                : isLight
+                  ? "text-surface-500 hover:text-surface-950"
+                  : "text-cyan-100/52 hover:text-cyan-50"
             )}
           >
             {t("login.signIn")}
           </button>
           <button
+            type="button"
             onClick={() => setMode("register")}
             className={cn(
               "relative z-10 rounded-md py-2 text-sm font-medium transition-colors duration-300 cursor-pointer",
               "active:scale-[0.97]",
               mode === "register"
                 ? "text-white"
-                : "text-cyan-100/52 hover:text-cyan-50"
+                : isLight
+                  ? "text-surface-500 hover:text-surface-950"
+                  : "text-cyan-100/52 hover:text-cyan-50"
             )}
           >
             {t("login.register")}
@@ -377,7 +417,12 @@ export function LoginPage({ onLogin }: LoginPageProps) {
           <div className="relative">
             <Button
               type="submit"
-	              className="relative mt-2 h-10 w-full cursor-pointer bg-[linear-gradient(135deg,#0b2d45,#123526_48%,#6b4b16)] font-medium text-white shadow-[0_14px_36px_rgba(0,0,0,0.35),0_0_28px_rgba(246,184,61,0.16)] transition-transform hover:brightness-110 active:scale-[0.98]"
+              className={cn(
+                "relative mt-2 h-10 w-full cursor-pointer font-medium text-white transition-transform hover:brightness-110 active:scale-[0.98]",
+                isLight
+                  ? "bg-[linear-gradient(135deg,#10283d,#1f6ea6_48%,#b46c08)] shadow-[0_16px_34px_rgba(16,40,61,0.22)]"
+                  : "bg-[linear-gradient(135deg,#0b2d45,#123526_48%,#6b4b16)] shadow-[0_14px_36px_rgba(0,0,0,0.35),0_0_28px_rgba(246,184,61,0.16)]"
+              )}
               disabled={submitting}
             >
             {submitting ? (
@@ -422,27 +467,6 @@ export function LoginPage({ onLogin }: LoginPageProps) {
         </div>
 	      </div>
       </MagneticCard>
-        <div className="flex justify-center gap-2 lg:hidden">
-          {visualTemplates.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => setVisualTemplate(item.id)}
-              className={cn(
-                "rounded-full px-3 py-2 text-[11px] font-medium transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] active:scale-[0.98]",
-                visualTemplate === item.id
-                  ? isLight
-                    ? "bg-surface-950 text-white"
-                    : "bg-white text-[#07101f]"
-                  : isLight
-                    ? "bg-white/60 text-surface-600 ring-1 ring-white/70"
-                    : "bg-white/8 text-cyan-100/60 ring-1 ring-white/10"
-              )}
-            >
-              {t(item.key)}
-            </button>
-          ))}
-        </div>
       </main>
 
       {/* Forgot Password Modal */}
