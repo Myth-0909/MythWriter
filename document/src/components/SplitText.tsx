@@ -4,7 +4,6 @@ import { cn } from "@/lib/utils";
 interface SplitTextProps {
   text: string;
   color: string;
-  shineColor: string;
   className?: string;
   splitBy?: "characters" | "words";
   direction?: "up" | "down";
@@ -15,7 +14,6 @@ interface SplitTextProps {
 export function SplitText({
   text,
   color,
-  shineColor,
   className,
   splitBy = "characters",
   direction = "up",
@@ -45,10 +43,6 @@ export function SplitText({
             transform: translate3d(0, 0, 0) rotateX(0deg);
           }
         }
-        @keyframes split-text-shine {
-          0% { background-position: 165% 50%; }
-          100% { background-position: -90% 50%; }
-        }
         @media (prefers-reduced-motion: reduce) {
           .split-text-token {
             animation: none !important;
@@ -71,14 +65,13 @@ export function SplitText({
           <span
             key={`${token}-${index}`}
             aria-hidden="true"
-            className="split-text-token inline-block bg-clip-text text-transparent will-change-transform"
+            className="split-text-token inline-block will-change-transform"
             style={
               {
                 "--split-distance": distance,
                 "--split-angle": angle,
-                animation: `split-text-reveal ${duration}ms cubic-bezier(0.22, 1, 0.36, 1) ${index * staggerDelay}ms both, split-text-shine 8.4s linear ${index * staggerDelay + 520}ms infinite`,
-                backgroundImage: `linear-gradient(108deg, ${color} 0%, ${color} 35%, ${shineColor} 50%, ${color} 65%, ${color} 100%)`,
-                backgroundSize: "230% 100%",
+                animation: `split-text-reveal ${duration}ms cubic-bezier(0.22, 1, 0.36, 1) ${index * staggerDelay}ms both`,
+                color,
               } as CSSProperties
             }
           >

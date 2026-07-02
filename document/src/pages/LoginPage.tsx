@@ -137,7 +137,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
         stageSide={registering ? "right" : "left"}
         className="z-0"
       />
-      <TargetCursor />
+      <TargetCursor theme={theme} />
 
       <div className={cn("pointer-events-none absolute inset-0 z-[1]", isLight ? "bg-[linear-gradient(90deg,rgba(238,244,251,0.9)_0%,rgba(238,244,251,0.42)_44%,rgba(238,244,251,0.05)_100%)]" : "bg-[linear-gradient(90deg,rgba(2,6,18,0.9)_0%,rgba(2,6,18,0.38)_48%,rgba(2,6,18,0.1)_100%)]")} />
       <div
@@ -232,7 +232,6 @@ export function LoginPage({ onLogin }: LoginPageProps) {
               key={`title-${mode}-${lang}`}
               text={registering ? t("login.registerHeroTitle") : t("login.heroTitle")}
               color={isLight ? "#10283d" : "#f4fbff"}
-              shineColor={isLight ? "#b46c08" : "#9ee7ff"}
               splitBy={lang === "zh" ? "characters" : "words"}
               direction={registering ? "down" : "up"}
               staggerDelay={lang === "zh" ? 18 : 50}
@@ -245,7 +244,6 @@ export function LoginPage({ onLogin }: LoginPageProps) {
               key={`subtitle-${mode}-${lang}`}
               text={registering ? t("login.registerHeroSubtitle") : t("login.heroSubtitle")}
               color={isLight ? "#4a5f72" : "#b8d9ec"}
-              shineColor={isLight ? "#10283d" : "#fff0b8"}
               splitBy={lang === "zh" ? "characters" : "words"}
               direction={registering ? "up" : "down"}
               staggerDelay={lang === "zh" ? 5 : 20}

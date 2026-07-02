@@ -4,11 +4,13 @@ import { cn } from "@/lib/utils";
 interface TargetCursorProps {
   className?: string;
   targetSelector?: string;
+  theme?: "light" | "dark";
 }
 
 export function TargetCursor({
   className,
   targetSelector = "button, input, textarea, a, [role='button'], [data-target-cursor]",
+  theme = "dark",
 }: TargetCursorProps) {
   const cursorRef = useRef<HTMLDivElement>(null);
 
@@ -85,15 +87,54 @@ export function TargetCursor({
   return (
     <div
       ref={cursorRef}
-      className={cn("pointer-events-none fixed left-0 top-0 z-[70] hidden mix-blend-screen will-change-transform md:block", className)}
+      className={cn(
+        "pointer-events-none fixed left-0 top-0 z-[70] hidden will-change-transform md:block",
+        theme === "dark" ? "mix-blend-screen" : "mix-blend-normal",
+        className
+      )}
       style={{ opacity: 0 }}
       aria-hidden="true"
     >
-      <span className="absolute left-0 top-0 h-3 w-3 border-l border-t border-cyan-100/90 shadow-[0_0_14px_rgba(141,215,255,0.65)]" />
-      <span className="absolute right-0 top-0 h-3 w-3 border-r border-t border-cyan-100/90 shadow-[0_0_14px_rgba(141,215,255,0.65)]" />
-      <span className="absolute bottom-0 left-0 h-3 w-3 border-b border-l border-amber-200/90 shadow-[0_0_14px_rgba(246,184,61,0.55)]" />
-      <span className="absolute bottom-0 right-0 h-3 w-3 border-b border-r border-amber-200/90 shadow-[0_0_14px_rgba(246,184,61,0.55)]" />
-      <span className="absolute left-1/2 top-1/2 h-1 w-1 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white/80 shadow-[0_0_12px_rgba(255,255,255,0.75)]" />
+      <span
+        className={cn(
+          "absolute left-0 top-0 h-3 w-3 border-l border-t",
+          theme === "dark"
+            ? "border-cyan-100/90 shadow-[0_0_14px_rgba(141,215,255,0.65)]"
+            : "border-[#0a3552] shadow-[0_0_0_1px_rgba(10,53,82,0.18),0_8px_18px_rgba(10,53,82,0.22)]"
+        )}
+      />
+      <span
+        className={cn(
+          "absolute right-0 top-0 h-3 w-3 border-r border-t",
+          theme === "dark"
+            ? "border-cyan-100/90 shadow-[0_0_14px_rgba(141,215,255,0.65)]"
+            : "border-[#0a3552] shadow-[0_0_0_1px_rgba(10,53,82,0.18),0_8px_18px_rgba(10,53,82,0.22)]"
+        )}
+      />
+      <span
+        className={cn(
+          "absolute bottom-0 left-0 h-3 w-3 border-b border-l",
+          theme === "dark"
+            ? "border-amber-200/90 shadow-[0_0_14px_rgba(246,184,61,0.55)]"
+            : "border-[#b46c08] shadow-[0_0_0_1px_rgba(180,108,8,0.2),0_8px_18px_rgba(180,108,8,0.2)]"
+        )}
+      />
+      <span
+        className={cn(
+          "absolute bottom-0 right-0 h-3 w-3 border-b border-r",
+          theme === "dark"
+            ? "border-amber-200/90 shadow-[0_0_14px_rgba(246,184,61,0.55)]"
+            : "border-[#b46c08] shadow-[0_0_0_1px_rgba(180,108,8,0.2),0_8px_18px_rgba(180,108,8,0.2)]"
+        )}
+      />
+      <span
+        className={cn(
+          "absolute left-1/2 top-1/2 h-1.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full",
+          theme === "dark"
+            ? "bg-white/80 shadow-[0_0_12px_rgba(255,255,255,0.75)]"
+            : "bg-[#0a3552] shadow-[0_0_0_3px_rgba(10,53,82,0.12)]"
+        )}
+      />
     </div>
   );
 }
