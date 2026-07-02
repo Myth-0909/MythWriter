@@ -57,6 +57,7 @@ export function AgentWritePanel({ open, onOpenChange, onOpenDocument }: AgentWri
   const [done, setDone] = useState<AgentDoneEvent | null>(null);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState("");
+  const [stopped, setStopped] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
@@ -69,6 +70,12 @@ export function AgentWritePanel({ open, onOpenChange, onOpenDocument }: AgentWri
     return () => window.removeEventListener("znwriter-agent-write-open", handler);
   }, [onOpenChange]);
 
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort();
+    };
+  }, []);
+
   const sources = events.research?.sources || done?.sources || [];
   const outline = events.plan?.outline || done?.outline || [];
   const review = events.review?.review || done?.review;
@@ -76,21 +83,26 @@ export function AgentWritePanel({ open, onOpenChange, onOpenDocument }: AgentWri
   const statusText = useMemo(() => {
     if (error) return error;
     if (done) return t("agent.complete");
+    if (stopped) return t("agent.stopped");
     if (activeStage) return events[activeStage]?.message || t(stageMeta[activeStage].label);
     return t("agent.idle");
-  }, [activeStage, done, error, events, t]);
+  }, [activeStage, done, error, events, stopped, t]);
 
   const resetFlow = () => {
     setEvents({});
     setActiveStage(null);
     setDone(null);
     setError("");
+    setStopped(false);
   };
 
   const stopFlow = () => {
     abortRef.current?.abort();
     abortRef.current = null;
+    setActiveStage(null);
+    setStopped(true);
     setRunning(false);
+    toast(t("agent.stopped"), "info");
   };
 
   const startFlow = async () => {
@@ -103,6 +115,7 @@ export function AgentWritePanel({ open, onOpenChange, onOpenDocument }: AgentWri
     const controller = new AbortController();
     abortRef.current = controller;
     setRunning(true);
+    setStopped(false);
     resetFlow();
 
     try {
@@ -132,7 +145,9 @@ export function AgentWritePanel({ open, onOpenChange, onOpenDocument }: AgentWri
         controller.signal
       );
     } catch (err: any) {
-      if (err?.name !== "AbortError") {
+      if (err?.name === "AbortError") {
+        setStopped(true);
+      } else {
         const message = err?.message || t("agent.failed");
         setError(message);
         toast(message, "error");
@@ -249,7 +264,7 @@ export function AgentWritePanel({ open, onOpenChange, onOpenDocument }: AgentWri
                 <div className="rounded-xl border border-surface-200 bg-surface-50 p-4 dark:border-surface-800 dark:bg-surface-900/60">
                   <div className="flex items-center justify-between gap-3">
                     <div className="min-w-0">
-                      <p className={cn("truncate text-sm font-semibold", error ? "text-red-600 dark:text-red-300" : "text-surface-800 dark:text-surface-100")}>
+                      <p className={cn("line-clamp-2 break-words text-sm font-semibold", error ? "text-red-600 dark:text-red-300" : "text-surface-800 dark:text-surface-100")}>
                         {statusText}
                       </p>
                       <p className="mt-1 text-xs text-surface-500">
@@ -347,12 +362,18 @@ export function AgentWritePanel({ open, onOpenChange, onOpenDocument }: AgentWri
                 <section>
                   <h3 className="text-xs font-semibold text-surface-700 dark:text-surface-200">{t("agent.step.plan")}</h3>
                   <div className="mt-3 space-y-2">
-                    {outline.map((item, index) => (
-                      <div key={`${item.heading}:${index}`} className="rounded-lg border border-surface-200 bg-white p-3 dark:border-surface-800 dark:bg-surface-950">
-                        <p className="text-xs font-semibold text-surface-800 dark:text-surface-100">{item.heading}</p>
-                        <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-surface-500">{item.brief}</p>
-                      </div>
-                    ))}
+                    {outline.length === 0 ? (
+                      <p className="rounded-lg border border-dashed border-surface-200 px-3 py-4 text-xs text-surface-400 dark:border-surface-800">
+                        {t("agent.noOutline")}
+                      </p>
+                    ) : (
+                      outline.map((item, index) => (
+                        <div key={`${item.heading}:${index}`} className="rounded-lg border border-surface-200 bg-white p-3 dark:border-surface-800 dark:bg-surface-950">
+                          <p className="text-xs font-semibold text-surface-800 dark:text-surface-100">{item.heading}</p>
+                          <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-surface-500">{item.brief}</p>
+                        </div>
+                      ))
+                    )}
                   </div>
                 </section>
 
@@ -365,11 +386,15 @@ export function AgentWritePanel({ open, onOpenChange, onOpenDocument }: AgentWri
                         <span className="text-lg font-bold text-brand-600 dark:text-brand-300">{review.score}</span>
                       </div>
                       <div className="mt-3 space-y-2">
-                        {review.suggestions.map((item, index) => (
-                          <p key={`${item.detail}:${index}`} className="text-xs leading-relaxed text-surface-500">
-                            {item.detail}
-                          </p>
-                        ))}
+                        {review.suggestions.length === 0 ? (
+                          <p className="text-xs leading-relaxed text-surface-400">{t("agent.noReviewSuggestions")}</p>
+                        ) : (
+                          review.suggestions.map((item, index) => (
+                            <p key={`${item.detail}:${index}`} className="text-xs leading-relaxed text-surface-500">
+                              {item.detail}
+                            </p>
+                          ))
+                        )}
                       </div>
                     </div>
                   ) : (

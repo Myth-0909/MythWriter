@@ -1,4 +1,7 @@
 import type { KnowledgeLike, RagSearchResult } from "./ragService";
+import { markdownToBasicHtml } from "./markdownService";
+
+export { markdownToBasicHtml } from "./markdownService";
 
 export type AgentLength = "short" | "medium" | "long";
 export type AgentStyle = "default" | "literary" | "academic" | "business" | "technical";
@@ -241,6 +244,7 @@ function buildDraftPrompt(
     "可参考资料：",
     sourceContext,
     "要求：内容完整、可直接拼入文档，不要解释你的过程。",
+    "格式：使用标准 Markdown 标题、列表、加粗和引用；避免 LaTeX 控制符，箭头请直接使用 →。",
   ].join("\n");
 }
 
@@ -256,45 +260,6 @@ function buildReviewPrompt(input: AgentWriteInput, markdown: string): string {
 
 function agentMessage(input: AgentWriteInput, zh: string, en: string): string {
   return input.lang === "en" ? en : zh;
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
-
-export function markdownToBasicHtml(markdown: string): string {
-  const lines = markdown.replace(/\r\n/g, "\n").split("\n");
-  const html: string[] = [];
-  let paragraph: string[] = [];
-
-  const flushParagraph = () => {
-    if (paragraph.length === 0) return;
-    html.push(`<p>${escapeHtml(paragraph.join(" ").trim())}</p>`);
-    paragraph = [];
-  };
-
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed) {
-      flushParagraph();
-      continue;
-    }
-    const heading = trimmed.match(/^(#{1,3})\s+(.+)$/);
-    if (heading) {
-      flushParagraph();
-      const level = heading[1].length;
-      html.push(`<h${level}>${escapeHtml(heading[2].trim())}</h${level}>`);
-      continue;
-    }
-    paragraph.push(trimmed);
-  }
-  flushParagraph();
-  return html.join("\n");
 }
 
 export function createAgentWriteService(deps: AgentWriteDependencies) {

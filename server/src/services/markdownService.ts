@@ -82,7 +82,7 @@ function renderList(items: string[], ordered: boolean): string {
   return `<${tag}>${items.map((item) => `<li>${renderInline(item)}</li>`).join("")}</${tag}>`;
 }
 
-export function markdownToHtml(markdown: string): string {
+export function markdownToBasicHtml(markdown: string): string {
   const lines = normalizeAiMarkdown(markdown).replace(/\r\n/g, "\n").split("\n");
   const html: string[] = [];
   let paragraph: string[] = [];

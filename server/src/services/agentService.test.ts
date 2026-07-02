@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { createAgentWriteService } from "./agentService";
+import { createAgentWriteService, markdownToBasicHtml } from "./agentService";
 
 describe("agent write service", () => {
   it("runs the six-step writing flow and publishes a generated document", async () => {
@@ -125,5 +125,29 @@ describe("agent write service", () => {
       () => service.write({ userId: "user-1", goal: "   " }, () => {}),
       /写作目标不能为空/
     );
+  });
+
+  it("converts common AI markdown into editor-friendly HTML", () => {
+    const html = markdownToBasicHtml([
+      "# AI Agent 的核心能力架构",
+      "",
+      "* **传统 Chatbot（对话机器人）：** **核心能力：** 文本生成与信息检索。",
+      "* **AI Agent（智能自主体）：** **核心能力：** 推理、规划与工具调用。",
+      "",
+      "**总结对比表：**",
+      "",
+      "| 维度 | 传统 Chatbot | AI Agent |",
+      "| :--- | :--- | :--- |",
+      "| **工作流** | 单次响应 $\\rightarrow$ 等待输入 | 自主循环 $\\rightarrow$ 达成目标 |",
+    ].join("\n"));
+
+    assert.match(html, /<h1>AI Agent 的核心能力架构<\/h1>/);
+    assert.match(html, /<strong>传统 Chatbot（对话机器人）：<\/strong>/);
+    assert.match(html, /<strong>总结对比表：<\/strong>/);
+    assert.match(html, /→/);
+    assert.match(html, /<h3>总结对比表<\/h3>|<ul>/);
+    assert.doesNotMatch(html, /\*\*/);
+    assert.doesNotMatch(html, /\$\\rightarrow\$/);
+    assert.doesNotMatch(html, /\| :---/);
   });
 });
