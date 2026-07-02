@@ -7,12 +7,20 @@ import { ShinyText } from "@/components/ShinyText";
 import { BrandLogo } from "@/components/BrandLogo";
 import { MagneticCard } from "@/components/MagneticCard";
 import { cn } from "@/lib/utils";
-import { Eye, EyeOff, Mail, Lock, User, ArrowRight, Loader2, Globe } from "lucide-react";
+import { Eye, EyeOff, Mail, Lock, User, ArrowRight, Loader2, Globe, Monitor, Moon, Sun } from "lucide-react";
 import { useI18n } from "@/components/I18nProvider";
+import { useTheme } from "@/components/ThemeProvider";
 import { useToast } from "@/components/Toast";
 import { api, setToken } from "@/api";
+import type { LoginVisualTemplate } from "@/components/DataCityLoginBackground";
 
 type Mode = "login" | "register";
+
+const visualTemplates: { id: LoginVisualTemplate; key: "login.templateMimo" | "login.templateNoir" | "login.templatePaper" }[] = [
+  { id: "mimo", key: "login.templateMimo" },
+  { id: "noir", key: "login.templateNoir" },
+  { id: "paper", key: "login.templatePaper" },
+];
 
 interface LoginPageProps {
   onLogin?: (user: { id: string; name: string; email: string; avatar: string | null }) => void;
@@ -20,10 +28,23 @@ interface LoginPageProps {
 
 export function LoginPage({ onLogin }: LoginPageProps) {
   const { t, lang, toggleLang } = useI18n();
+  const { theme, themeMode, setThemeMode } = useTheme();
   const { toast } = useToast();
   const [mode, setMode] = useState<Mode>("login");
+  const [visualTemplate, setVisualTemplate] = useState<LoginVisualTemplate>("mimo");
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const isLight = theme === "light";
+  const fieldClass = cn(
+    "h-10 pl-10 text-sm",
+    isLight
+      ? "border-surface-200/70 bg-white/70 text-surface-900 placeholder:text-surface-400 focus:border-surface-400"
+      : "border-white/10 bg-white/8 text-cyan-50 placeholder:text-cyan-100/34 focus:border-cyan-200/35"
+  );
+  const passwordFieldClass = cn(fieldClass, "pr-10");
+  const iconClass = cn("absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2", isLight ? "text-surface-400" : "text-cyan-100/50");
+  const subtleTextClass = isLight ? "text-surface-500" : "text-cyan-100/52";
+  const linkTextClass = isLight ? "text-surface-800 hover:text-surface-950" : "text-amber-100 hover:text-amber-50";
 
   // Form fields
   const [name, setName] = useState("");
@@ -81,7 +102,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
   };
 
   return (
-    <div className="relative flex h-screen w-full items-center justify-center overflow-hidden bg-[#020612]">
+    <div className={cn("relative grid min-h-[100dvh] w-full overflow-hidden", isLight ? "bg-[#eef4fb] text-surface-950" : "bg-[#020612] text-white")}>
       <style>{`
         .magnetic-glow::after {
           content: '';
@@ -106,26 +127,90 @@ export function LoginPage({ onLogin }: LoginPageProps) {
           z-index: 2;
         }
       `}</style>
-      {/* GPGPU data city background */}
-      <DataCityLoginBackground className="z-0" />
+      <DataCityLoginBackground key={`${visualTemplate}-${theme}`} template={visualTemplate} theme={theme} className="z-0" />
+
+      <div className={cn("pointer-events-none absolute inset-0 z-[1]", isLight ? "bg-[linear-gradient(90deg,rgba(238,244,251,0.9)_0%,rgba(238,244,251,0.42)_44%,rgba(238,244,251,0.05)_100%)]" : "bg-[linear-gradient(90deg,rgba(2,6,18,0.9)_0%,rgba(2,6,18,0.38)_48%,rgba(2,6,18,0.1)_100%)]")} />
 
       {/* Top-right controls */}
       <div className="absolute top-6 right-6 z-20 flex items-center gap-3">
+        <div className={cn("relative grid w-[116px] grid-cols-3 gap-1 rounded-full p-1 backdrop-blur-md", isLight ? "border border-white/70 bg-white/55 shadow-[0_14px_40px_rgba(73,98,130,0.16)]" : "border border-white/12 bg-[#06101f]/70 shadow-[0_0_36px_rgba(74,144,217,0.16)]")}>
+          <div
+            className={cn("absolute left-1 top-1 h-8 w-8 rounded-full transition-transform duration-500 ease-[cubic-bezier(0.32,0.72,0,1)]", isLight ? "bg-white shadow-sm" : "bg-white/14 shadow-[0_0_22px_rgba(246,184,61,0.18)]")}
+            style={{ transform: `translateX(${themeMode === "system" ? 0 : themeMode === "light" ? 36 : 72}px)` }}
+          />
+          <button
+            onClick={() => setThemeMode("system")}
+            className={cn("relative z-10 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full transition-colors", themeMode === "system" ? (isLight ? "text-surface-900" : "text-white") : "text-cyan-100/45 hover:text-cyan-50")}
+            title={t("nav.followSystem")}
+          >
+            <Monitor className="h-4 w-4" />
+          </button>
+          <button
+            onClick={() => setThemeMode("light")}
+            className={cn("relative z-10 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full transition-colors", themeMode === "light" ? "text-amber-500" : "text-cyan-100/45 hover:text-cyan-50")}
+            title={t("nav.lightMode")}
+          >
+            <Sun className="h-4 w-4" />
+          </button>
+          <button
+            onClick={() => setThemeMode("dark")}
+            className={cn("relative z-10 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full transition-colors", themeMode === "dark" ? "text-cyan-100" : "text-cyan-100/45 hover:text-cyan-50")}
+            title={t("nav.darkMode")}
+          >
+            <Moon className="h-4 w-4" />
+          </button>
+        </div>
+
         {/* Language switch */}
         <button
           onClick={toggleLang}
-          className="inline-flex items-center gap-1.5 rounded-full border border-cyan-200/25 bg-[#071326]/70 px-3 py-1.5 text-xs font-medium text-cyan-50 shadow-[0_0_28px_rgba(74,144,217,0.22)] backdrop-blur-md transition-all duration-300 hover:border-amber-200/40 hover:bg-[#0b1e38]/80 hover:text-amber-100 active:scale-95"
+          className={cn("inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium shadow-[0_0_28px_rgba(74,144,217,0.18)] backdrop-blur-md transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] active:scale-95", isLight ? "border border-white/70 bg-white/55 text-surface-700 hover:text-surface-950" : "border border-cyan-200/20 bg-[#071326]/70 text-cyan-50 hover:border-amber-200/40 hover:text-amber-100")}
         >
           <Globe className="h-3.5 w-3.5" />
           <span>{lang === "zh" ? "English" : "中文"}</span>
         </button>
       </div>
 
+      <main className="relative z-10 grid min-h-[100dvh] grid-cols-1 items-center gap-6 px-5 py-24 lg:grid-cols-[minmax(0,1fr)_440px] lg:gap-10 lg:px-14 xl:px-20">
+        <section className="hidden max-w-[680px] lg:block">
+          <div className={cn("mb-6 inline-flex rounded-full px-3 py-1 text-[10px] font-medium uppercase tracking-[0.2em]", isLight ? "bg-white/60 text-surface-700 ring-1 ring-white/70" : "bg-white/8 text-cyan-100/72 ring-1 ring-white/10")}>
+            {t("login.templateLabel")}
+          </div>
+          <h1 className={cn("max-w-[640px] text-5xl font-black leading-[0.95] tracking-normal xl:text-7xl", isLight ? "text-surface-950" : "text-white")}>
+            {t("login.heroTitle")}
+          </h1>
+          <p className={cn("mt-6 max-w-[430px] text-sm leading-7", isLight ? "text-surface-600" : "text-cyan-100/62")}>
+            {t("login.heroSubtitle")}
+          </p>
+          <div className="mt-8 flex flex-wrap gap-2">
+            {visualTemplates.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => setVisualTemplate(item.id)}
+                className={cn(
+                  "rounded-full px-4 py-2 text-xs font-medium transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] active:scale-[0.98]",
+                  visualTemplate === item.id
+                    ? isLight
+                      ? "bg-surface-950 text-white shadow-[0_16px_32px_rgba(15,23,42,0.18)]"
+                      : "bg-white text-[#07101f] shadow-[0_0_34px_rgba(246,184,61,0.18)]"
+                    : isLight
+                      ? "bg-white/55 text-surface-600 ring-1 ring-white/70 hover:text-surface-950"
+                      : "bg-white/8 text-cyan-100/58 ring-1 ring-white/10 hover:text-cyan-50"
+                )}
+              >
+                {t(item.key)}
+              </button>
+            ))}
+          </div>
+        </section>
+
       {/* Login card — 3D magnetic tilt */}
-      <MagneticCard className="z-10 w-full max-w-[420px] px-4 sm:px-0" intensity={5}>
+      <MagneticCard className="w-full justify-self-center lg:justify-self-end" intensity={5}>
         <div
-          className="relative w-full overflow-hidden rounded-2xl border border-cyan-100/16 bg-[#07101f]/72 p-8 shadow-[0_24px_80px_rgba(0,0,0,0.48),0_0_80px_rgba(74,144,217,0.16),inset_0_1px_0_rgba(255,255,255,0.14)] backdrop-blur-2xl before:pointer-events-none before:absolute before:inset-0 before:bg-[linear-gradient(135deg,rgba(255,255,255,0.16),transparent_32%,rgba(246,184,61,0.08)_65%,transparent)] before:opacity-70"
+          className={cn("relative w-full max-w-[420px] overflow-hidden rounded-[2rem] p-1.5", isLight ? "bg-white/45 shadow-[0_24px_80px_rgba(73,98,130,0.2)] ring-1 ring-white/70" : "bg-white/8 shadow-[0_24px_80px_rgba(0,0,0,0.48),0_0_80px_rgba(74,144,217,0.16)] ring-1 ring-cyan-100/16")}
         >
+        <div className={cn("relative overflow-hidden rounded-[calc(2rem-0.375rem)] p-8 shadow-[inset_0_1px_0_rgba(255,255,255,0.14)] before:pointer-events-none before:absolute before:inset-0 before:bg-[linear-gradient(135deg,rgba(255,255,255,0.16),transparent_32%,rgba(246,184,61,0.08)_65%,transparent)] before:opacity-70", isLight ? "bg-white/76 text-surface-950" : "bg-[#07101f]/78 text-white")}>
         {/* Logo */}
         <div className="relative mb-8 text-center">
           <div className="mb-3 flex justify-center">
@@ -134,14 +219,14 @@ export function LoginPage({ onLogin }: LoginPageProps) {
           <div>
             <ShinyText
               text={t("app.name")}
-                color="#e7eefc"
-                shineColor="#f6b83d"
+                color={isLight ? "#172033" : "#e7eefc"}
+                shineColor={isLight ? "#b9954e" : "#f6b83d"}
               speed={2.5}
               direction="right"
               className="text-2xl font-bold tracking-normal"
             />
           </div>
-          <p className="mt-1 text-sm text-cyan-100/62">
+          <p className={cn("mt-1 text-sm", isLight ? "text-surface-500" : "text-cyan-100/62")}>
             {mode === "login" ? t("login.welcomeBack") : t("login.createAccount")}
           </p>
         </div>
@@ -203,11 +288,11 @@ export function LoginPage({ onLogin }: LoginPageProps) {
                   e.currentTarget.style.setProperty("--my", `${y}%`);
                 }}
               >
-                <User className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-cyan-100/50" />
+                <User className={iconClass} />
                 <Input
                   type="text"
                   placeholder={t("login.fullName")}
-                  className="h-10 border-white/10 bg-white/8 pl-10 text-sm text-cyan-50 placeholder:text-cyan-100/34 focus:border-cyan-200/35"
+                  className={fieldClass}
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   required={mode === "register"}
@@ -226,11 +311,11 @@ export function LoginPage({ onLogin }: LoginPageProps) {
               e.currentTarget.style.setProperty("--my", `${y}%`);
             }}
           >
-            <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-cyan-100/50" />
+            <Mail className={iconClass} />
             <Input
               type="email"
               placeholder={t("login.email")}
-              className="h-10 border-white/10 bg-white/8 pl-10 text-sm text-cyan-50 placeholder:text-cyan-100/34 focus:border-cyan-200/35"
+              className={fieldClass}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
@@ -247,11 +332,11 @@ export function LoginPage({ onLogin }: LoginPageProps) {
               e.currentTarget.style.setProperty("--my", `${y}%`);
             }}
           >
-            <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-cyan-100/50" />
+            <Lock className={iconClass} />
             <Input
               type={showPassword ? "text" : "password"}
               placeholder={t("login.password")}
-              className="h-10 border-white/10 bg-white/8 pl-10 pr-10 text-sm text-cyan-50 placeholder:text-cyan-100/34 focus:border-cyan-200/35"
+              className={passwordFieldClass}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
@@ -259,7 +344,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
             <button
               type="button"
               onClick={() => setShowPassword(!showPassword)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 cursor-pointer text-cyan-100/45 transition-transform hover:text-cyan-50 active:scale-90"
+              className={cn("absolute right-3 top-1/2 -translate-y-1/2 cursor-pointer transition-transform active:scale-90", isLight ? "text-surface-400 hover:text-surface-700" : "text-cyan-100/45 hover:text-cyan-50")}
             >
               {showPassword ? (
                 <EyeOff className="h-4 w-4" />
@@ -281,7 +366,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
                 <button
                   type="button"
                   onClick={() => setForgotOpen(true)}
-	                  className="cursor-pointer text-xs text-cyan-100/48 transition-transform hover:text-cyan-50 hover:underline active:scale-[0.97]"
+                  className={cn("cursor-pointer text-xs transition-transform hover:underline active:scale-[0.97]", isLight ? "text-surface-500 hover:text-surface-800" : "text-cyan-100/48 hover:text-cyan-50")}
                 >
                   {t("login.forgot")}
                 </button>
@@ -306,14 +391,14 @@ export function LoginPage({ onLogin }: LoginPageProps) {
           </div>
 
           {/* Switch mode */}
-	          <p className="mt-4 text-center text-xs text-cyan-100/52">
+          <p className={cn("mt-4 text-center text-xs", subtleTextClass)}>
             {mode === "login" ? (
               <>
                 {t("login.noAccount")}{" "}
                 <button
                   type="button"
                   onClick={switchMode}
-	                  className="cursor-pointer font-medium text-amber-100 transition-transform hover:underline active:scale-[0.97]"
+                  className={cn("cursor-pointer font-medium transition-transform hover:underline active:scale-[0.97]", linkTextClass)}
                 >
                   {t("login.register")}
                   <ArrowRight className="ml-1 inline-block h-3 w-3" />
@@ -325,7 +410,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
                 <button
                   type="button"
                   onClick={switchMode}
-	                  className="cursor-pointer font-medium text-amber-100 transition-transform hover:underline active:scale-[0.97]"
+                  className={cn("cursor-pointer font-medium transition-transform hover:underline active:scale-[0.97]", linkTextClass)}
                 >
                   {t("login.signIn")}
                   <ArrowRight className="ml-1 inline-block h-3 w-3" />
@@ -335,7 +420,30 @@ export function LoginPage({ onLogin }: LoginPageProps) {
           </p>
         </form>
         </div>
+	      </div>
       </MagneticCard>
+        <div className="flex justify-center gap-2 lg:hidden">
+          {visualTemplates.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => setVisualTemplate(item.id)}
+              className={cn(
+                "rounded-full px-3 py-2 text-[11px] font-medium transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] active:scale-[0.98]",
+                visualTemplate === item.id
+                  ? isLight
+                    ? "bg-surface-950 text-white"
+                    : "bg-white text-[#07101f]"
+                  : isLight
+                    ? "bg-white/60 text-surface-600 ring-1 ring-white/70"
+                    : "bg-white/8 text-cyan-100/60 ring-1 ring-white/10"
+              )}
+            >
+              {t(item.key)}
+            </button>
+          ))}
+        </div>
+      </main>
 
       {/* Forgot Password Modal */}
       <ForgotPasswordModal
