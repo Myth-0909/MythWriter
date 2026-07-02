@@ -26,6 +26,7 @@ import {
   X,
   ArrowLeft,
   FolderSymlink,
+  Bot,
   type LucideIcon,
 } from "lucide-react";
 import mammoth from "mammoth";
@@ -60,6 +61,7 @@ function plainTextToHtml(value: string): string {
 
 interface DocumentCenterPageProps {
   onOpenDoc?: (id: string) => void;
+  onOpenAgentWrite?: () => void;
   groups?: any[];
   activeGroupId?: string | null;
   setActiveGroupId?: (id: string | null) => void;
@@ -67,6 +69,7 @@ interface DocumentCenterPageProps {
 
 export function DocumentCenterPage({
   onOpenDoc,
+  onOpenAgentWrite,
   groups = [],
   activeGroupId = null,
   setActiveGroupId = () => {},
@@ -306,6 +309,16 @@ export function DocumentCenterPage({
               )}
             </div>
             <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="lg"
+                className="gap-1.5"
+                onClick={onOpenAgentWrite}
+              >
+                <Bot className="h-3.5 w-3.5" />
+                <span>{t("agent.open")}</span>
+              </Button>
+
               {/* Import button */}
               <input
                 ref={fileInputRef}

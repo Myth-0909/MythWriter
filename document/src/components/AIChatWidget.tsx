@@ -1202,6 +1202,7 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
   const brainMention = getBrainQuery(input);
   const slash = getSlashQuery(input);
   const slashCommands: SlashCommand[] = [
+    { id: "write", label: t("agent.open"), prompt: t("agent.subtitle") },
     { id: "rewrite", label: t("ai.commandRewrite"), prompt: t("ai.commandRewritePrompt") },
     { id: "summarize", label: t("ai.commandSummarize"), prompt: t("ai.commandSummarizePrompt") },
     { id: "expand", label: t("ai.commandExpand"), prompt: t("ai.commandExpandPrompt") },
@@ -1211,7 +1212,10 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
     { id: "multisummary", label: t("ai.commandMultiSummary"), prompt: t("ai.commandMultiSummaryPrompt") },
   ];
   const commandMatches = slash
-    ? slashCommands.filter((command) => command.label.toLowerCase().includes(slash.query.toLowerCase()))
+    ? slashCommands.filter((command) => (
+        command.label.toLowerCase().includes(slash.query.toLowerCase()) ||
+        command.id.toLowerCase().includes(slash.query.toLowerCase())
+      ))
     : [];
   const mentionMatches = mention
     ? documents
@@ -1301,6 +1305,13 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
 
   const selectCommand = (command: SlashCommand) => {
     if (!slash) return;
+    if (command.id === "write") {
+      window.dispatchEvent(new CustomEvent("znwriter-agent-write-open"));
+      setInput((prev) => prev.slice(0, slash.start).trimStart());
+      setCommandOpen(false);
+      setCommandIndex(0);
+      return;
+    }
     setInput((prev) => `${prev.slice(0, slash.start)}${command.prompt}`);
     setCommandOpen(false);
     setCommandIndex(0);

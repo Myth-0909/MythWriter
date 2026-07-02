@@ -17,6 +17,7 @@ React + Tauri frontend for ZNWriter. The app provides document management, the r
 - `src/App.tsx` — route and layout orchestration
 - `src/components/Editor.tsx` — Tiptap rich text editor
 - `src/components/AIChatWidget.tsx` — streaming assistant, document references, semantic brain references
+- `src/components/AgentWritePanel.tsx` — six-step Agent writing panel with SSE progress
 - `src/pages/BrainMemoryPage.tsx` — AI brain cards, categories, RAG reindex controls
 - `src/pages/SettingsPage.tsx` — profile, theme, language, AI service configuration history
 - `src/components/AppErrorBoundary.tsx` — global white-screen protection

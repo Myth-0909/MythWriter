@@ -61,6 +61,7 @@ A full-stack cross-platform writing application — an intelligent document work
 - **Streaming Output** — Real-time typewriter effect via SSE (Server-Sent Events)
 - **5 Personalities** — Normal, Cute, Catgirl (喵~), Serious, Silly — each with distinct tone and style, instantly switchable with persistent preference
 - **Auto Document Creation** — AI generates content directly into new documents when asked to write
+- **Agent Writer** — Six-step autonomous writing flow: analyze, retrieve, outline, draft, review, publish
 - **Writing Review** — AI-powered writing quality review with actionable suggestions
 - **Prompt Injection Protection** — Detects and blocks jailbreak/DAN/instruction-leak attacks
 - **Draggable Float Button** — Sparkles icon, drag to reposition, click to open chat dialog
@@ -120,6 +121,7 @@ MythWriter/
 │       ├── services/          # Business logic and RAG service
 │       ├── lib/               # Prisma, Redis, Milvus, embeddings
 │       └── middleware/        # JWT authentication middleware
+├── docs/competition/          # AI competition process records and metric templates
 └── start.sh                   # One-click start script
 ```
 
@@ -193,6 +195,7 @@ cd document && pnpm install && cd ..
 | POST | `/api/ai/chat` | AI chat (streaming SSE) |
 | POST | `/api/ai/greeting` | AI greeting by personality |
 | POST | `/api/ai/writing-review` | AI writing review |
+| POST | `/api/ai/agent/write` | Agent writing flow (progress SSE) |
 | GET | `/api/ai/knowledge` | List AI brain cards |
 | POST | `/api/ai/knowledge` | Create AI brain card |
 | PUT | `/api/ai/knowledge/:id` | Update AI brain card |
@@ -271,6 +274,7 @@ MIT
 - **流式输出** — 基于 SSE 的实时打字机效果，可随时中断生成
 - **5 种性格** — 正常、可爱、猫娘（喵~）、严肃、搞怪，每种有独特语气风格，即时切换并持久化偏好
 - **自动创建文档** — 用户要求写作时，AI 自动生成内容并创建新文档
+- **Agent 自主写作** — 六步写作流：分析目标、检索资料、生成大纲、撰写草稿、自审优化、发布文档
 - **写作审阅** — AI 对文本质量进行审阅，并给出可执行修改建议
 - **提示词注入防护** — 检测并拦截越狱/DAN/指令泄露等攻击
 - **可拖拽悬浮按钮** — Sparkles 图标，可拖动位置，点击展开对话窗口
@@ -330,6 +334,7 @@ MythWriter/
 │       ├── services/          # 业务逻辑与 RAG 服务
 │       ├── lib/               # Prisma、Redis、Milvus、Embedding
 │       └── middleware/        # JWT 认证中间件
+├── docs/competition/          # AI 竞赛过程记录与指标模板
 └── start.sh                   # 一键启动脚本
 ```
 
@@ -403,6 +408,7 @@ cd document && pnpm install && cd ..
 | POST | `/api/ai/chat` | AI 对话（SSE 流式） |
 | POST | `/api/ai/greeting` | AI 性格化问候 |
 | POST | `/api/ai/writing-review` | AI 写作审阅 |
+| POST | `/api/ai/agent/write` | Agent 自主写作流（SSE 进度） |
 | GET | `/api/ai/knowledge` | 获取 AI 设定卡 |
 | POST | `/api/ai/knowledge` | 创建 AI 设定卡 |
 | PUT | `/api/ai/knowledge/:id` | 更新 AI 设定卡 |

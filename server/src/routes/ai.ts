@@ -12,6 +12,8 @@ import {
 import type { Personality } from "../services/aiService";
 import { selectReferencedBrainIds, type ChatReference } from "../services/aiReferences";
 import { formatBrainKnowledgeContext, RAG_SCORE_THRESHOLD, ragService } from "../services/ragService";
+import { createAgentWriteService } from "../services/agentService";
+import { createDocument } from "../services/documentService";
 
 const router = Router();
 const MAX_REFERENCE_DOCS = 4;
@@ -78,6 +80,55 @@ function normalizeWritingReview(raw: any, fallbackTitle = "Suggestion") {
       severity: ["high", "medium", "low"].includes(item?.severity) ? item.severity : "medium",
     })).filter((item: any) => item.detail || item.actionPrompt),
   };
+}
+
+async function requestChatCompletionText(params: {
+  apiBaseUrl: string;
+  apiKey: string;
+  model: string;
+  messages: { role: "system" | "user" | "assistant"; content: string }[];
+  temperature?: number;
+  maxTokens?: number;
+  signal?: AbortSignal;
+}): Promise<string> {
+  const controller = new AbortController();
+  const abortFromCaller = () => controller.abort();
+  const timeout = setTimeout(() => controller.abort(), 180000);
+  if (params.signal?.aborted) controller.abort();
+  params.signal?.addEventListener("abort", abortFromCaller, { once: true });
+  try {
+    const response = await fetch(buildChatCompletionsUrl(params.apiBaseUrl), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${params.apiKey}`,
+      },
+      body: JSON.stringify({
+        model: params.model,
+        messages: params.messages,
+        temperature: params.temperature ?? 0.4,
+        max_tokens: params.maxTokens ?? 1800,
+        stream: false,
+      }),
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new Error(`AI service error (${response.status}): ${errText.slice(0, 160)}`);
+    }
+
+    const json = await response.json() as any;
+      return String(json.choices?.[0]?.message?.content || json.choices?.[0]?.text || "").trim();
+  } finally {
+    params.signal?.removeEventListener("abort", abortFromCaller);
+    clearTimeout(timeout);
+  }
+}
+
+function writeSse(res: Response, event: string, data: unknown) {
+  res.write(`event: ${event}\n`);
+  res.write(`data: ${JSON.stringify(data)}\n\n`);
 }
 
 async function buildReferenceContext(userId: string, references: ChatReference[] | undefined): Promise<string> {
@@ -245,6 +296,153 @@ router.post("/writing-review", async (req: Request, res: Response) => {
     console.error("Writing review error:", error);
     const userLang = getRequestLang(req);
     res.status(500).json({ error: t(userLang, "AI 写作检查失败", "AI writing review failed") });
+  }
+});
+
+// Agent writing flow with progress SSE
+router.post("/agent/write", async (req: Request, res: Response) => {
+  let streamStarted = false;
+  const requestController = new AbortController();
+  res.on("close", () => {
+    if (!res.writableEnded) requestController.abort();
+  });
+
+  const safeWrite = (event: string, data: unknown) => {
+    if (!res.writableEnded && !res.destroyed) writeSse(res, event, data);
+  };
+
+  try {
+    const authReq = req as AuthRequest;
+    const userId = authReq.user!.userId;
+    const userLangFromRequest = getRequestLang(req);
+    const { goal, style, length, includeBrain, includeDocuments } = req.body || {};
+    const trimmedGoal = typeof goal === "string" ? goal.trim() : "";
+
+    if (!trimmedGoal) {
+      res.status(400).json({ error: t(userLangFromRequest, "写作目标不能为空", "Writing goal is required") });
+      return;
+    }
+
+    if (detectInjection(trimmedGoal)) {
+      res.status(400).json({ error: t(userLangFromRequest, "检测到不安全输入，已拒绝该请求。", "Unsafe input detected. Request rejected.") });
+      return;
+    }
+
+    const { apiKey, apiBaseUrl, aiModel, lang: userLang } = await getUserApiKey(userId);
+    if (!apiKey) {
+      res.status(400).json({ error: t(userLang, "请先在设置中配置 API Key", "Please configure API Key in Settings") });
+      return;
+    }
+
+    res.writeHead(200, {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-cache",
+      "Connection": "keep-alive",
+      "X-Accel-Buffering": "no",
+    });
+    streamStarted = true;
+    res.write(":ok\n\n");
+
+    const service = createAgentWriteService({
+      async completeJson(step, prompt) {
+        const content = await requestChatCompletionText({
+          apiBaseUrl,
+          apiKey,
+          model: aiModel,
+          messages: [
+            {
+              role: "system",
+              content: "Return valid compact JSON only. Do not use markdown fences.",
+            },
+            { role: "user", content: prompt },
+          ],
+          temperature: step === "review" ? 0.2 : 0.35,
+          maxTokens: step === "plan" ? 1800 : 1000,
+          signal: requestController.signal,
+        });
+        const parsed = extractJsonObject(content);
+        if (!parsed) {
+          throw new Error(t(userLang, "AI 未返回可解析的 JSON", "AI returned JSON that could not be parsed"));
+        }
+        return parsed;
+      },
+      async completeText(_step, prompt) {
+        return requestChatCompletionText({
+          apiBaseUrl,
+          apiKey,
+          model: aiModel,
+          messages: [
+            {
+              role: "system",
+              content: "你是小安，专注于按大纲生成可直接进入文档的正文。不要输出解释、JSON 或元信息。",
+            },
+            { role: "user", content: prompt },
+          ],
+          temperature: 0.65,
+          maxTokens: length === "long" ? 2200 : length === "short" ? 900 : 1500,
+          signal: requestController.signal,
+        });
+      },
+      searchKnowledge(userIdArg, query, topK) {
+        return ragService.searchKnowledge(
+          userIdArg,
+          query,
+          topK,
+          () => prisma.aIBrainKnowledge.findMany({
+            where: { userId: userIdArg },
+            select: { id: true, title: true, description: true, category: true },
+          })
+        );
+      },
+      searchDocuments(userIdArg, query, topK) {
+        return ragService.searchDocuments(userIdArg, query, topK);
+      },
+      async createDocument(data) {
+        const doc = await createDocument(userId, {
+          title: data.title,
+          content: data.content,
+          category: data.category,
+        });
+        ragService.reindexDocument({ userId, id: doc.id, content: doc.content }).catch((error) => {
+          console.warn("[agent_write] document reindex failed:", error);
+        });
+        return { id: doc.id, title: doc.title };
+      },
+    });
+
+    const result = await service.write(
+      {
+        userId,
+        goal: trimmedGoal,
+        style,
+        length,
+        includeBrain: includeBrain !== false,
+        includeDocuments: includeDocuments !== false,
+        lang: userLang === "en" ? "en" : "zh",
+      },
+      (event) => safeWrite("progress", event)
+    );
+
+    safeWrite("done", {
+      docId: result.docId,
+      title: result.title,
+      outline: result.outline,
+      review: result.review,
+      sources: result.sources,
+    });
+    if (!res.writableEnded && !res.destroyed) res.end();
+  } catch (error: any) {
+    console.error("[agent_write] error:", error);
+    const payload = { error: error?.message || "Agent write failed" };
+    if (streamStarted) {
+      safeWrite("error", payload);
+      if (!res.writableEnded && !res.destroyed) res.end();
+      return;
+    }
+    const userLang = getRequestLang(req);
+    res.status(500).json({
+      error: t(userLang, `AI 写作失败: ${payload.error}`, `AI writing failed: ${payload.error}`),
+    });
   }
 });
 

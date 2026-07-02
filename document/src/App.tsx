@@ -15,6 +15,7 @@ import { ShareModal } from "@/components/ShareModal";
 import { ConfirmModal } from "@/components/ConfirmModal";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { AIChatWidget } from "@/components/AIChatWidget";
+import { AgentWritePanel } from "@/components/AgentWritePanel";
 import { useDocuments } from "@/store";
 import { useToast } from "@/components/Toast";
 import { useI18n } from "@/components/I18nProvider";
@@ -221,6 +222,7 @@ export default function App() {
   });
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
+  const [agentWriteOpen, setAgentWriteOpen] = useState(false);
 
   // Verify token validity on mount
   useEffect(() => {
@@ -445,6 +447,7 @@ export default function App() {
             {currentPage === "documents" && (
               <DocumentCenterPage
                 onOpenDoc={handleOpenDoc}
+                onOpenAgentWrite={() => setAgentWriteOpen(true)}
                 groups={groups}
                 activeGroupId={activeGroupId}
                 setActiveGroupId={setActiveGroupId}
@@ -474,6 +477,7 @@ export default function App() {
       )}
 
       <ShareModal open={shareOpen} onOpenChange={setShareOpen} onExport={handleExport} />
+      <AgentWritePanel open={agentWriteOpen} onOpenChange={setAgentWriteOpen} onOpenDocument={handleOpenDoc} />
 
       <ConfirmModal
         open={logoutConfirm}

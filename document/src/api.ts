@@ -42,6 +42,62 @@ export interface RagSearchResponse<T> {
   error?: string;
 }
 
+export type AgentStage = "analyze" | "research" | "plan" | "draft" | "review" | "publish";
+
+export interface AgentSource {
+  type: "brain" | "document";
+  id: string;
+  title: string;
+  excerpt: string;
+  score?: number;
+  degraded?: boolean;
+}
+
+export interface AgentOutlineItem {
+  heading: string;
+  brief: string;
+}
+
+export interface AgentReview {
+  score: number;
+  suggestions: { detail: string; severity: "high" | "medium" | "low" }[];
+}
+
+export interface AgentProgressEvent {
+  stage: AgentStage;
+  message: string;
+  analysis?: {
+    genre: string;
+    tone: string;
+    themes: string[];
+    estimatedWords: number;
+  };
+  sources?: AgentSource[];
+  outline?: AgentOutlineItem[];
+  sectionIndex?: number;
+  totalSections?: number;
+  content?: string;
+  review?: AgentReview;
+  docId?: string;
+  title?: string;
+}
+
+export interface AgentDoneEvent {
+  docId: string;
+  title: string;
+  outline: AgentOutlineItem[];
+  review: AgentReview;
+  sources: AgentSource[];
+}
+
+export interface AgentWriteRequest {
+  goal: string;
+  style?: "default" | "literary" | "academic" | "business" | "technical";
+  length?: "short" | "medium" | "long";
+  includeBrain?: boolean;
+  includeDocuments?: boolean;
+}
+
 function getToken(): string | null {
   return localStorage.getItem("token");
 }
@@ -76,6 +132,84 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   }
 
   return res.json();
+}
+
+function parseSseBlock(block: string): { event: string; data: string } | null {
+  let event = "message";
+  const dataLines: string[] = [];
+  for (const line of block.split("\n")) {
+    if (!line || line.startsWith(":")) continue;
+    if (line.startsWith("event:")) {
+      event = line.slice(6).trim();
+    } else if (line.startsWith("data:")) {
+      dataLines.push(line.slice(5).trimStart());
+    }
+  }
+  if (dataLines.length === 0) return null;
+  return { event, data: dataLines.join("\n") };
+}
+
+export async function streamAgentWrite(
+  data: AgentWriteRequest,
+  handlers: {
+    onProgress: (event: AgentProgressEvent) => void;
+    onDone: (event: AgentDoneEvent) => void;
+    onError?: (message: string) => void;
+  },
+  signal?: AbortSignal
+): Promise<AgentDoneEvent | null> {
+  const token = getToken();
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  if (token) headers.Authorization = `Bearer ${token}`;
+
+  const res = await fetch(`${API_BASE}/ai/agent/write`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(data),
+    signal,
+  });
+
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ error: "网络错误" }));
+    throw new Error(error.error || `HTTP ${res.status}`);
+  }
+  if (!res.body) throw new Error("No response body");
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let doneEvent: AgentDoneEvent | null = null;
+
+  const handleBlock = (block: string) => {
+    const parsed = parseSseBlock(block);
+    if (!parsed) return;
+    const payload = JSON.parse(parsed.data);
+    if (parsed.event === "progress") {
+      handlers.onProgress(payload);
+    } else if (parsed.event === "done") {
+      doneEvent = payload;
+      handlers.onDone(payload);
+    } else if (parsed.event === "error") {
+      const message = String(payload?.error || "Agent write failed");
+      handlers.onError?.(message);
+      throw new Error(message);
+    }
+  };
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const blocks = buffer.split("\n\n");
+    buffer = blocks.pop() || "";
+    for (const block of blocks) {
+      if (block.trim()) handleBlock(block);
+    }
+  }
+  if (buffer.trim()) handleBlock(buffer);
+  return doneEvent;
 }
 
 // Auth API
