@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { ConfirmModal } from "@/components/ConfirmModal";
 import { LoadingOverlay } from "@/components/LoadingSpinner";
 import { Scrollbar } from "@/components/ui/scrollbar";
-import { WriterFlowChart } from "@/components/WriterFlowChart";
+import { WriterFlowChart, WriterRhythmChart } from "@/components/WriterFlowChart";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import {
   DropdownMenu,
@@ -763,26 +763,7 @@ export function DocumentCenterPage({
                       <span className="text-xs font-semibold text-surface-700 dark:text-surface-200">{t("documents.rhythmMap")}</span>
                       <span className="text-[11px] text-surface-400">{numberFormatter.format(weeklyTotal)}</span>
                     </div>
-                    <div className="grid grid-cols-7 items-end gap-2">
-                      {chartData.dayIndices.map((dayIndex, index) => {
-                        const value = chartData.words[index] || 0;
-                        const height = peakWords > 0 ? Math.max(10, Math.round((value / peakWords) * 52)) : 10;
-                        return (
-                          <div key={`${dayIndex}-${index}`} className="flex flex-col items-center gap-2">
-                            <div className="flex h-[56px] w-full items-end rounded-full bg-surface-200/70 p-1 dark:bg-surface-800/70">
-                              <div
-                                className={cn(
-                                  "w-full rounded-full transition-all",
-                                  value > 0 ? "bg-brand-500 dark:bg-brand-400" : "bg-surface-300 dark:bg-surface-700"
-                                )}
-                                style={{ height }}
-                              />
-                            </div>
-                            <span className="text-[10px] font-medium text-surface-400">{t(dayI18nKeys[dayIndex])}</span>
-                          </div>
-                        );
-                      })}
-                    </div>
+                    <WriterRhythmChart dayIndices={chartData.dayIndices} words={chartData.words} />
                   </div>
                 </>
               ) : (
