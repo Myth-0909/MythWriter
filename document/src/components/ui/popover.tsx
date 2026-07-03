@@ -17,6 +17,7 @@ function PopoverContent({
       <PopoverPrimitive.Content
         align={align}
         sideOffset={sideOffset}
+        data-radix-popover-content=""
         className={cn(
           "z-50 rounded-xl border border-surface-200 bg-white p-3 text-surface-950 shadow-xl shadow-surface-950/10 outline-none data-[state=open]:animate-in data-[state=closed]:animate-out dark:border-surface-800 dark:bg-surface-950 dark:text-surface-50",
           className

@@ -29,16 +29,38 @@ interface DialogContentProps extends React.ComponentPropsWithoutRef<typeof Dialo
   hideCloseButton?: boolean;
 }
 
+function isRadixFloatingLayer(target: EventTarget | null) {
+  if (!(target instanceof Element)) return false;
+  return Boolean(
+    target.closest(
+      [
+        "[data-radix-popper-content-wrapper]",
+        "[data-radix-select-content]",
+        "[data-radix-dropdown-menu-content]",
+        "[data-radix-popover-content]",
+        "[data-radix-tooltip-content]",
+      ].join(",")
+    )
+  );
+}
+
 const DialogContent = React.forwardRef<
   React.ComponentRef<typeof DialogPrimitive.Content>,
   DialogContentProps
->(({ className, children, hideCloseButton = false, ...props }, ref) => (
+>(({ className, children, hideCloseButton = false, onInteractOutside, ...props }, ref) => (
   <DialogPortal>
     <DialogOverlay />
     {/* Centering wrapper - uses flexbox for perfect centering */}
     <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none">
       <DialogPrimitive.Content
         ref={ref}
+        onInteractOutside={(event) => {
+          if (isRadixFloatingLayer(event.target)) {
+            event.preventDefault();
+            return;
+          }
+          onInteractOutside?.(event);
+        }}
         className={cn(
           "pointer-events-auto grid w-full max-w-lg gap-4 border border-surface-200 bg-white p-6 shadow-lg sm:rounded-lg dark:bg-surface-900 dark:border-surface-700",
           "data-[state=open]:animate-[modalIn_0.35s_cubic-bezier(0.16,1,0.3,1)_forwards]",

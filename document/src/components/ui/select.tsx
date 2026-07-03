@@ -36,6 +36,7 @@ const SelectContent = React.forwardRef<
       ref={ref}
       position={position}
       sideOffset={4}
+      data-radix-select-content=""
       className={cn(
         "relative z-50 max-h-60 min-w-[8rem] overflow-hidden rounded-lg border border-surface-200 bg-white shadow-lg dark:border-surface-700 dark:bg-surface-900",
         position === "popper" &&
