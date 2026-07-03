@@ -9,6 +9,7 @@ import {
   Layers3,
   Loader2,
   NotebookTabs,
+  Plus,
   Save,
   Search,
   Sparkles,
@@ -324,6 +325,10 @@ export function WorkRecordPanel({ className, view = "editor" }: { className?: st
   const [editTitle, setEditTitle] = useState("");
   const [editContent, setEditContent] = useState("");
   const [editTargetDate, setEditTargetDate] = useState("");
+  const [backfillOpen, setBackfillOpen] = useState(false);
+  const [backfillTitle, setBackfillTitle] = useState("");
+  const [backfillContent, setBackfillContent] = useState("");
+  const [backfillTargetDate, setBackfillTargetDate] = useState(todayKey);
   const [deleteTarget, setDeleteTarget] = useState<WorkRecord | null>(null);
   const [aiLoading, setAiLoading] = useState<"generate" | "polish" | null>(null);
 
@@ -535,6 +540,42 @@ export function WorkRecordPanel({ className, view = "editor" }: { className?: st
     setEditTitle(nextRecord.title);
     setEditContent(nextRecord.content);
     setEditTargetDate(nextRecord.targetDate.slice(0, 10));
+  };
+
+  const openBackfillRecord = () => {
+    setBackfillTargetDate(todayKey);
+    setBackfillTitle("");
+    setBackfillContent("");
+    setBackfillOpen(true);
+  };
+
+  const handleSaveBackfill = async () => {
+    if (!backfillTitle.trim() && !backfillContent.trim()) {
+      toast(t("workbench.recordEmptyForSave"), "info");
+      return;
+    }
+    setSaving(true);
+    try {
+      const res = await api.saveWorkRecord({
+        period: listPeriod,
+        targetDate: backfillTargetDate,
+        title: backfillTitle,
+        content: backfillContent,
+      });
+      setBackfillOpen(false);
+      setPeriod(res.record.period);
+      setListPeriod(res.record.period);
+      setTargetDate(res.record.targetDate.slice(0, 10));
+      setRecord(res.record);
+      setTitle(res.record.title);
+      setContent(res.record.content);
+      await refreshRecent();
+      toast(t("workbench.backfillRecordSaved"), "success");
+    } catch (error: any) {
+      toast(error.message || t("workbench.recordSaveFailed"), "error");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleSaveEdit = async () => {
@@ -934,7 +975,18 @@ export function WorkRecordPanel({ className, view = "editor" }: { className?: st
                 {t("workbench.recordListDesc")}
               </p>
             </div>
-            {loading && <Loader2 className="h-4 w-4 animate-spin text-surface-400" />}
+            <div className="flex shrink-0 items-center gap-2">
+              <Button
+                type="button"
+                className="h-9 gap-1.5 px-3"
+                onClick={openBackfillRecord}
+                disabled={saving}
+              >
+                <Plus className="h-4 w-4" />
+                <span>{t("workbench.backfillRecord")}</span>
+              </Button>
+              {loading && <Loader2 className="h-4 w-4 animate-spin text-surface-400" />}
+            </div>
           </div>
 
           <div className="mb-4 grid gap-3 rounded-2xl border border-surface-200 bg-surface-50/70 p-3 dark:border-surface-800 dark:bg-surface-950/25">
@@ -1078,6 +1130,59 @@ export function WorkRecordPanel({ className, view = "editor" }: { className?: st
         </aside>
       )}
     </section>
+    <Dialog open={backfillOpen} onOpenChange={setBackfillOpen}>
+      <DialogContent className="max-w-[720px]">
+        <DialogTitle>{t("workbench.backfillRecord")}</DialogTitle>
+        <DialogDescription>
+          {t("workbench.backfillRecordDesc")}
+        </DialogDescription>
+        <div className="mt-4 grid gap-4">
+          <div className="grid gap-2">
+            <span className="text-xs font-semibold text-surface-700 dark:text-surface-200">
+              {t("workbench.recordDate")}
+            </span>
+            <DatePicker
+              value={backfillTargetDate}
+              onChange={(value) => setBackfillTargetDate(value || todayKey)}
+              placeholder={t("workbench.recordDate")}
+              ariaLabel={t("workbench.recordDate")}
+              className="w-full"
+            />
+          </div>
+          <div className="grid gap-2">
+            <span className="text-xs font-semibold text-surface-700 dark:text-surface-200">
+              {t("workbench.recordTitle")}
+            </span>
+            <Input
+              value={backfillTitle}
+              onChange={(event) => setBackfillTitle(event.target.value)}
+              placeholder={t("workbench.recordTitlePlaceholder")}
+              className="bg-surface-50 dark:bg-[#0f1724]"
+            />
+          </div>
+          <div className="grid gap-2">
+            <span className="text-xs font-semibold text-surface-700 dark:text-surface-200">
+              {t("workbench.recordContent")}
+            </span>
+            <MarkdownTextarea
+              value={backfillContent}
+              onValueChange={setBackfillContent}
+              placeholder={t("workbench.recordContentPlaceholder")}
+              className="min-h-[300px] bg-surface-50 dark:bg-[#0f1724]"
+            />
+          </div>
+        </div>
+        <div className="mt-5 flex justify-end gap-2">
+          <Button type="button" variant="outline" onClick={() => setBackfillOpen(false)} disabled={saving}>
+            {t("common.cancel")}
+          </Button>
+          <Button type="button" onClick={handleSaveBackfill} disabled={saving}>
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+            <span>{t("common.save")}</span>
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
     <Dialog open={!!editRecord} onOpenChange={(open) => !open && setEditRecord(null)}>
       <DialogContent className="max-w-[720px]">
         <DialogTitle>{t("workbench.editRecord")}</DialogTitle>
