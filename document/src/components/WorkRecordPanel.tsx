@@ -4,15 +4,17 @@ import {
   CalendarDays,
   Clock3,
   FileText,
-  ImagePlus,
   Layers3,
   Loader2,
   NotebookTabs,
   Save,
+  Search,
   Sparkles,
   Trash2,
   Wand2,
+  X,
 } from "lucide-react";
+import { marked } from "marked";
 import { api } from "@/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,11 +22,12 @@ import { TabGroup } from "@/components/ui/tab-group";
 import { Textarea } from "@/components/ui/textarea";
 import { useI18n } from "@/components/I18nProvider";
 import { useToast } from "@/components/Toast";
+import { sanitizeHtml } from "@/lib/html";
 import { cn } from "@/lib/utils";
 import type { WorkRecord, WorkRecordPeriod } from "@/types";
 
 const MAX_INLINE_IMAGE_SIZE = 2 * 1024 * 1024;
-const markdownImagePattern = /!\[[^\]]*]\((data:image\/[^)]+)\)/g;
+const imageSourcePattern = /!\[[^\]]*]\((data:image\/[^)]+)\)|<img\b[^>]*\bsrc=["'](data:image\/[^"']+)["'][^>]*>/gi;
 
 function localDateKey(date = new Date()) {
   const year = date.getFullYear();
@@ -61,25 +64,34 @@ function normalizeDateForPeriod(value: string, period: WorkRecordPeriod) {
 
 function stripMarkdown(value: string) {
   return value
-    .replace(markdownImagePattern, " ")
+    .replace(imageSourcePattern, " ")
+    .replace(/<[^>]+>/g, " ")
     .replace(/[#*_>`-]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
 
-function getMarkdownImages(value: string) {
-  return Array.from(value.matchAll(markdownImagePattern)).map((match) => match[1]);
+function getContentImages(value: string) {
+  return Array.from(value.matchAll(imageSourcePattern)).map((match) => match[1] || match[2]);
+}
+
+function getDateKey(value: string) {
+  return normalizeDateForPeriod(value, "daily").toISOString().slice(0, 10);
 }
 
 export function WorkRecordPanel({ className }: { className?: string } = {}) {
   const { t, lang } = useI18n();
   const { toast } = useToast();
-  const imageInputRef = useRef<HTMLInputElement>(null);
+  const contentTextareaRef = useRef<HTMLTextAreaElement>(null);
   const todayKey = useMemo(() => localDateKey(), []);
   const [period, setPeriod] = useState<WorkRecordPeriod>("daily");
+  const [listPeriod, setListPeriod] = useState<WorkRecordPeriod>("daily");
   const [targetDate, setTargetDate] = useState(todayKey);
   const [record, setRecord] = useState<WorkRecord | null>(null);
   const [recentRecords, setRecentRecords] = useState<WorkRecord[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [loading, setLoading] = useState(true);
@@ -155,15 +167,11 @@ export function WorkRecordPanel({ className }: { className?: string } = {}) {
     [locale]
   );
 
-  const loadRecords = useCallback(async () => {
+  const loadCurrentRecord = useCallback(async () => {
     setLoading(true);
     try {
-      const [currentRes, listRes] = await Promise.all([
-        api.getCurrentWorkRecord(period, targetDate),
-        api.listWorkRecords({ period, limit: 10 }),
-      ]);
+      const currentRes = await api.getCurrentWorkRecord(period, targetDate);
       setRecord(currentRes.record);
-      setRecentRecords(listRes.records);
       setTitle(currentRes.record?.title || "");
       setContent(currentRes.record?.content || "");
     } catch (error: any) {
@@ -173,12 +181,30 @@ export function WorkRecordPanel({ className }: { className?: string } = {}) {
     }
   }, [period, targetDate, t, toast]);
 
+  const loadRecentRecords = useCallback(async () => {
+    setLoading(true);
+    try {
+      const listRes = await api.listWorkRecords({ period: listPeriod, limit: 100 });
+      setRecentRecords(listRes.records);
+    } catch (error: any) {
+      toast(error.message || t("workbench.recordLoadFailed"), "error");
+    } finally {
+      setLoading(false);
+    }
+  }, [listPeriod, t, toast]);
+
   useEffect(() => {
-    loadRecords();
-  }, [loadRecords]);
+    loadCurrentRecord();
+  }, [loadCurrentRecord]);
+
+  useEffect(() => {
+    loadRecentRecords();
+  }, [loadRecentRecords]);
 
   const handlePeriodChange = (value: string) => {
-    setPeriod(value as WorkRecordPeriod);
+    const nextPeriod = value as WorkRecordPeriod;
+    setPeriod(nextPeriod);
+    setListPeriod(nextPeriod);
     setTargetDate(todayKey);
   };
 
@@ -190,7 +216,7 @@ export function WorkRecordPanel({ className }: { className?: string } = {}) {
   };
 
   const refreshRecent = async () => {
-    const listRes = await api.listWorkRecords({ period, limit: 10 });
+    const listRes = await api.listWorkRecords({ period: listPeriod, limit: 100 });
     setRecentRecords(listRes.records);
   };
 
@@ -264,7 +290,7 @@ export function WorkRecordPanel({ className }: { className?: string } = {}) {
     }
   };
 
-  const handleAttachImage = (file?: File) => {
+  const handlePasteImage = (file?: File) => {
     if (!file) return;
     if (file.size > MAX_INLINE_IMAGE_SIZE) {
       toast(t("editor.imageTooBig"), "error");
@@ -274,19 +300,42 @@ export function WorkRecordPanel({ className }: { className?: string } = {}) {
     reader.onload = () => {
       const src = String(reader.result || "");
       if (!src.startsWith("data:image/")) return;
-      const imageMarkdown = `\n\n![${file.name}](${src})\n`;
-      setContent((value) => `${value.trimEnd()}${imageMarkdown}`);
+      const imageHtml = `<img src="${src}" alt="${file.name}" width="480" />`;
+      const textarea = contentTextareaRef.current;
+      if (textarea) {
+        const start = textarea.selectionStart;
+        const end = textarea.selectionEnd;
+        setContent((value) => `${value.slice(0, start)}\n\n${imageHtml}\n\n${value.slice(end)}`);
+        requestAnimationFrame(() => {
+          const nextCursor = start + imageHtml.length + 4;
+          textarea.focus();
+          textarea.setSelectionRange(nextCursor, nextCursor);
+        });
+      } else {
+        setContent((value) => `${value.trimEnd()}\n\n${imageHtml}\n`);
+      }
       toast(t("workbench.imageAttached"), "success");
     };
     reader.readAsDataURL(file);
   };
 
   const currentPreview = stripMarkdown(content);
-  const currentImages = getMarkdownImages(content);
+  const renderedPreviewHtml = useMemo(() => sanitizeHtml(marked.parse(content || "") as string), [content]);
   const currentTargetDate = record?.targetDate.slice(0, 10) || targetDate;
   const currentPeriodLabel = formatRecordDate(currentTargetDate, period);
   const contentChars = currentPreview.length;
   const numberFormatter = useMemo(() => new Intl.NumberFormat(locale), [locale]);
+  const filteredRecords = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    return recentRecords.filter((item) => {
+      const textMatch = !query || `${item.title} ${stripMarkdown(item.content)}`.toLowerCase().includes(query);
+      const dateKey = getDateKey(item.targetDate);
+      const afterFrom = !dateFrom || dateKey >= dateFrom;
+      const beforeTo = !dateTo || dateKey <= dateTo;
+      return textMatch && afterFrom && beforeTo;
+    });
+  }, [dateFrom, dateTo, recentRecords, searchQuery]);
+  const hasListFilters = !!searchQuery || !!dateFrom || !!dateTo;
 
   return (
     <section className={cn("mt-5 overflow-hidden rounded-2xl border border-surface-200 bg-white shadow-sm dark:border-surface-800 dark:bg-[#0f1724]", className)}>
@@ -315,16 +364,6 @@ export function WorkRecordPanel({ className }: { className?: string } = {}) {
       </div>
 
       <div className="grid gap-0 xl:grid-cols-[260px_minmax(0,1fr)]">
-        <input
-          ref={imageInputRef}
-          type="file"
-          accept="image/png,image/jpeg,image/jpg,image/gif,image/webp"
-          className="hidden"
-          onChange={(event) => {
-            handleAttachImage(event.target.files?.[0]);
-            event.target.value = "";
-          }}
-        />
         <aside className="border-b border-surface-200 bg-white p-5 dark:border-surface-800 dark:bg-[#0f1724] xl:border-b-0 xl:border-r xl:p-6">
           <div className="rounded-2xl border border-surface-200 bg-surface-50 p-4 dark:border-surface-800 dark:bg-surface-950/35">
             <div className="flex items-center gap-2 text-xs font-semibold text-brand-700 dark:text-brand-300">
@@ -385,20 +424,15 @@ export function WorkRecordPanel({ className }: { className?: string } = {}) {
             <h3 className="mt-3 line-clamp-1 text-lg font-semibold text-surface-950 dark:text-surface-50">
               {title.trim() || t("workbench.recordTitlePlaceholder")}
             </h3>
-            <p className="mt-2 min-h-[4.5rem] whitespace-pre-line text-sm leading-6 text-surface-600 dark:text-surface-300">
-              {currentPreview || t("workbench.emptySnapshot")}
-            </p>
-            {currentImages.length > 0 && (
-              <div className="mt-3 flex flex-wrap gap-2">
-                {currentImages.slice(0, 4).map((src) => (
-                  <img
-                    key={src}
-                    src={src}
-                    alt=""
-                    className="h-16 w-20 rounded-lg border border-surface-200 object-cover dark:border-surface-800"
-                  />
-                ))}
-              </div>
+            {content.trim() ? (
+              <div
+                className="work-record-markdown mt-3 min-h-[4.5rem] text-sm leading-6 text-surface-600 dark:text-surface-300"
+                dangerouslySetInnerHTML={{ __html: renderedPreviewHtml }}
+              />
+            ) : (
+              <p className="mt-2 min-h-[4.5rem] text-sm leading-6 text-surface-600 dark:text-surface-300">
+                {t("workbench.emptySnapshot")}
+              </p>
             )}
           </div>
 
@@ -432,20 +466,18 @@ export function WorkRecordPanel({ className }: { className?: string } = {}) {
                   <span className="text-xs font-semibold text-surface-700 dark:text-surface-200">
                     {t("workbench.recordContent")}
                   </span>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="h-8 gap-1.5 px-3"
-                    onClick={() => imageInputRef.current?.click()}
-                  >
-                    <ImagePlus className="h-3.5 w-3.5" />
-                    <span>{t("workbench.attachImage")}</span>
-                  </Button>
+                  <span className="text-[11px] text-surface-400">{t("workbench.pasteImageHint")}</span>
                 </div>
                 <Textarea
+                  ref={contentTextareaRef}
                   value={content}
                   onChange={(event) => setContent(event.target.value)}
+                  onPaste={(event) => {
+                    const file = Array.from(event.clipboardData.files || []).find((item) => item.type.startsWith("image/"));
+                    if (!file) return;
+                    event.preventDefault();
+                    handlePasteImage(file);
+                  }}
                   placeholder={t("workbench.recordContentPlaceholder")}
                   className="min-h-[340px] bg-surface-50 leading-6 dark:bg-[#0f1724]"
                 />
@@ -496,17 +528,64 @@ export function WorkRecordPanel({ className }: { className?: string } = {}) {
           <div className="mb-4 flex items-start justify-between gap-3">
             <div>
               <h3 className="text-sm font-semibold text-surface-950 dark:text-surface-50">
-                {t("workbench.recordLedger")}
+                {t("workbench.recordListTitle")}
               </h3>
               <p className="mt-1 text-xs leading-5 text-surface-500 dark:text-surface-400">
-                {periodLabel}{t("date.separator")}{t("workbench.contentSnapshot")}
+                {t("workbench.recordListDesc")}
               </p>
             </div>
             {loading && <Loader2 className="h-4 w-4 animate-spin text-surface-400" />}
           </div>
 
+          <div className="mb-4 grid gap-3 rounded-2xl border border-surface-200 bg-surface-50/70 p-3 dark:border-surface-800 dark:bg-surface-950/25">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <TabGroup items={periodItems} value={listPeriod} onChange={(value) => setListPeriod(value as WorkRecordPeriod)} />
+              {hasListFilters && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 gap-1.5 px-2"
+                  onClick={() => {
+                    setSearchQuery("");
+                    setDateFrom("");
+                    setDateTo("");
+                  }}
+                >
+                  <X className="h-3.5 w-3.5" />
+                  <span>{t("workbench.clearFilters")}</span>
+                </Button>
+              )}
+            </div>
+            <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_170px_170px]">
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-surface-400" />
+                <Input
+                  value={searchQuery}
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                  placeholder={t("workbench.searchRecords")}
+                  className="h-10 bg-white pl-9 dark:bg-[#0f1724]"
+                />
+              </div>
+              <Input
+                type="date"
+                value={dateFrom}
+                onChange={(event) => setDateFrom(event.target.value)}
+                aria-label={t("workbench.dateFrom")}
+                className="h-10 bg-white dark:bg-[#0f1724]"
+              />
+              <Input
+                type="date"
+                value={dateTo}
+                onChange={(event) => setDateTo(event.target.value)}
+                aria-label={t("workbench.dateTo")}
+                className="h-10 bg-white dark:bg-[#0f1724]"
+              />
+            </div>
+          </div>
+
           <div className="overflow-hidden rounded-2xl border border-surface-200 dark:border-surface-800">
-            {recentRecords.length === 0 && !loading ? (
+            {filteredRecords.length === 0 && !loading ? (
               <div className="px-4 py-8 text-center text-xs leading-5 text-surface-400">
                 {t("workbench.noRecentRecords")}
               </div>
@@ -522,10 +601,10 @@ export function WorkRecordPanel({ className }: { className?: string } = {}) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-surface-200 dark:divide-surface-800">
-                  {recentRecords.map((item) => {
+                  {filteredRecords.map((item) => {
                     const itemPreview = stripMarkdown(item.content) || t("workbench.recordContentPlaceholder");
                     const selected = record?.id === item.id;
-                    const itemImages = getMarkdownImages(item.content);
+                    const itemImages = getContentImages(item.content);
                     return (
                       <tr
                         key={item.id}

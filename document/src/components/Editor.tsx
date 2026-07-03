@@ -11,6 +11,7 @@ import Placeholder from "@tiptap/extension-placeholder";
 import TextAlign from "@tiptap/extension-text-align";
 import { Toggle } from "@/components/ui/toggle";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Tooltip, TooltipProvider } from "@/components/ui/tooltip";
 import { Separator } from "@/components/ui/separator";
 import { Scrollbar } from "@/components/ui/scrollbar";
@@ -19,7 +20,7 @@ import {
   List, ListOrdered, Code, Code2, Quote, Minus,
   AlignLeft, AlignCenter, AlignRight,
   Undo2, Redo2, Heading1, Heading2, Heading3,
-  Highlighter, Star, Palette, Eraser, ClipboardCheck, Loader2, X, Sparkles, ImagePlus,
+  Highlighter, Star, Palette, Eraser, ClipboardCheck, Loader2, X, Sparkles,
 } from "lucide-react";
 import { useI18n } from "@/components/I18nProvider";
 import { useDocuments } from "@/store";
@@ -48,6 +49,24 @@ const LINE_HEIGHTS = [
 
 const MAX_INLINE_IMAGE_SIZE = 2 * 1024 * 1024;
 
+const ResizableImage = Image.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      width: {
+        default: null,
+        parseHTML: (element) => element.getAttribute("width"),
+        renderHTML: (attributes) => attributes.width ? { width: attributes.width } : {},
+      },
+      height: {
+        default: null,
+        parseHTML: (element) => element.getAttribute("height"),
+        renderHTML: (attributes) => attributes.height ? { height: attributes.height } : {},
+      },
+    };
+  },
+});
+
 interface EditorProps {
   documentId?: string;
 }
@@ -68,7 +87,7 @@ export function Editor({ documentId }: EditorProps) {
   const [currentColor, setCurrentColor] = useState("#1a1a1a");
   const [currentLineHeight, setCurrentLineHeight] = useState("1.5");
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const imageInputRef = useRef<HTMLInputElement>(null);
+  const pasteImageFileRef = useRef<(file?: File) => void>(() => {});
   const loadedDocumentIdRef = useRef<string | null>(null);
   const lastSavedContentRef = useRef<string | null>(null);
   const titleSyncDocumentIdRef = useRef<string | null>(null);
@@ -107,7 +126,7 @@ export function Editor({ documentId }: EditorProps) {
       TextStyle,
       FontSize,
       LineHeight,
-      Image.configure({
+      ResizableImage.configure({
         allowBase64: true,
         HTMLAttributes: {
           class: "editor-image",
@@ -141,6 +160,13 @@ export function Editor({ documentId }: EditorProps) {
     editorProps: {
       attributes: {
         class: "prose-editor min-h-[500px] text-surface-800 dark:text-surface-200 focus:outline-none",
+      },
+      handlePaste: (_view, event) => {
+        const file = Array.from(event.clipboardData?.files || []).find((item) => item.type.startsWith("image/"));
+        if (!file) return false;
+        event.preventDefault();
+        pasteImageFileRef.current(file);
+        return true;
       },
     },
   });
@@ -274,11 +300,17 @@ export function Editor({ documentId }: EditorProps) {
     reader.onload = () => {
       const src = String(reader.result || "");
       if (!src.startsWith("data:image/")) return;
-      editor.chain().focus().setImage({ src, alt: file.name }).run();
-      toast(t("editor.imageInserted"), "success");
+      editor.chain().focus().setImage({ src, alt: file.name, width: "480" } as any).run();
+      toast(t("editor.imagePasted"), "success");
     };
     reader.readAsDataURL(file);
   }, [editor, t, toast]);
+  pasteImageFileRef.current = insertImageFile;
+
+  const updateSelectedImageSize = useCallback((key: "width" | "height", value: string) => {
+    if (!editor) return;
+    editor.chain().focus().updateAttributes("image", { [key]: value.trim() || null }).run();
+  }, [editor]);
 
   const runWritingReview = useCallback(async () => {
     if (!doc || !editor) return;
@@ -359,16 +391,6 @@ export function Editor({ documentId }: EditorProps) {
           data-toolbar-revision={toolbarRevision}
           className="flex flex-wrap items-center gap-0.5 border-b border-surface-200 px-4 py-1.5 dark:border-surface-800"
         >
-          <input
-            ref={imageInputRef}
-            type="file"
-            accept="image/png,image/jpeg,image/jpg,image/gif,image/webp"
-            className="hidden"
-            onChange={(event) => {
-              insertImageFile(event.target.files?.[0]);
-              event.target.value = "";
-            }}
-          />
           {/* Undo / Redo */}
           <Tooltip content={t("editor.undo")}>
             <Toggle size="sm" pressed={false} onPressedChange={() => editor.chain().focus().undo().run()} aria-label={t("editor.undo")}>
@@ -574,17 +596,29 @@ export function Editor({ documentId }: EditorProps) {
           )}
         </div>
         <Separator orientation="vertical" className="mx-1 h-4" />
-        <Tooltip content={t("editor.insertImage")}>
-          <Toggle
-            size="sm"
-            pressed={false}
-            onPressedChange={() => imageInputRef.current?.click()}
-            aria-label={t("editor.insertImage")}
-          >
-            <ImagePlus className="h-3.5 w-3.5" />
-          </Toggle>
-        </Tooltip>
-        <Separator orientation="vertical" className="mx-1 h-4" />
+        {editor.isActive("image") && (
+          <>
+            <label className="flex items-center gap-1 text-[11px] font-medium text-surface-500 dark:text-surface-400">
+              <span>{t("editor.imageWidth")}</span>
+              <Input
+                value={String(editor.getAttributes("image").width || "")}
+                onChange={(event) => updateSelectedImageSize("width", event.target.value)}
+                className="h-7 w-16 bg-transparent px-2 text-xs"
+                placeholder="480"
+              />
+            </label>
+            <label className="flex items-center gap-1 text-[11px] font-medium text-surface-500 dark:text-surface-400">
+              <span>{t("editor.imageHeight")}</span>
+              <Input
+                value={String(editor.getAttributes("image").height || "")}
+                onChange={(event) => updateSelectedImageSize("height", event.target.value)}
+                className="h-7 w-16 bg-transparent px-2 text-xs"
+                placeholder="auto"
+              />
+            </label>
+            <Separator orientation="vertical" className="mx-1 h-4" />
+          </>
+        )}
         <Tooltip content={t("inspector.open")}>
           <Toggle
             size="sm"
