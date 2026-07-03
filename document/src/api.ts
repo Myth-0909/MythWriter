@@ -391,6 +391,11 @@ export const api = {
       "/users/me/apikey", { method: "PUT", body: JSON.stringify(data) }
     ),
 
+  testApiKey: (data: { apiKey?: string; baseUrl: string; model: string; prompt?: string }) =>
+    request<{ success: boolean; reply: string; model: string; prompt: string }>(
+      "/users/me/apikey/test", { method: "POST", body: JSON.stringify(data) }
+    ),
+
   fetchModels: (data: { baseUrl: string; apiKey?: string }) =>
     request<{ models: string[] }>(
       "/users/me/models", { method: "POST", body: JSON.stringify(data) }

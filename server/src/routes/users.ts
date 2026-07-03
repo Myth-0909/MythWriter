@@ -14,6 +14,7 @@ import {
   deleteApiKeyHistory,
   getEmbeddingConfig,
   saveEmbeddingConfig,
+  testChatModel,
 } from "../services/userService";
 
 const router = Router();
@@ -142,6 +143,36 @@ router.post("/me/models", async (req: AuthRequest, res: Response) => {
   } catch (error) {
     console.error("Fetch models error:", error);
     res.status(502).json({ error: t("zh", "获取模型列表失败", "Failed to fetch model list") });
+  }
+});
+
+// POST /api/users/me/apikey/test - Test OpenAI-compatible chat completions connectivity
+router.post("/me/apikey/test", async (req: AuthRequest, res: Response) => {
+  try {
+    const current = await getApiKey(req.user!.userId);
+    const baseUrl = typeof req.body.baseUrl === "string" && req.body.baseUrl.trim()
+      ? req.body.baseUrl.trim()
+      : current.baseUrl;
+    const apiKey = typeof req.body.apiKey === "string" && req.body.apiKey.trim()
+      ? req.body.apiKey.trim()
+      : await getApiKeySecret(req.user!.userId);
+    const model = typeof req.body.model === "string" && req.body.model.trim()
+      ? req.body.model.trim()
+      : current.model;
+    const prompt = typeof req.body.prompt === "string" && req.body.prompt.trim()
+      ? req.body.prompt.trim()
+      : "你好！";
+
+    if (!/^https?:\/\//i.test(baseUrl)) {
+      res.status(400).json({ error: t("zh", "Base URL必须以http://或https://开头", "Base URL must start with http:// or https://") });
+      return;
+    }
+
+    const result = await testChatModel({ baseUrl, apiKey, model, prompt });
+    res.json({ success: true, reply: result.reply, model: result.model, prompt });
+  } catch (error) {
+    console.error("Test chat model error:", error);
+    res.status(502).json({ error: t("zh", "模型连通性测试失败，请检查 Base URL、模型名称和 API Key", "Model connectivity test failed. Check Base URL, model, and API Key.") });
   }
 });
 

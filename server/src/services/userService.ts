@@ -105,6 +105,12 @@ function buildModelsUrl(baseUrl: string): string {
   return `${trimmed}/models`;
 }
 
+function buildChatCompletionsUrl(baseUrl: string): string {
+  const trimmed = baseUrl.trim().replace(/\/+$/, "");
+  if (trimmed.endsWith("/chat/completions")) return trimmed;
+  return `${trimmed}/chat/completions`;
+}
+
 function defaultBaseUrl(value?: string | null) {
   return value?.trim() || DEFAULT_API_BASE_URL;
 }
@@ -372,4 +378,40 @@ export async function fetchModels(baseUrl: string, apiKey?: string): Promise<str
       return item.id || item.name || item.model || "";
     })
     .filter(Boolean);
+}
+
+export async function testChatModel(params: {
+  baseUrl: string;
+  apiKey?: string;
+  model: string;
+  prompt?: string;
+}): Promise<{ reply: string; model: string }> {
+  const response = await fetch(buildChatCompletionsUrl(params.baseUrl), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${(params.apiKey || DEFAULT_API_KEY).trim()}`,
+    },
+    body: JSON.stringify({
+      model: params.model.trim() || DEFAULT_AI_MODEL,
+      messages: [
+        { role: "user", content: params.prompt?.trim() || "你好！" },
+      ],
+      temperature: 0.2,
+      max_tokens: 80,
+      stream: false,
+    }),
+  });
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    throw new Error(`Chat endpoint returned ${response.status}: ${text.slice(0, 160)}`);
+  }
+
+  const payload = await response.json() as any;
+  const reply = String(payload.choices?.[0]?.message?.content || payload.choices?.[0]?.text || "").trim();
+  return {
+    reply,
+    model: String(payload.model || params.model || DEFAULT_AI_MODEL),
+  };
 }

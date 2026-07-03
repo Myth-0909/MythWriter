@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Bot, Database, Eye, EyeOff, Loader2, Pencil, Trash2, X } from "lucide-react";
+import { Bot, Database, Eye, EyeOff, Loader2, Pencil, PlugZap, Trash2, X } from "lucide-react";
 import { api } from "@/api";
 import type { ApiKeyHistory } from "@/api";
 import { ConfirmModal } from "@/components/ConfirmModal";
@@ -37,6 +37,8 @@ export function ModelConfigPage() {
   const [maskedKey, setMaskedKey] = useState("");
   const [showKey, setShowKey] = useState(false);
   const [savingKey, setSavingKey] = useState(false);
+  const [testingKey, setTestingKey] = useState(false);
+  const [testReply, setTestReply] = useState("");
   const [applyingHistory, setApplyingHistory] = useState(false);
   const [deletingHistoryId, setDeletingHistoryId] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -201,6 +203,26 @@ export function ModelConfigPage() {
       toast(t("modelConfig.embeddingSaveFailed"), "error");
     } finally {
       setSavingEmbedding(false);
+    }
+  };
+
+  const handleTestChatConfig = async () => {
+    if ((!maskedKey && !apiKey.trim()) || !baseUrl.trim() || !model.trim()) return;
+    setTestingKey(true);
+    setTestReply("");
+    try {
+      const res = await api.testApiKey({
+        ...(apiKey.trim() && apiKey !== maskedKey && { apiKey: apiKey.trim() }),
+        baseUrl: baseUrl.trim(),
+        model: model.trim(),
+        prompt: "你好！",
+      });
+      setTestReply(res.reply || t("apikey.testConnectivitySuccess"));
+      toast(t("apikey.testConnectivitySuccess"), "success");
+    } catch {
+      toast(t("apikey.testConnectivityFailed"), "error");
+    } finally {
+      setTestingKey(false);
     }
   };
 
@@ -375,6 +397,15 @@ export function ModelConfigPage() {
                     </button>
                   </div>
                   <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleTestChatConfig}
+                    disabled={(!maskedKey && !apiKey.trim()) || !baseUrl.trim() || !model.trim() || testingKey}
+                  >
+                    {testingKey ? <Loader2 className="h-4 w-4 animate-spin" /> : <PlugZap className="h-4 w-4" />}
+                    <span>{testingKey ? t("apikey.testingConnectivity") : t("apikey.testConnectivity")}</span>
+                  </Button>
+                  <Button
                     size="sm"
                     onClick={handleSaveChatConfig}
                     disabled={isLocked || (!maskedKey && !apiKey.trim()) || !baseUrl.trim() || !model.trim() || savingKey}
@@ -397,6 +428,15 @@ export function ModelConfigPage() {
                     >
                       {t("apikey.cancel")}
                     </button>
+                  )}
+                </div>
+                <div className="mt-2 rounded-lg border border-surface-200 bg-surface-50 px-3 py-2 text-xs dark:border-surface-800 dark:bg-surface-950">
+                  <div className="font-medium text-surface-600 dark:text-surface-300">{t("apikey.testPrompt")}</div>
+                  {testReply && (
+                    <div className="mt-1 text-surface-500 dark:text-surface-400">
+                      <span className="font-medium">{t("apikey.testReply")}{t("date.separator")}</span>
+                      <span>{testReply}</span>
+                    </div>
                   )}
                 </div>
               </div>
