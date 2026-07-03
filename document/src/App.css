@@ -515,6 +515,7 @@ textarea::placeholder {
   white-space: pre-wrap;
   overflow-wrap: break-word;
   font-family: inherit;
+  font-weight: 600;
   color: #0f172a;
   background: transparent;
 }
@@ -526,27 +527,52 @@ textarea::placeholder {
 .markdown-input-textarea {
   border-color: transparent !important;
   box-shadow: none !important;
+  color: transparent !important;
+  -webkit-text-fill-color: transparent;
 }
 
 .markdown-token {
   font-weight: 700;
 }
 
+.markdown-line-heading {
+  color: #2f9e1f;
+  font-weight: 800;
+}
+
+.markdown-heading-1 {
+  font-size: 1.08em;
+}
+
+.markdown-heading-2 {
+  color: #36b323;
+}
+
+.markdown-heading-3,
+.markdown-heading-4,
+.markdown-heading-5,
+.markdown-heading-6 {
+  color: #4dbe35;
+}
+
 .markdown-token-heading {
-  color: #98743a;
+  color: #2f9e1f;
 }
 
 .markdown-token-list,
 .markdown-token-number {
-  color: #0f9f94;
+  color: #1677ff;
+  font-weight: 800;
 }
 
 .markdown-token-strong {
-  color: #c2410c;
+  color: #f97316;
+  font-weight: 800;
 }
 
 .markdown-token-code {
-  color: #7c3aed;
+  color: #a855f7;
+  font-weight: 800;
 }
 
 .markdown-token-quote {
@@ -555,16 +581,32 @@ textarea::placeholder {
 
 .markdown-token-link,
 .markdown-token-link-url {
-  color: #2563eb;
+  color: #1677ff;
+  font-weight: 800;
+}
+
+.dark .markdown-line-heading {
+  color: #44d62c;
+}
+
+.dark .markdown-heading-2 {
+  color: #53e23a;
+}
+
+.dark .markdown-heading-3,
+.dark .markdown-heading-4,
+.dark .markdown-heading-5,
+.dark .markdown-heading-6 {
+  color: #6ee756;
 }
 
 .dark .markdown-token-heading {
-  color: #f0cf75;
+  color: #44d62c;
 }
 
 .dark .markdown-token-list,
 .dark .markdown-token-number {
-  color: #67d2c8;
+  color: #2f81f7;
 }
 
 .dark .markdown-token-strong {

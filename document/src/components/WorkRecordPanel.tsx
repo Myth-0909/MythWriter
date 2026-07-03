@@ -93,12 +93,15 @@ function highlightMarkdownSyntax(value: string) {
     .split("\n")
     .map((line) => {
       let html = escapeMarkdownText(line);
-      html = html.replace(/^(\s*)(#{1,6})(\s+)/, '$1<span class="markdown-token markdown-token-heading">$2</span>$3');
+      const headingMatch = html.match(/^(\s*)(#{1,6})(\s*)(.*)$/);
+      if (headingMatch) {
+        return `${headingMatch[1]}<span class="markdown-line-heading markdown-heading-${headingMatch[2].length}"><span class="markdown-token markdown-token-heading">${headingMatch[2]}</span>${headingMatch[3]}${headingMatch[4]}</span>`;
+      }
       html = html.replace(/^(\s*)([-*+])(\s+)/, '$1<span class="markdown-token markdown-token-list">$2</span>$3');
       html = html.replace(/^(\s*)(\d+\.)(\s+)/, '$1<span class="markdown-token markdown-token-number">$2</span>$3');
       html = html.replace(/(^|\s)(&gt;)(\s?)/g, '$1<span class="markdown-token markdown-token-quote">$2</span>$3');
-      html = html.replace(/(`+)([^`]*)(`+)/g, '<span class="markdown-token markdown-token-code">$1</span>$2<span class="markdown-token markdown-token-code">$3</span>');
-      html = html.replace(/(\*\*|__)(.*?)(\*\*|__)/g, '<span class="markdown-token markdown-token-strong">$1</span>$2<span class="markdown-token markdown-token-strong">$3</span>');
+      html = html.replace(/(`+)([^`]*)(`+)/g, '<span class="markdown-token markdown-token-code">$1$2$3</span>');
+      html = html.replace(/(\*\*|__)(.*?)(\*\*|__)/g, '<span class="markdown-token markdown-token-strong">$1$2$3</span>');
       html = html.replace(/(\[[^\]]+])(\([^)]+\))/g, '<span class="markdown-token markdown-token-link">$1</span><span class="markdown-token markdown-token-link-url">$2</span>');
       return html || " ";
     })
@@ -120,12 +123,6 @@ function MarkdownTextarea({ value, onChange, onPaste, placeholder, className, te
 
   return (
     <div className={cn("markdown-input relative rounded-lg", className)}>
-      <pre
-        ref={highlightRef}
-        aria-hidden="true"
-        className="markdown-input-highlight pointer-events-none absolute inset-0 overflow-hidden rounded-lg border border-transparent px-3 py-2 text-sm leading-6"
-        dangerouslySetInnerHTML={{ __html: highlightedHtml }}
-      />
       <Textarea
         ref={textareaRef}
         value={value}
@@ -138,7 +135,13 @@ function MarkdownTextarea({ value, onChange, onPaste, placeholder, className, te
           highlightRef.current.scrollTop = event.currentTarget.scrollTop;
           highlightRef.current.scrollLeft = event.currentTarget.scrollLeft;
         }}
-        className="markdown-input-textarea relative min-h-full bg-transparent leading-6 text-transparent caret-surface-950 selection:bg-brand-200/60 placeholder:text-surface-400 dark:caret-surface-50 dark:selection:bg-brand-500/35"
+        className="markdown-input-textarea relative z-10 min-h-full bg-transparent leading-6 text-transparent caret-surface-950 selection:bg-brand-200/60 placeholder:text-surface-400 dark:caret-surface-50 dark:selection:bg-brand-500/35"
+      />
+      <pre
+        ref={highlightRef}
+        aria-hidden="true"
+        className="markdown-input-highlight pointer-events-none absolute inset-0 z-20 overflow-hidden rounded-lg border border-transparent px-3 py-2 text-sm leading-6"
+        dangerouslySetInnerHTML={{ __html: highlightedHtml }}
       />
     </div>
   );
