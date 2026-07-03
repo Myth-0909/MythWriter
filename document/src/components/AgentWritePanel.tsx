@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Bot,
   BookOpen,
+  ChevronDown,
+  ChevronUp,
   CheckCircle2,
   Circle,
   ClipboardCheck,
@@ -133,6 +135,14 @@ export function AgentWritePanel({ open, onOpenChange, onOpenDocument }: AgentWri
     }
 
     return targetWords;
+  };
+
+  const adjustWordCount = (delta: number) => {
+    setWordCount((prev) => {
+      const current = Number(sanitizeWordCount(prev)) || 1200;
+      const next = Math.min(8000, Math.max(300, current + delta));
+      return String(next);
+    });
   };
 
   const startFlow = async () => {
@@ -289,22 +299,67 @@ export function AgentWritePanel({ open, onOpenChange, onOpenDocument }: AgentWri
                         <label className="mb-3 block text-xs font-semibold text-surface-600 dark:text-surface-300">
                           {t("agent.length")}
                         </label>
-                        <Input
-                          type="number"
-                          inputMode="numeric"
-                          pattern="[0-9]*"
-                          min={300}
-                          max={8000}
-                          step={1}
-                          value={wordCount}
-                          onChange={(event) => setWordCount(sanitizeWordCount(event.target.value))}
-                          onKeyDown={(event) => {
-                            if (["e", "E", "+", "-", ".", ","].includes(event.key)) event.preventDefault();
-                          }}
-                          placeholder={t("agent.wordCountPlaceholder")}
-                          disabled={running}
-                          className="h-11 rounded-xl bg-surface-50/80 shadow-none dark:bg-surface-900"
-                        />
+                        <div className="relative">
+                          <Input
+                            type="text"
+                            inputMode="numeric"
+                            pattern="[0-9]*"
+                            role="spinbutton"
+                            aria-label={t("agent.length")}
+                            aria-valuemin={300}
+                            aria-valuemax={8000}
+                            aria-valuenow={wordCount ? Number(wordCount) : undefined}
+                            value={wordCount}
+                            onChange={(event) => setWordCount(sanitizeWordCount(event.target.value))}
+                            onKeyDown={(event) => {
+                              if (event.key === "ArrowUp") {
+                                event.preventDefault();
+                                adjustWordCount(100);
+                                return;
+                              }
+                              if (event.key === "ArrowDown") {
+                                event.preventDefault();
+                                adjustWordCount(-100);
+                                return;
+                              }
+                              if (
+                                event.key.length === 1 &&
+                                !/\d/.test(event.key) &&
+                                !event.metaKey &&
+                                !event.ctrlKey
+                              ) {
+                                event.preventDefault();
+                              }
+                            }}
+                            placeholder={t("agent.wordCountPlaceholder")}
+                            disabled={running}
+                            className="h-11 rounded-xl bg-surface-50/80 pr-12 shadow-none dark:bg-surface-900"
+                          />
+                          <div className="absolute right-1.5 top-1/2 flex h-8 w-8 -translate-y-1/2 flex-col overflow-hidden rounded-lg border border-surface-200 bg-white shadow-sm dark:border-surface-700 dark:bg-surface-950">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon-sm"
+                              aria-label={t("agent.wordCountIncrease")}
+                              disabled={running}
+                              className="h-4 w-8 rounded-none p-0 text-surface-500 hover:bg-surface-100 hover:text-surface-950 dark:text-surface-400 dark:hover:bg-surface-800 dark:hover:text-surface-50"
+                              onClick={() => adjustWordCount(100)}
+                            >
+                              <ChevronUp className="h-3 w-3" />
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon-sm"
+                              aria-label={t("agent.wordCountDecrease")}
+                              disabled={running}
+                              className="h-4 w-8 rounded-none border-t border-surface-200 p-0 text-surface-500 hover:bg-surface-100 hover:text-surface-950 dark:border-surface-700 dark:text-surface-400 dark:hover:bg-surface-800 dark:hover:text-surface-50"
+                              onClick={() => adjustWordCount(-100)}
+                            >
+                              <ChevronDown className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        </div>
                         <p className="mt-2 text-[11px] leading-5 text-surface-400">{t("agent.wordCountHint")}</p>
                       </div>
                     </div>

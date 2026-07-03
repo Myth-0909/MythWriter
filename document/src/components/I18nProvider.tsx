@@ -548,6 +548,8 @@ const translations = {
   "agent.length": { zh: "字数", en: "Words" },
   "agent.wordCountPlaceholder": { zh: "例如：1200", en: "Example: 1200" },
   "agent.wordCountHint": { zh: "仅支持数字，建议 300-8000 字。", en: "Numbers only. Recommended range: 300-8000 words." },
+  "agent.wordCountIncrease": { zh: "增加字数", en: "Increase word count" },
+  "agent.wordCountDecrease": { zh: "减少字数", en: "Decrease word count" },
   "agent.wordCountRequired": { zh: "请输入字数", en: "Enter a word count" },
   "agent.wordCountInvalid": { zh: "字数只能输入数字", en: "Word count can only contain digits" },
   "agent.wordCountRange": { zh: "字数建议在 300-8000 之间", en: "Word count should be between 300 and 8000" },
