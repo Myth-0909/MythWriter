@@ -5,6 +5,7 @@ import {
   Star,
   Trash2,
   Settings,
+  Bot,
   Brain,
   LayoutDashboard,
   Folder,
@@ -26,11 +27,11 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { LogoClickEffect } from "@/components/LogoClickEffect";
 
-export type NavId = "workbench" | "documents" | "favorites" | "trash" | "settings" | "brain";
+export type NavId = "workbench" | "documents" | "favorites" | "trash" | "settings" | "brain" | "model-config";
 
 interface NavItem {
   id: NavId;
-  labelKey: "nav.workbench" | "nav.documents" | "nav.favorites" | "nav.trash" | "nav.settings" | "nav.brain";
+  labelKey: "nav.workbench" | "nav.documents" | "nav.favorites" | "nav.trash" | "nav.settings" | "nav.brain" | "nav.modelConfig";
   icon: LucideIcon;
 }
 
@@ -39,6 +40,7 @@ const navItems: NavItem[] = [
   { id: "documents", labelKey: "nav.documents", icon: FileText },
   { id: "favorites", labelKey: "nav.favorites", icon: Star },
   { id: "brain", labelKey: "nav.brain", icon: Brain },
+  { id: "model-config", labelKey: "nav.modelConfig", icon: Bot },
   { id: "trash", labelKey: "nav.trash", icon: Trash2 },
   { id: "settings", labelKey: "nav.settings", icon: Settings },
 ];

@@ -2,6 +2,11 @@ import bcrypt from "bcryptjs";
 import fs from "fs";
 import path from "path";
 import prisma from "../lib/prisma";
+import {
+  DEFAULT_EMBEDDING_API_KEY,
+  DEFAULT_EMBEDDING_BASE_URL,
+  DEFAULT_EMBEDDING_MODEL,
+} from "../lib/embedding";
 
 const UPLOADS_DIR = path.join(__dirname, "../../uploads");
 
@@ -108,6 +113,14 @@ function defaultModel(value?: string | null) {
   return value?.trim() || DEFAULT_AI_MODEL;
 }
 
+function defaultEmbeddingBaseUrl(value?: string | null) {
+  return value?.trim() || DEFAULT_EMBEDDING_BASE_URL;
+}
+
+function defaultEmbeddingModel(value?: string | null) {
+  return value?.trim() || DEFAULT_EMBEDDING_MODEL;
+}
+
 export async function getApiKey(userId: string): Promise<{
   hasKey: boolean;
   masked: string;
@@ -180,6 +193,67 @@ export async function saveApiKey(userId: string, data: {
 
 function maskApiKey(key: string) {
   return key ? key.slice(0, 3) + "****" + key.slice(-4) : "";
+}
+
+export async function getEmbeddingConfig(userId: string): Promise<{
+  hasKey: boolean;
+  masked: string;
+  baseUrl: string;
+  model: string;
+}> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { embeddingApiKey: true, embeddingBaseUrl: true, embeddingModel: true },
+  });
+  const baseUrl = defaultEmbeddingBaseUrl(user?.embeddingBaseUrl);
+  const model = defaultEmbeddingModel(user?.embeddingModel);
+  const key = user?.embeddingApiKey?.trim() || DEFAULT_EMBEDDING_API_KEY;
+
+  if (user && (user.embeddingBaseUrl !== baseUrl || user.embeddingModel !== model)) {
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        embeddingBaseUrl: baseUrl,
+        embeddingModel: model,
+      },
+    });
+  }
+
+  return {
+    hasKey: !!key,
+    masked: maskApiKey(key),
+    baseUrl,
+    model,
+  };
+}
+
+export async function saveEmbeddingConfig(userId: string, data: {
+  apiKey?: string;
+  baseUrl?: string;
+  model?: string;
+}) {
+  const current = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { embeddingApiKey: true, embeddingBaseUrl: true, embeddingModel: true },
+  });
+  const nextApiKey = data.apiKey !== undefined
+    ? data.apiKey.trim() || null
+    : current?.embeddingApiKey || null;
+  const nextBaseUrl = data.baseUrl !== undefined
+    ? data.baseUrl.trim() || DEFAULT_EMBEDDING_BASE_URL
+    : defaultEmbeddingBaseUrl(current?.embeddingBaseUrl);
+  const nextModel = data.model !== undefined
+    ? data.model.trim() || DEFAULT_EMBEDDING_MODEL
+    : defaultEmbeddingModel(current?.embeddingModel);
+
+  await prisma.user.update({
+    where: { id: userId },
+    data: {
+      embeddingApiKey: nextApiKey,
+      embeddingBaseUrl: nextBaseUrl,
+      embeddingModel: nextModel,
+    },
+  });
 }
 
 async function saveApiKeyHistory(userId: string, data: { apiKey: string; baseUrl: string; model: string }) {

@@ -1,7 +1,20 @@
 import { Router, Response } from "express";
 import { AuthRequest, authMiddleware } from "../middleware/auth";
 import { t } from "../lib/i18n";
-import { getProfile, updateProfile, uploadAvatar, getApiKey, saveApiKey, fetchModels, getApiKeySecret, listApiKeyHistories, applyApiKeyHistory, deleteApiKeyHistory } from "../services/userService";
+import {
+  getProfile,
+  updateProfile,
+  uploadAvatar,
+  getApiKey,
+  saveApiKey,
+  fetchModels,
+  getApiKeySecret,
+  listApiKeyHistories,
+  applyApiKeyHistory,
+  deleteApiKeyHistory,
+  getEmbeddingConfig,
+  saveEmbeddingConfig,
+} from "../services/userService";
 
 const router = Router();
 
@@ -129,6 +142,40 @@ router.post("/me/models", async (req: AuthRequest, res: Response) => {
   } catch (error) {
     console.error("Fetch models error:", error);
     res.status(502).json({ error: t("zh", "获取模型列表失败", "Failed to fetch model list") });
+  }
+});
+
+// GET /api/users/me/embedding - Get vector model configuration
+router.get("/me/embedding", async (req: AuthRequest, res: Response) => {
+  try {
+    const result = await getEmbeddingConfig(req.user!.userId);
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: t("zh", "获取向量模型配置失败", "Failed to get vector model configuration") });
+  }
+});
+
+// PUT /api/users/me/embedding - Save vector model configuration
+router.put("/me/embedding", async (req: AuthRequest, res: Response) => {
+  try {
+    const current = await getEmbeddingConfig(req.user!.userId);
+    const { apiKey, baseUrl, model } = req.body;
+    const nextBaseUrl = typeof baseUrl === "string" && baseUrl.trim() ? baseUrl.trim() : current.baseUrl;
+    const nextModel = typeof model === "string" && model.trim() ? model.trim() : current.model;
+
+    if (!/^https?:\/\//i.test(nextBaseUrl)) {
+      res.status(400).json({ error: t("zh", "Base URL必须以http://或https://开头", "Base URL must start with http:// or https://") });
+      return;
+    }
+
+    await saveEmbeddingConfig(req.user!.userId, {
+      ...(apiKey !== undefined && { apiKey: apiKey || "" }),
+      baseUrl: nextBaseUrl,
+      model: nextModel,
+    });
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: t("zh", "保存向量模型配置失败", "Failed to save vector model configuration") });
   }
 });
 

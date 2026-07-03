@@ -8,6 +8,7 @@ import { DocumentCenterPage } from "@/pages/DocumentCenterPage";
 import { FavoritesPage } from "@/pages/FavoritesPage";
 import { TrashPage } from "@/pages/TrashPage";
 import { SettingsPage } from "@/pages/SettingsPage";
+import { ModelConfigPage } from "@/pages/ModelConfigPage";
 import { BrainMemoryPage } from "@/pages/BrainMemoryPage";
 import { LoginPage } from "@/pages/LoginPage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
@@ -25,9 +26,9 @@ import { formatFullDateTime } from "@/lib/date";
 import { escapeHtml, sanitizeHtml } from "@/lib/html";
 import "./App.css";
 
-type Page = "editor" | "workbench" | "documents" | "favorites" | "share" | "login" | "trash" | "settings" | "brain" | "notfound";
+type Page = "editor" | "workbench" | "documents" | "favorites" | "share" | "login" | "trash" | "settings" | "model-config" | "brain" | "notfound";
 
-const VALID_PAGES = new Set<string>(["workbench", "documents", "favorites", "trash", "settings", "login", "brain"]);
+const VALID_PAGES = new Set<string>(["workbench", "documents", "favorites", "trash", "settings", "model-config", "login", "brain"]);
 
 function pageFromHash(hash: string): { page: Page; editorId?: string } | null {
   const name = hash.replace(/^#\//, "");
@@ -400,7 +401,7 @@ export default function App() {
   const topBarVariant: "editor" | "documents" | "trash" | "settings" =
     currentPage === "editor" || currentPage === "share" ? "editor"
     : currentPage === "trash" ? "trash"
-    : currentPage === "settings" ? "settings"
+    : currentPage === "settings" || currentPage === "model-config" ? "settings"
     : "documents";
 
   // Login page
@@ -478,6 +479,9 @@ export default function App() {
             )}
             {currentPage === "settings" && (
               <SettingsPage />
+            )}
+            {currentPage === "model-config" && (
+              <ModelConfigPage />
             )}
             {currentPage === "brain" && (
               <BrainMemoryPage />

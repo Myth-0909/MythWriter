@@ -365,6 +365,16 @@ export const api = {
       "/users/me/models", { method: "POST", body: JSON.stringify(data) }
     ),
 
+  getEmbeddingConfig: () =>
+    request<{ hasKey: boolean; masked: string; baseUrl: string; model: string }>(
+      "/users/me/embedding"
+    ),
+
+  saveEmbeddingConfig: (data: { apiKey?: string; baseUrl: string; model: string }) =>
+    request<{ success: boolean }>(
+      "/users/me/embedding", { method: "PUT", body: JSON.stringify(data) }
+    ),
+
   listApiKeyHistories: () =>
     request<{ histories: ApiKeyHistory[] }>("/users/me/apikey/history"),
 
