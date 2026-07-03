@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { ConfirmModal } from "@/components/ConfirmModal";
 import { LoadingOverlay } from "@/components/LoadingSpinner";
 import { Scrollbar } from "@/components/ui/scrollbar";
-import { WriterFlowChart, WriterRhythmChart, WriterSourceMixChart } from "@/components/WriterFlowChart";
+import { WriterFlowChart } from "@/components/WriterFlowChart";
 import { RotatingText } from "@/components/RotatingText";
 import { CountUp } from "@/components/CountUp";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
@@ -168,6 +168,20 @@ function getGreetingKeys(hour: number): { title: TranslationKey; hint: Translati
     return { title: "workbench.greetingAfternoon", hint: "workbench.greetingAfternoonHint" };
   }
   return { title: "workbench.greetingEvening", hint: "workbench.greetingEveningHint" };
+}
+
+function summarizeWordsByDay(words: number[]) {
+  const total = words.reduce((sum, value) => sum + value, 0);
+  const activeDays = words.filter((value) => value > 0).length;
+  const peakWords = words.reduce((max, value) => Math.max(max, value), 0);
+  const averageWords = activeDays > 0 ? Math.round(total / activeDays) : 0;
+  const bestDayIndex = words.reduce((bestIndex, value, index, values) => {
+    if (value <= 0) return bestIndex;
+    if (bestIndex === -1 || value > values[bestIndex]) return index;
+    return bestIndex;
+  }, -1);
+
+  return { total, activeDays, peakWords, averageWords, bestDayIndex };
 }
 
 interface DocumentCenterPageProps {
@@ -380,20 +394,12 @@ export function DocumentCenterPage({
       .filter((item) => getLocalDateKey(item.targetDate) === dateKey)
       .reduce((sum, item) => sum + getPlainText(item.content).length, 0)
   );
-  const totalWordsByDay = chartData.words.map((value, index) => value + (journalWordsByDay[index] || 0));
   const weeklyTotal = chartData.words.reduce((sum, value) => sum + value, 0);
   const journalWeeklyTotal = journalWordsByDay.reduce((sum, value) => sum + value, 0);
-  const combinedWeeklyTotal = weeklyTotal + journalWeeklyTotal;
-  const bestDayIndex = totalWordsByDay.reduce((bestIndex, value, index, values) => {
-    if (value <= 0) return bestIndex;
-    if (bestIndex === -1 || value > values[bestIndex]) return index;
-    return bestIndex;
-  }, -1);
-  const bestDayLabel =
+  const documentFlowStats = summarizeWordsByDay(chartData.words);
+  const journalFlowStats = summarizeWordsByDay(journalWordsByDay);
+  const getBestDayLabel = (bestDayIndex: number) =>
     bestDayIndex >= 0 ? t(dayI18nKeys[chartData.dayIndices[bestDayIndex]]) : t("documents.noActivity");
-  const activeWritingDays = totalWordsByDay.filter((value) => value > 0).length;
-  const peakWords = totalWordsByDay.reduce((max, value) => Math.max(max, value), 0);
-  const averageWords = activeWritingDays > 0 ? Math.round(combinedWeeklyTotal / activeWritingDays) : 0;
   const latestText = getDocumentText(latestDoc);
   const latestWordEstimate = latestText.length;
   const ungroupedCount = documents.filter((doc) => !doc.groupId).length;
@@ -519,6 +525,37 @@ export function DocumentCenterPage({
     { icon: FileText, label: t("documents.signalLatestWords"), value: latestWordEstimate, unit: t("documents.wordsUnit") },
     { icon: NotebookTabs, label: t("documents.signalJournalWords"), value: workRecordTextTotal, unit: t("documents.wordsUnit") },
     { icon: Clock3, label: t("documents.signalTodayJournalWords"), value: todayWorkRecordWords, unit: t("documents.wordsUnit") },
+  ];
+  const flowPanels: {
+    key: "document" | "journal";
+    title: string;
+    icon: LucideIcon;
+    words: number[];
+    total: number;
+    stats: ReturnType<typeof summarizeWordsByDay>;
+    tone: "document" | "journal";
+    label: string;
+  }[] = [
+    {
+      key: "document",
+      title: t("documents.documentFlow"),
+      icon: FileText,
+      words: chartData.words,
+      total: weeklyTotal,
+      stats: documentFlowStats,
+      tone: "document",
+      label: t("chart.documentWords"),
+    },
+    {
+      key: "journal",
+      title: t("documents.journalFlow"),
+      icon: NotebookTabs,
+      words: journalWordsByDay,
+      total: journalWeeklyTotal,
+      stats: journalFlowStats,
+      tone: "journal",
+      label: t("chart.journalWords"),
+    },
   ];
 
   const categoryTabs = useMemo(
@@ -843,40 +880,64 @@ export function DocumentCenterPage({
                   </h2>
                   <p className="mt-1 text-xs text-surface-500 dark:text-surface-400">{t("documents.activity")}</p>
                 </div>
-                <div className="rounded-xl border border-surface-200 px-3 py-2 text-right dark:border-surface-800">
-                  <div className="text-[11px] text-surface-400">{t("documents.bestDay")}</div>
-                  <div className="mt-0.5 text-sm font-semibold text-surface-800 dark:text-surface-100">{bestDayLabel}</div>
-                </div>
               </div>
               {chartData.dayIndices.length > 0 ? (
-                <>
-                  <WriterFlowChart dayIndices={chartData.dayIndices} words={chartData.words} journalWords={journalWordsByDay} />
-                  <div className="mt-4 grid grid-cols-3 gap-2">
-                    {[
-                      { label: t("documents.activeDays"), value: `${numberFormatter.format(activeWritingDays)} ${t("documents.daysUnit")}` },
-                      { label: t("documents.averageWords"), value: numberFormatter.format(averageWords) },
-                      { label: t("documents.peakWords"), value: numberFormatter.format(peakWords) },
-                    ].map((item) => (
-                      <div
-                        key={item.label}
-                        className="rounded-xl border border-surface-200 bg-surface-50/75 px-3 py-3 dark:border-surface-800 dark:bg-surface-950/35"
-                      >
-                        <div className="whitespace-nowrap text-[11px] font-medium text-surface-500 dark:text-surface-400">{item.label}</div>
-                        <div className="mt-1 whitespace-nowrap text-lg font-semibold tabular-nums text-surface-950 dark:text-surface-50">{item.value}</div>
+                <div className="grid gap-4">
+                  {flowPanels.map((flow) => (
+                    <div
+                      key={flow.key}
+                      className={cn(
+                        "rounded-xl border bg-surface-50/75 p-4 dark:bg-surface-950/35",
+                        flow.key === "journal"
+                          ? "border-teal-200/70 dark:border-teal-500/20"
+                          : "border-brand-200/70 dark:border-brand-500/20"
+                      )}
+                    >
+                      <div className="mb-3 flex items-start justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                          <div
+                            className={cn(
+                              "flex h-9 w-9 items-center justify-center rounded-xl",
+                              flow.key === "journal"
+                                ? "bg-teal-50 text-teal-700 dark:bg-teal-500/10 dark:text-teal-300"
+                                : "bg-brand-50 text-brand-700 dark:bg-brand-500/10 dark:text-brand-300"
+                            )}
+                          >
+                            <flow.icon className="h-4 w-4" />
+                          </div>
+                          <div>
+                            <div className="text-sm font-semibold text-surface-950 dark:text-surface-50">{flow.title}</div>
+                            <div className="mt-0.5 text-[11px] text-surface-400">
+                              {t("documents.flowTotal")} · {numberFormatter.format(flow.total)} {t("documents.wordsUnit")}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="rounded-xl border border-surface-200 bg-white px-3 py-2 text-right dark:border-surface-800 dark:bg-surface-900">
+                          <div className="text-[11px] text-surface-400">{t("documents.bestDay")}</div>
+                          <div className="mt-0.5 text-sm font-semibold text-surface-800 dark:text-surface-100">
+                            {getBestDayLabel(flow.stats.bestDayIndex)}
+                          </div>
+                        </div>
                       </div>
-                    ))}
-                  </div>
-                  <div className="mt-3 rounded-xl border border-surface-200 bg-surface-50/75 p-3 dark:border-surface-800 dark:bg-surface-950/35">
-                    <WriterSourceMixChart documentWords={weeklyTotal} journalWords={journalWeeklyTotal} />
-                  </div>
-                  <div className="mt-4 rounded-xl border border-surface-200 bg-surface-50/75 p-3 dark:border-surface-800 dark:bg-surface-950/35">
-                    <div className="mb-3 flex items-center justify-between">
-                      <span className="text-xs font-semibold text-surface-700 dark:text-surface-200">{t("documents.rhythmMap")}</span>
-                      <span className="text-[11px] text-surface-400">{numberFormatter.format(combinedWeeklyTotal)}</span>
+                      <WriterFlowChart dayIndices={chartData.dayIndices} words={flow.words} tone={flow.tone} label={flow.label} />
+                      <div className="mt-3 grid grid-cols-3 gap-2">
+                        {[
+                          { label: t("documents.activeDays"), value: `${numberFormatter.format(flow.stats.activeDays)} ${t("documents.daysUnit")}` },
+                          { label: t("documents.averageWords"), value: numberFormatter.format(flow.stats.averageWords) },
+                          { label: t("documents.peakWords"), value: numberFormatter.format(flow.stats.peakWords) },
+                        ].map((item) => (
+                          <div
+                            key={item.label}
+                            className="rounded-xl border border-surface-200 bg-white px-3 py-3 dark:border-surface-800 dark:bg-surface-900"
+                          >
+                            <div className="whitespace-nowrap text-[11px] font-medium text-surface-500 dark:text-surface-400">{item.label}</div>
+                            <div className="mt-1 whitespace-nowrap text-lg font-semibold tabular-nums text-surface-950 dark:text-surface-50">{item.value}</div>
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                    <WriterRhythmChart dayIndices={chartData.dayIndices} words={totalWordsByDay} />
-                  </div>
-                </>
+                  ))}
+                </div>
               ) : (
                 <div className="flex h-[336px] items-center justify-center rounded-xl border border-dashed border-surface-200 text-xs text-surface-400 dark:border-surface-800">
                   {t("documents.noActivity")}
