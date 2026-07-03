@@ -111,6 +111,67 @@ function buildChatCompletionsUrl(baseUrl: string): string {
   return `${trimmed}/chat/completions`;
 }
 
+function extractMessageContent(message: any): string {
+  if (!message) return "";
+  if (typeof message.content === "string") return message.content;
+  if (Array.isArray(message.content)) {
+    return message.content
+      .map((part: any) => {
+        if (typeof part === "string") return part;
+        return part?.text || part?.content || "";
+      })
+      .join("");
+  }
+  return "";
+}
+
+function extractChatReplyFromJson(payload: any): string {
+  const choice = payload?.choices?.[0];
+  const choiceText =
+    extractMessageContent(choice?.message) ||
+    extractMessageContent(choice?.delta) ||
+    choice?.text ||
+    payload?.output_text;
+
+  if (choiceText) return String(choiceText).trim();
+
+  if (Array.isArray(payload?.output)) {
+    return payload.output
+      .flatMap((item: any) => Array.isArray(item?.content) ? item.content : [])
+      .map((part: any) => part?.text || part?.content || "")
+      .join("")
+      .trim();
+  }
+
+  return "";
+}
+
+function extractChatReplyFromText(rawText: string): string {
+  const text = rawText.trim();
+  if (!text) return "";
+
+  try {
+    return extractChatReplyFromJson(JSON.parse(text)) || text;
+  } catch {
+    // Continue with SSE/plain-text parsing below.
+  }
+
+  let streamed = "";
+  for (const line of text.split("\n")) {
+    const trimmed = line.trim();
+    if (!trimmed.startsWith("data:")) continue;
+    const data = trimmed.slice(5).trim();
+    if (!data || data === "[DONE]") continue;
+    try {
+      streamed += extractChatReplyFromJson(JSON.parse(data));
+    } catch {
+      streamed += data;
+    }
+  }
+
+  return (streamed || text).trim();
+}
+
 function defaultBaseUrl(value?: string | null) {
   return value?.trim() || DEFAULT_API_BASE_URL;
 }
@@ -408,10 +469,18 @@ export async function testChatModel(params: {
     throw new Error(`Chat endpoint returned ${response.status}: ${text.slice(0, 160)}`);
   }
 
-  const payload = await response.json() as any;
-  const reply = String(payload.choices?.[0]?.message?.content || payload.choices?.[0]?.text || "").trim();
+  const responseText = await response.text();
+  const reply = extractChatReplyFromText(responseText);
+  let responseModel = params.model || DEFAULT_AI_MODEL;
+  try {
+    const payload = JSON.parse(responseText);
+    responseModel = String(payload.model || responseModel);
+  } catch {
+    // A 200 response with plain text or SSE still proves connectivity.
+  }
+
   return {
     reply,
-    model: String(payload.model || params.model || DEFAULT_AI_MODEL),
+    model: responseModel,
   };
 }
