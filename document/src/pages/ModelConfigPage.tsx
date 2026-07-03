@@ -55,6 +55,7 @@ export function ModelConfigPage() {
   const [embeddingBaseUrl, setEmbeddingBaseUrl] = useState(DEFAULT_EMBEDDING_BASE_URL);
   const [embeddingModel, setEmbeddingModel] = useState(DEFAULT_EMBEDDING_MODEL);
   const [showEmbeddingKey, setShowEmbeddingKey] = useState(false);
+  const [embeddingEditable, setEmbeddingEditable] = useState(false);
   const [savingEmbedding, setSavingEmbedding] = useState(false);
 
   useEffect(() => {
@@ -77,6 +78,7 @@ export function ModelConfigPage() {
       setEmbeddingBaseUrl(res.baseUrl);
       setEmbeddingModel(res.model);
       setEmbeddingApiKey(res.masked);
+      setEmbeddingEditable(false);
     }).catch(() => {});
   }, []);
 
@@ -193,6 +195,7 @@ export function ModelConfigPage() {
       setEmbeddingModel(res.model);
       setEmbeddingApiKey(res.masked);
       setShowEmbeddingKey(false);
+      setEmbeddingEditable(false);
       toast(t("modelConfig.embeddingSaved"), "success");
     } catch {
       toast(t("modelConfig.embeddingSaveFailed"), "error");
@@ -434,6 +437,7 @@ export function ModelConfigPage() {
                   value={embeddingBaseUrl}
                   onChange={(e) => setEmbeddingBaseUrl(e.target.value)}
                   placeholder={DEFAULT_EMBEDDING_BASE_URL}
+                  disabled={!embeddingEditable}
                 />
                 <p className="mt-1 text-xs text-surface-500">{t("modelConfig.embeddingBaseUrlDesc")}</p>
               </div>
@@ -447,6 +451,7 @@ export function ModelConfigPage() {
                   value={embeddingModel}
                   onChange={(e) => setEmbeddingModel(e.target.value)}
                   placeholder={DEFAULT_EMBEDDING_MODEL}
+                  disabled={!embeddingEditable}
                 />
                 <p className="mt-1 text-xs text-surface-500">{t("modelConfig.embeddingModelDesc")}</p>
               </div>
@@ -463,21 +468,50 @@ export function ModelConfigPage() {
                       onChange={(e) => setEmbeddingApiKey(e.target.value)}
                       placeholder={t("apikey.placeholder")}
                       className="pr-9"
+                      disabled={!embeddingEditable}
                     />
                     <button
                       onClick={() => setShowEmbeddingKey(!showEmbeddingKey)}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 cursor-pointer text-surface-400 hover:text-surface-600"
+                      disabled={!embeddingEditable}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 cursor-pointer text-surface-400 hover:text-surface-600 disabled:cursor-not-allowed disabled:opacity-40"
                     >
                       {showEmbeddingKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </button>
                   </div>
-                  <Button
-                    size="sm"
-                    onClick={handleSaveEmbeddingConfig}
-                    disabled={!embeddingBaseUrl.trim() || !embeddingModel.trim() || savingEmbedding}
-                  >
-                    {savingEmbedding ? <Loader2 className="h-4 w-4 animate-spin" /> : t("apikey.save")}
-                  </Button>
+                  {embeddingEditable ? (
+                    <>
+                      <Button
+                        size="sm"
+                        onClick={handleSaveEmbeddingConfig}
+                        disabled={!embeddingBaseUrl.trim() || !embeddingModel.trim() || savingEmbedding}
+                      >
+                        {savingEmbedding ? <Loader2 className="h-4 w-4 animate-spin" /> : t("apikey.save")}
+                      </Button>
+                      <button
+                        onClick={() => {
+                          setEmbeddingEditable(false);
+                          setShowEmbeddingKey(false);
+                          api.getEmbeddingConfig().then((res) => {
+                            setEmbeddingMaskedKey(res.masked);
+                            setEmbeddingBaseUrl(res.baseUrl);
+                            setEmbeddingModel(res.model);
+                            setEmbeddingApiKey(res.masked);
+                          }).catch(() => {});
+                        }}
+                        className="cursor-pointer text-xs text-surface-400 hover:text-surface-600"
+                      >
+                        {t("apikey.cancel")}
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      onClick={() => setEmbeddingEditable(true)}
+                      className="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-surface-200 px-3 py-1.5 text-xs font-medium text-surface-600 transition-all hover:bg-surface-50 dark:border-surface-700 dark:text-surface-400 dark:hover:bg-surface-800"
+                    >
+                      <Pencil className="h-3.5 w-3.5" />
+                      {t("apikey.change")}
+                    </button>
+                  )}
                 </div>
                 <p className="mt-1 text-xs text-surface-500">{t("modelConfig.embeddingApiKeyDesc")}</p>
               </div>
