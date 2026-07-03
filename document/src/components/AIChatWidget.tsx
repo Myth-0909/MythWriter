@@ -1408,6 +1408,8 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
     return () => ctx.revert();
   }, [keyOk, open, pos.x, pos.y]);
 
+  const chatPanelSide = absoluteToAnchored(pos).side;
+
   return (
     <>
       {/* Floating button */}
@@ -1479,7 +1481,10 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
       {open && keyOk && (
         <div
           ref={chatPanelRef}
-          className="fixed bottom-6 left-6 z-50 flex h-[min(760px,calc(100vh-48px))] w-[min(560px,calc(100vw-48px))] flex-col rounded-2xl border border-surface-200 bg-white shadow-2xl dark:border-surface-700 dark:bg-surface-900"
+          className={cn(
+            "fixed bottom-6 z-50 flex h-[min(760px,calc(100vh-48px))] w-[min(560px,calc(100vw-48px))] flex-col rounded-2xl border border-surface-200 bg-white shadow-2xl dark:border-surface-700 dark:bg-surface-900",
+            chatPanelSide === "left" ? "left-6" : "right-6"
+          )}
         >
           {/* Backdrop: click outside to close and abort */}
           <div
