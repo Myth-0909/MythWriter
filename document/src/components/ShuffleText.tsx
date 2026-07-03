@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { cn } from "@/lib/utils";
 
 type ShuffleDirection = "left" | "right" | "up" | "down";
@@ -45,10 +45,19 @@ export function ShuffleText({
   triggerOnHover = true,
 }: ShuffleTextProps) {
   const [active, setActive] = useState(false);
+  const [settled, setSettled] = useState(true);
   const [cycle, setCycle] = useState(0);
+  const settleTimerRef = useRef<number | null>(null);
   const chars = useMemo(() => text.split(""), [text]);
   const rolls = Math.max(1, Math.floor(shuffleTimes));
   const isVertical = shuffleDirection === "up" || shuffleDirection === "down";
+  const totalAnimationTime = useMemo(() => {
+    const maxTransitionDelay =
+      animationMode === "random"
+        ? maxDelay
+        : 0.18 + Math.max(0, Math.ceil(chars.length / 2) - 1) * stagger;
+    return (duration + maxTransitionDelay) * 1000 + 80;
+  }, [animationMode, chars.length, duration, maxDelay, stagger]);
 
   const strips = useMemo(
     () =>
@@ -63,31 +72,42 @@ export function ShuffleText({
   );
 
   const play = () => {
+    if (settleTimerRef.current) {
+      window.clearTimeout(settleTimerRef.current);
+    }
+    setSettled(false);
     setActive(false);
     setCycle((value) => value + 1);
     window.requestAnimationFrame(() => {
       window.requestAnimationFrame(() => setActive(true));
     });
+    settleTimerRef.current = window.setTimeout(() => setSettled(true), totalAnimationTime);
   };
 
   useEffect(() => {
     const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
     if (reduceMotion.matches) {
       setActive(true);
+      setSettled(true);
       return;
     }
 
     const timeoutId = window.setTimeout(play, delay);
-    return () => window.clearTimeout(timeoutId);
+    return () => {
+      window.clearTimeout(timeoutId);
+      if (settleTimerRef.current) {
+        window.clearTimeout(settleTimerRef.current);
+      }
+    };
   }, [delay, text]);
 
   return (
     <span
-      className={cn("inline-flex flex-wrap items-baseline leading-none", className)}
+      className={cn(settled ? "inline-block leading-none" : "inline-flex flex-wrap items-baseline leading-none", className)}
       aria-label={text}
       onMouseEnter={triggerOnHover ? play : undefined}
     >
-      {chars.map((char, index) => {
+      {settled ? text : chars.map((char, index) => {
         if (char.trim() === "") {
           return (
             <span key={`${cycle}-${index}-space`} aria-hidden="true">

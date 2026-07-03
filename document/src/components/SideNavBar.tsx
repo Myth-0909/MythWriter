@@ -140,21 +140,18 @@ export function SideNavBar({
           ) : (
             <button
               onClick={handleLogoClick}
-              className="relative flex w-full items-center gap-2 rounded-2xl border border-surface-200 bg-white/70 px-2.5 py-2 text-left shadow-sm transition-all hover:border-brand-200 hover:bg-white dark:border-surface-800 dark:bg-surface-900/60 dark:hover:border-brand-500/30 dark:hover:bg-surface-900"
+              className="relative flex w-full items-center gap-2 rounded-lg p-0 text-left cursor-pointer"
             >
               <BrandLogo size="sm" />
-              <div className="min-w-0">
-                <ShuffleText
-                  text={t("app.name")}
-                  duration={0.9}
-                  delay={520}
-                  shuffleTimes={2}
-                  stagger={0.055}
-                  shuffleDirection="right"
-                  className="text-lg font-bold tracking-normal text-surface-950 dark:text-surface-50"
-                />
-                <div className="mt-0.5 h-px w-full rounded-full bg-gradient-to-r from-brand-400/80 via-brand-200/50 to-transparent dark:from-brand-300/80 dark:via-brand-500/30" />
-              </div>
+              <ShuffleText
+                text={t("app.name")}
+                duration={0.9}
+                delay={520}
+                shuffleTimes={2}
+                stagger={0.055}
+                shuffleDirection="right"
+                className="text-lg font-bold tracking-normal text-surface-950 dark:text-surface-50"
+              />
             </button>
           )}
 
