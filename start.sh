@@ -52,6 +52,26 @@ kill_port() {
   fi
 }
 
+get_lan_ip() {
+  local ip=""
+
+  if command -v ipconfig &>/dev/null; then
+    for iface in en0 en1 en2; do
+      ip=$(ipconfig getifaddr "$iface" 2>/dev/null)
+      if [ -n "$ip" ]; then
+        echo "$ip"
+        return
+      fi
+    done
+  fi
+
+  if command -v ifconfig &>/dev/null; then
+    ip=$(ifconfig | awk '/inet / && $2 !~ /^127\./ { print $2; exit }')
+  fi
+
+  echo "$ip"
+}
+
 # 检查是否支持桌面端
 has_cargo() {
   command -v cargo &>/dev/null
@@ -82,6 +102,7 @@ fi
 # 释放端口
 kill_port $BACKEND_PORT
 kill_port $FRONTEND_PORT
+LAN_IP="$(get_lan_ip)"
 
 # 启动 Redis（如果本地未运行）
 start_redis() {
@@ -134,7 +155,7 @@ echo "[数据库] 就绪"
 
 # 启动后端
 echo "[后端] 启动 API 服务 (port $BACKEND_PORT)..."
-cd "$BACKEND_DIR" && npm run dev &
+cd "$BACKEND_DIR" && HOST=0.0.0.0 npm run dev &
 BACKEND_PID=$!
 
 # 启动前端
@@ -143,16 +164,27 @@ if [ "$USE_TAURI" = true ]; then
   cd "$FRONTEND_DIR" && pnpm tauri dev &
   FRONTEND_PID=$!
   echo ""
-  echo "后端 API: http://localhost:$BACKEND_PORT"
-  echo "后端健康检查: http://localhost:$BACKEND_PORT/api/health"
+  echo "本机后端 API: http://localhost:$BACKEND_PORT"
+  echo "本机健康检查: http://localhost:$BACKEND_PORT/api/health"
+  if [ -n "$LAN_IP" ]; then
+    echo "内网后端 API: http://$LAN_IP:$BACKEND_PORT"
+    echo "内网健康检查: http://$LAN_IP:$BACKEND_PORT/api/health"
+  fi
 else
   echo "[前端] 启动网页开发服务器 (port $FRONTEND_PORT)..."
-  cd "$FRONTEND_DIR" && pnpm dev &
+  cd "$FRONTEND_DIR" && VITE_DEV_HOST=0.0.0.0 pnpm dev &
   FRONTEND_PID=$!
   echo ""
-  echo "前端: http://localhost:$FRONTEND_PORT"
-  echo "后端 API: http://localhost:$BACKEND_PORT"
-  echo "后端健康检查: http://localhost:$BACKEND_PORT/api/health"
+  echo "本机前端: http://localhost:$FRONTEND_PORT"
+  echo "本机后端 API: http://localhost:$BACKEND_PORT"
+  echo "本机健康检查: http://localhost:$BACKEND_PORT/api/health"
+  if [ -n "$LAN_IP" ]; then
+    echo "内网前端: http://$LAN_IP:$FRONTEND_PORT"
+    echo "内网后端 API: http://$LAN_IP:$BACKEND_PORT"
+    echo "内网健康检查: http://$LAN_IP:$BACKEND_PORT/api/health"
+  else
+    echo "[内网] 未自动识别本机 IP，请用 ifconfig 查看后访问 http://<本机IP>:$FRONTEND_PORT"
+  fi
 fi
 
 echo ""

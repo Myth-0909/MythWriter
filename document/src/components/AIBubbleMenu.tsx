@@ -4,8 +4,7 @@ import { BubbleMenu } from "@tiptap/react/menus";
 import { Bot, ChevronDown, Loader2, Sparkles } from "lucide-react";
 import { useI18n } from "@/components/I18nProvider";
 import { useToast } from "@/components/Toast";
-
-const API_BASE = "http://localhost:3000/api";
+import { API_BASE } from "@/lib/apiBase";
 
 function cleanSelectionResult(text: string): string {
   let result = text

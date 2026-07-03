@@ -21,6 +21,7 @@ import {
 import { useTheme } from "@/components/ThemeProvider";
 import { useI18n } from "@/components/I18nProvider";
 import { useAuth } from "@/auth";
+import { getServerAssetUrl } from "@/lib/apiBase";
 
 interface TopAppBarProps {
   variant?: "editor" | "documents" | "trash" | "settings";
@@ -47,9 +48,7 @@ export function TopAppBar({
 
   const themeModeIndex = { system: 0, light: 1, dark: 2 }[themeMode];
 
-  const avatarUrl = user?.avatar
-    ? `http://localhost:3000/uploads/${user.avatar}`
-    : null;
+  const avatarUrl = getServerAssetUrl(user?.avatar ? `/uploads/${user.avatar}` : null);
 
   const initials = user?.name
     ? user.name

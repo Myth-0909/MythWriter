@@ -18,7 +18,8 @@ import prisma from "./lib/prisma";
 import { getMilvusStatus } from "./lib/milvus";
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = Number(process.env.PORT || 3000);
+const HOST = process.env.HOST || "0.0.0.0";
 
 // Middleware
 app.use(cors());
@@ -63,9 +64,10 @@ async function start() {
     console.warn("[Milvus] Vector setup unavailable:", milvusStatus.error);
   }
 
-  app.listen(PORT, () => {
-    console.log(`ZNWriter API server running on http://localhost:${PORT}`);
-    console.log(`Health check: http://localhost:${PORT}/api/health`);
+  app.listen(PORT, HOST, () => {
+    const localHost = HOST === "0.0.0.0" ? "localhost" : HOST;
+    console.log(`ZNWriter API server running on http://${localHost}:${PORT}`);
+    console.log(`Health check: http://${localHost}:${PORT}/api/health`);
   });
 }
 

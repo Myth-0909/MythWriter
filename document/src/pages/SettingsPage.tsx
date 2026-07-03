@@ -7,6 +7,7 @@ import { useI18n } from "@/components/I18nProvider";
 import { useToast } from "@/components/Toast";
 import { useAuth } from "@/auth";
 import { api } from "@/api";
+import { getServerAssetUrl } from "@/lib/apiBase";
 import { Sun, Moon, Monitor, Languages, User, Camera, Info, Loader2 } from "lucide-react";
 
 export function SettingsPage() {
@@ -77,9 +78,7 @@ export function SettingsPage() {
     .toUpperCase()
     .slice(0, 2);
 
-  const avatarUrl = user?.avatar
-    ? `http://localhost:3000/uploads/${user.avatar}`
-    : null;
+  const avatarUrl = getServerAssetUrl(user?.avatar ? `/uploads/${user.avatar}` : null);
 
   const themeModeIndex = { system: 0, light: 1, dark: 2 }[themeMode];
 

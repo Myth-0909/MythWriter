@@ -12,12 +12,11 @@ import { useAuth } from "@/auth";
 import { api } from "@/api";
 import { markdownToHtml } from "@/lib/markdown";
 import { sanitizeHtml } from "@/lib/html";
+import { API_BASE, getServerAssetUrl } from "@/lib/apiBase";
 import { Tooltip } from "@/components/ui/tooltip";
 import type { DocumentVersion } from "@/types";
 import type { OverlayScrollbarsComponentRef } from "overlayscrollbars-react";
 import gsap from "gsap";
-
-const API_BASE = "http://localhost:3000/api";
 
 type Personality = "normal" | "cute" | "catgirl" | "serious" | "silly";
 
@@ -535,7 +534,7 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   // User avatar
-  const avatarUrl = user?.avatar ? `http://localhost:3000/uploads/${user.avatar}` : null;
+  const avatarUrl = getServerAssetUrl(user?.avatar ? `/uploads/${user.avatar}` : null);
   const initials = user?.name
     ? user.name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)
     : "?";

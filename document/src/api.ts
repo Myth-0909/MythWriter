@@ -1,6 +1,5 @@
 import type { Document, DocumentVersion, WorkRecord, WorkRecordPeriod } from "@/types";
-
-const API_BASE = "http://localhost:3000/api";
+import { API_BASE } from "@/lib/apiBase";
 
 export interface ApiKeyHistory {
   id: string;
