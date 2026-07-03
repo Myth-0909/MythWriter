@@ -2,6 +2,18 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { createAgentWriteService, markdownToBasicHtml } from "./agentService";
 
+function countReadableUnits(value: string): number {
+  const plain = value
+    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/[#*_>`~|[\](){}:：,，.。!！?？;；"“”'‘’-]/g, " ");
+  const cjkCount = plain.match(/[\u3400-\u9fff]/g)?.length ?? 0;
+  const latinCount = plain
+    .replace(/[\u3400-\u9fff]/g, " ")
+    .match(/[A-Za-z0-9]+/g)?.length ?? 0;
+  return cjkCount + latinCount;
+}
+
 describe("agent write service", () => {
   it("runs the six-step writing flow and publishes a generated document", async () => {
     const emitted: any[] = [];
@@ -36,8 +48,8 @@ describe("agent write service", () => {
       async completeText(step, prompt) {
         calls.push(`text:${step}:${prompt.includes("修炼体系总览") ? "overview" : "advice"}`);
         return prompt.includes("修炼体系总览")
-          ? "炼气、筑基、金丹构成入门主线。"
-          : "初学者应先稳固根基，再寻找合适功法。";
+          ? "炼气、筑基、金丹构成入门主线。".repeat(9)
+          : "初学者应先稳固根基，再寻找合适功法。".repeat(9);
       },
       async searchKnowledge() {
         calls.push("search:knowledge");
@@ -71,6 +83,7 @@ describe("agent write service", () => {
         goal: "写一篇大炎王朝修炼体系的入门文章",
         style: "literary",
         length: "medium",
+        targetWords: 300,
         includeBrain: true,
         includeDocuments: true,
       },
@@ -100,6 +113,136 @@ describe("agent write service", () => {
       "json:review",
       "create:大炎王朝修炼入门",
     ]);
+  });
+
+  it("keeps generated drafts close to the requested word count across sections", async () => {
+    const draftPrompts: string[] = [];
+    const service = createAgentWriteService({
+      async completeJson(step) {
+        if (step === "analyze") {
+          return {
+            genre: "短篇设定",
+            tone: "清晰",
+            themes: ["城市", "冒险"],
+            estimatedWords: 600,
+          };
+        }
+        if (step === "plan") {
+          return {
+            title: "夜城边缘",
+            outline: [
+              { heading: "抵达", brief: "写主角进入城市。" },
+              { heading: "线索", brief: "写主角发现异常。" },
+              { heading: "回响", brief: "写结尾的余韵。" },
+            ],
+          };
+        }
+        return {
+          score: 82,
+          suggestions: [],
+        };
+      },
+      async completeText(_step, prompt) {
+        draftPrompts.push(prompt);
+        return "字".repeat(700);
+      },
+      async searchKnowledge() {
+        return {
+          degraded: false,
+          results: [],
+        };
+      },
+      async searchDocuments() {
+        return {
+          degraded: false,
+          results: [],
+        };
+      },
+      async createDocument(data) {
+        assert.ok(countReadableUnits(data.content) <= 650);
+        return { id: "doc-600", title: data.title };
+      },
+    });
+
+    const result = await service.write(
+      {
+        userId: "user-1",
+        goal: "写一篇 600 字左右的夜城短篇",
+        targetWords: 600,
+      },
+      () => {}
+    );
+
+    assert.equal(draftPrompts.length, 3);
+    assert.ok(draftPrompts.every((prompt) => prompt.includes("当前章节目标字数")));
+    assert.ok(countReadableUnits(result.content) <= 650);
+    assert.ok(countReadableUnits(result.content) >= 550);
+  });
+
+  it("expands drafts that are too short for the requested word count", async () => {
+    let adjustPrompt = "";
+    const service = createAgentWriteService({
+      async completeJson(step) {
+        if (step === "analyze") {
+          return {
+            genre: "短篇设定",
+            tone: "清晰",
+            themes: ["星港"],
+            estimatedWords: 600,
+          };
+        }
+        if (step === "plan") {
+          return {
+            title: "星港清晨",
+            outline: [
+              { heading: "起航前", brief: "写主角准备出发。" },
+              { heading: "第一束光", brief: "写港口变化。" },
+            ],
+          };
+        }
+        return {
+          score: 80,
+          suggestions: [],
+        };
+      },
+      async completeText(step, prompt) {
+        if (step === "adjust") {
+          adjustPrompt = prompt;
+          return `# 星港清晨\n\n${"字".repeat(600)}`;
+        }
+        return "短。";
+      },
+      async searchKnowledge() {
+        return {
+          degraded: false,
+          results: [],
+        };
+      },
+      async searchDocuments() {
+        return {
+          degraded: false,
+          results: [],
+        };
+      },
+      async createDocument(data) {
+        assert.ok(countReadableUnits(data.content) <= 650);
+        assert.ok(countReadableUnits(data.content) >= 550);
+        return { id: "doc-short", title: data.title };
+      },
+    });
+
+    const result = await service.write(
+      {
+        userId: "user-1",
+        goal: "写一篇 600 字左右的星港短篇",
+        targetWords: 600,
+      },
+      () => {}
+    );
+
+    assert.match(adjustPrompt, /当前全文字数/);
+    assert.ok(countReadableUnits(result.content) <= 650);
+    assert.ok(countReadableUnits(result.content) >= 550);
   });
 
   it("rejects empty writing goals before running model steps", async () => {

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  ArrowRight,
   BookOpenText,
   CalendarDays,
   Clock3,
@@ -18,6 +19,7 @@ import {
 import { marked } from "marked";
 import { api } from "@/api";
 import { ConfirmModal } from "@/components/ConfirmModal";
+import { CountUp } from "@/components/CountUp";
 import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
@@ -78,7 +80,7 @@ function stripMarkdown(value: string) {
 }
 
 function getDateKey(value: string) {
-  return normalizeDateForPeriod(value, "daily").toISOString().slice(0, 10);
+  return localDateKey(normalizeDateForPeriod(value, "daily"));
 }
 
 export function WorkRecordPanel({ className, view = "editor" }: { className?: string; view?: WorkRecordPanelView } = {}) {
@@ -221,6 +223,8 @@ export function WorkRecordPanel({ className, view = "editor" }: { className?: st
   };
 
   const handleSelectRecord = (nextRecord: WorkRecord) => {
+    setPeriod(nextRecord.period);
+    setListPeriod(nextRecord.period);
     setTargetDate(nextRecord.targetDate.slice(0, 10));
     setRecord(nextRecord);
     setTitle(nextRecord.title);
@@ -233,6 +237,10 @@ export function WorkRecordPanel({ className, view = "editor" }: { className?: st
   };
 
   const handleSave = async () => {
+    if (!title.trim() && !content.trim()) {
+      toast(t("workbench.recordEmptyForSave"), "info");
+      return;
+    }
     setSaving(true);
     try {
       const res = await api.saveWorkRecord({ period, targetDate, title, content });
@@ -311,6 +319,10 @@ export function WorkRecordPanel({ className, view = "editor" }: { className?: st
 
   const handleSaveEdit = async () => {
     if (!editRecord) return;
+    if (!editTitle.trim() && !editContent.trim()) {
+      toast(t("workbench.recordEmptyForSave"), "info");
+      return;
+    }
     setSaving(true);
     try {
       const res = await api.saveWorkRecord({
@@ -357,6 +369,10 @@ export function WorkRecordPanel({ className, view = "editor" }: { className?: st
   };
 
   const handleApplyFilters = async () => {
+    if (dateFromDraft && dateToDraft && dateFromDraft > dateToDraft) {
+      toast(t("workbench.invalidDateRange"), "error");
+      return;
+    }
     setFilterLoading(true);
     try {
       setSearchQuery(searchDraft);
@@ -429,6 +445,7 @@ export function WorkRecordPanel({ className, view = "editor" }: { className?: st
     });
   }, [dateFrom, dateTo, recentRecords, searchQuery]);
   const hasListFilters = !!searchQuery || !!dateFrom || !!dateTo;
+  const recentPreviewRecords = useMemo(() => recentRecords.slice(0, 5), [recentRecords]);
 
   return (
     <>
@@ -484,7 +501,7 @@ export function WorkRecordPanel({ className, view = "editor" }: { className?: st
                 <span>{t("workbench.recordCount")}</span>
               </div>
               <div className="mt-2 text-xl font-semibold tabular-nums text-surface-950 dark:text-surface-50">
-                {numberFormatter.format(recentRecords.length)}
+                <CountUp value={recentRecords.length} formatValue={(value) => numberFormatter.format(Math.round(value))} />
               </div>
             </div>
             <div className="rounded-xl border border-surface-200 bg-white px-3 py-3 dark:border-surface-800 dark:bg-surface-950/25">
@@ -493,7 +510,7 @@ export function WorkRecordPanel({ className, view = "editor" }: { className?: st
                 <span>{t("workbench.recordChars")}</span>
               </div>
               <div className="mt-2 text-xl font-semibold tabular-nums text-surface-950 dark:text-surface-50">
-                {numberFormatter.format(contentChars)}
+                <CountUp value={contentChars} formatValue={(value) => numberFormatter.format(Math.round(value))} />
               </div>
             </div>
           </div>
@@ -505,6 +522,68 @@ export function WorkRecordPanel({ className, view = "editor" }: { className?: st
             </div>
             <div className="mt-2 truncate text-sm font-semibold text-surface-900 dark:text-surface-100">
               {record ? formatUpdatedAt(record.updatedAt) : t("workbench.reviewNeedsInput")}
+            </div>
+          </div>
+
+          <div className="mt-3 rounded-2xl border border-surface-200 bg-white p-3 dark:border-surface-800 dark:bg-surface-950/25">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5 text-xs font-semibold text-surface-900 dark:text-surface-100">
+                  <NotebookTabs className="h-3.5 w-3.5 text-brand-600 dark:text-brand-300" />
+                  <span>{t("workbench.recentRecords")}</span>
+                </div>
+                <p className="mt-1 text-[11px] leading-4 text-surface-500 dark:text-surface-400">
+                  {t("workbench.recentRecordsDesc")}
+                </p>
+              </div>
+              <span className="shrink-0 rounded-md bg-surface-100 px-2 py-1 text-[10px] font-medium text-surface-500 dark:bg-surface-800 dark:text-surface-300">
+                {periodLabel}
+              </span>
+            </div>
+
+            <div className="mt-3 grid gap-2">
+              {recentPreviewRecords.length === 0 ? (
+                <p className="rounded-xl border border-dashed border-surface-200 px-3 py-4 text-xs leading-5 text-surface-400 dark:border-surface-800">
+                  {t("workbench.noRecentRecords")}
+                </p>
+              ) : (
+                recentPreviewRecords.map((item) => {
+                  const selected = record?.id === item.id;
+                  const itemPreview = stripMarkdown(item.content) || t("workbench.recordContentPlaceholder");
+                  return (
+                    <Button
+                      key={item.id}
+                      type="button"
+                      variant="ghost"
+                      aria-label={`${t("workbench.openRecordFromList")}: ${item.title}`}
+                      onClick={() => handleSelectRecord(item)}
+                      className={cn(
+                        "h-auto w-full flex-col items-start justify-start gap-2 whitespace-normal rounded-xl border px-3 py-3 text-left",
+                        selected
+                          ? "border-brand-200 bg-brand-50/80 text-brand-900 hover:bg-brand-50 dark:border-brand-500/25 dark:bg-brand-500/10 dark:text-brand-100"
+                          : "border-surface-200 bg-surface-50/70 text-surface-700 hover:bg-surface-100 dark:border-surface-800 dark:bg-surface-950/30 dark:text-surface-200 dark:hover:bg-surface-900"
+                      )}
+                    >
+                      <span className="flex w-full items-center justify-between gap-2">
+                        <span className="min-w-0 truncate text-xs font-semibold">{item.title}</span>
+                        {selected ? (
+                          <span className="shrink-0 rounded-full bg-brand-500/10 px-2 py-0.5 text-[10px] font-semibold text-brand-700 dark:text-brand-200">
+                            {t("workbench.selectedRecord")}
+                          </span>
+                        ) : (
+                          <ArrowRight className="h-3.5 w-3.5 shrink-0 text-surface-400" />
+                        )}
+                      </span>
+                      <span className="line-clamp-2 text-[11px] font-normal leading-4 text-surface-500 dark:text-surface-400">
+                        {itemPreview}
+                      </span>
+                      <span className="text-[10px] font-medium text-surface-400">
+                        {formatRecordDate(item.targetDate, item.period)}{t("date.separator")}{formatUpdatedAt(item.updatedAt)}
+                      </span>
+                    </Button>
+                  );
+                })
+              )}
             </div>
           </div>
         </aside>
@@ -695,7 +774,8 @@ export function WorkRecordPanel({ className, view = "editor" }: { className?: st
                 {t("workbench.noRecentRecords")}
               </div>
             ) : (
-              <table className="w-full table-fixed border-collapse text-left text-xs">
+              <div className="overflow-x-auto">
+              <table className="min-w-[980px] w-full table-fixed border-collapse text-left text-xs">
                 <thead className="bg-surface-50 text-[11px] font-semibold text-surface-500 dark:bg-surface-950/35 dark:text-surface-400">
                   <tr>
                     <th className="w-[160px] px-4 py-3">{t("workbench.recordDate")}</th>
@@ -771,6 +851,7 @@ export function WorkRecordPanel({ className, view = "editor" }: { className?: st
                   })}
                 </tbody>
               </table>
+              </div>
             )}
           </div>
         </aside>

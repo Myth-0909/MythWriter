@@ -89,7 +89,7 @@ function normalizeAgentTargetWords(value: unknown): number {
 }
 
 function maxTokensForTargetWords(targetWords: number): number {
-  return Math.max(900, Math.min(3600, Math.ceil(targetWords * 0.95)));
+  return Math.max(420, Math.min(3600, Math.ceil(targetWords * 1.35)));
 }
 
 async function requestChatCompletionText(params: {
@@ -378,7 +378,7 @@ router.post("/agent/write", async (req: Request, res: Response) => {
         }
         return parsed;
       },
-      async completeText(_step, prompt) {
+      async completeText(_step, prompt, textInput) {
         return requestChatCompletionText({
           apiBaseUrl,
           apiKey,
@@ -391,7 +391,7 @@ router.post("/agent/write", async (req: Request, res: Response) => {
             { role: "user", content: prompt },
           ],
           temperature: 0.65,
-          maxTokens: maxTokensForTargetWords(normalizedTargetWords),
+          maxTokens: maxTokensForTargetWords(normalizeAgentTargetWords(textInput.targetWords)),
           signal: requestController.signal,
         });
       },

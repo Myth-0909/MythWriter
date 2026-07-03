@@ -7,7 +7,7 @@ export type AgentLength = "short" | "medium" | "long";
 export type AgentStyle = "default" | "literary" | "academic" | "business" | "technical";
 export type AgentStage = "analyze" | "research" | "plan" | "draft" | "review" | "publish";
 export type AgentJsonStep = "analyze" | "plan" | "review";
-export type AgentTextStep = "draft";
+export type AgentTextStep = "draft" | "adjust";
 
 export type AgentWriteInput = {
   userId: string;
@@ -101,6 +101,156 @@ const styleLabels: Record<AgentStyle, string> = {
   technical: "技术说明",
 };
 
+const WORD_TOLERANCE = 50;
+
+type WordBudget = {
+  target: number;
+  min: number;
+  max: number;
+};
+
+function countReadableUnits(value: string): number {
+  const plain = value
+    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/[#*_>`~|\[\](){}:：,，.。!！?？;；"“”'‘’-]/g, " ");
+  const cjkCount = plain.match(/[\u3400-\u9fff]/g)?.length ?? 0;
+  const latinCount = plain
+    .replace(/[\u3400-\u9fff]/g, " ")
+    .match(/[A-Za-z0-9]+/g)?.length ?? 0;
+  return cjkCount + latinCount;
+}
+
+function isCjkChar(char: string): boolean {
+  return /[\u3400-\u9fff]/.test(char);
+}
+
+function isLatinWordChar(char: string): boolean {
+  return /[A-Za-z0-9]/.test(char);
+}
+
+function trimTextToUnitLimit(value: string, maxUnits: number): string {
+  if (maxUnits <= 0) return "";
+
+  let used = 0;
+  let index = 0;
+  let output = "";
+
+  while (index < value.length) {
+    const char = value[index];
+    if (isCjkChar(char)) {
+      if (used + 1 > maxUnits) break;
+      output += char;
+      used += 1;
+      index += 1;
+      continue;
+    }
+
+    if (isLatinWordChar(char)) {
+      let end = index + 1;
+      while (end < value.length && isLatinWordChar(value[end])) end += 1;
+      if (used + 1 > maxUnits) break;
+      output += value.slice(index, end);
+      used += 1;
+      index = end;
+      continue;
+    }
+
+    output += char;
+    index += 1;
+  }
+
+  return output.replace(/[，,。.!！?？;；:：、\s]+$/, "").trimEnd();
+}
+
+function trimMarkdownToUnitLimit(markdown: string, maxUnits: number): string {
+  if (countReadableUnits(markdown) <= maxUnits) return markdown.trim();
+
+  const output: string[] = [];
+  let used = 0;
+
+  for (const line of markdown.split("\n")) {
+    const lineUnits = countReadableUnits(line);
+    if (used + lineUnits <= maxUnits) {
+      output.push(line);
+      used += lineUnits;
+      continue;
+    }
+
+    const remaining = maxUnits - used;
+    if (remaining <= 0) break;
+
+    const headingMatch = line.match(/^(\s{0,3}#{1,6}\s+)(.*)$/);
+    const listMatch = line.match(/^(\s*(?:[-*+]|\d+\.)\s+)(.*)$/);
+    if (headingMatch) {
+      const trimmed = trimTextToUnitLimit(headingMatch[2], remaining);
+      if (trimmed) output.push(`${headingMatch[1]}${trimmed}`);
+    } else if (listMatch) {
+      const trimmed = trimTextToUnitLimit(listMatch[2], remaining);
+      if (trimmed) output.push(`${listMatch[1]}${trimmed}`);
+    } else {
+      const trimmed = trimTextToUnitLimit(line, remaining);
+      if (trimmed) output.push(trimmed);
+    }
+    break;
+  }
+
+  return output.join("\n").replace(/\n{3,}$/g, "\n\n").trim();
+}
+
+function sanitizeDraftMarkdown(value: string): string {
+  return value
+    .replace(/<think>[\s\S]*?<\/think>/gi, "")
+    .replace(/^```(?:markdown|md)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function getSectionWordBudget(targetWords: number, index: number, total: number): WordBudget {
+  const safeTotal = Math.max(1, total);
+  const base = Math.floor(targetWords / safeTotal);
+  const remainder = targetWords % safeTotal;
+  const target = Math.max(1, base + (index < remainder ? 1 : 0));
+  const tolerance = Math.max(8, Math.min(30, Math.round(target * 0.08)));
+  return {
+    target,
+    min: Math.max(1, target - tolerance),
+    max: target + tolerance,
+  };
+}
+
+function getTargetWordRange(targetWords: number): { min: number; max: number } {
+  return {
+    min: Math.max(1, targetWords - WORD_TOLERANCE),
+    max: targetWords + WORD_TOLERANCE,
+  };
+}
+
+function getPreferredOutlineCount(targetWords: number): number {
+  if (targetWords <= 800) return 2;
+  if (targetWords <= 1600) return 3;
+  if (targetWords <= 3000) return 4;
+  return 5;
+}
+
+function getMaxOutlineCount(targetWords: number): number {
+  if (targetWords <= 800) return 3;
+  if (targetWords <= 1600) return 4;
+  return 6;
+}
+
+function enforceMarkdownTarget(markdown: string, targetWords: number): string {
+  const maxUnits = getTargetWordRange(targetWords).max;
+  return trimMarkdownToUnitLimit(markdown, maxUnits);
+}
+
+function ensureMarkdownTitle(markdown: string, title: string): string {
+  const cleaned = sanitizeDraftMarkdown(markdown);
+  if (!cleaned) return "";
+  return cleaned.startsWith("# ") ? cleaned : `# ${title}\n\n${cleaned}`;
+}
+
 function normalizeLength(value: AgentWriteInput["length"]): AgentLength {
   return value === "short" || value === "long" || value === "medium" ? value : "medium";
 }
@@ -144,6 +294,7 @@ function normalizeAnalysis(raw: any, input: AgentWriteInput): AgentAnalysis {
 function normalizeOutline(raw: any, input: AgentWriteInput): { title: string; outline: AgentOutlineItem[] } {
   const targetWords = normalizeTargetWords(input);
   const fallbackCount = targetWords <= 800 ? 2 : targetWords >= 2000 ? 5 : 3;
+  const maxCount = getMaxOutlineCount(targetWords);
   const rawItems = Array.isArray(raw?.outline) ? raw.outline : Array.isArray(raw?.sections) ? raw.sections : [];
   const outline = rawItems
     .map((item: any, index: number) => ({
@@ -151,7 +302,7 @@ function normalizeOutline(raw: any, input: AgentWriteInput): { title: string; ou
       brief: cleanText(item?.brief || item?.summary || item?.goal, "围绕写作目标展开。"),
     }))
     .filter((item: AgentOutlineItem) => item.heading)
-    .slice(0, 6);
+    .slice(0, maxCount);
 
   while (outline.length === 0 || (rawItems.length === 0 && outline.length < fallbackCount)) {
     outline.push({
@@ -228,9 +379,13 @@ function buildAnalyzePrompt(input: AgentWriteInput): string {
 }
 
 function buildPlanPrompt(input: AgentWriteInput, analysis: AgentAnalysis, sourceContext: string): string {
+  const targetWords = normalizeTargetWords(input);
+  const preferredCount = getPreferredOutlineCount(targetWords);
   return [
     "请为写作任务生成标题和大纲，只返回 JSON。",
     `写作目标：${input.goal.trim()}`,
+    `目标总字数：${targetWords} 字，全文必须控制在 ${targetWords - WORD_TOLERANCE}-${targetWords + WORD_TOLERANCE} 字之间。`,
+    `建议大纲数量：${preferredCount} 个章节左右，短文不要拆得过碎。`,
     `任务分析：${JSON.stringify(analysis)}`,
     "可参考资料：",
     sourceContext,
@@ -248,19 +403,36 @@ function buildDraftPrompt(
 ): string {
   const stylePrompt = getStylePrompt(input);
   const targetWords = normalizeTargetWords(input);
+  const sectionBudget = getSectionWordBudget(targetWords, index, total);
   return [
     "你是小安，请根据当前章节要求输出正文片段，不要输出 JSON。",
     `总标题：${title}`,
     `写作目标：${input.goal.trim()}`,
     `风格要求：${stylePrompt}`,
-    `目标总字数：约 ${targetWords} 字，请按章节数合理分配篇幅。`,
+    `全文目标字数：${targetWords} 字，最终全文必须控制在 ${targetWords - WORD_TOLERANCE}-${targetWords + WORD_TOLERANCE} 字之间。`,
+    `当前章节目标字数：约 ${sectionBudget.target} 字，请控制在 ${sectionBudget.min}-${sectionBudget.max} 字。`,
     `当前章节：${section.heading}`,
     `章节要求：${section.brief}`,
     `章节进度：${index + 1}/${total}`,
     "可参考资料：",
     sourceContext,
-    "要求：内容完整、可直接拼入文档，不要解释你的过程。",
+    "要求：只写当前章节正文，不要输出总标题、章节标题、解释过程或额外章节。",
     "格式：使用标准 Markdown 标题、列表、加粗和引用；避免 LaTeX 控制符，箭头请直接使用 →。",
+  ].join("\n");
+}
+
+function buildLengthAdjustPrompt(input: AgentWriteInput, title: string, markdown: string, currentUnits: number): string {
+  const targetWords = normalizeTargetWords(input);
+  const range = getTargetWordRange(targetWords);
+  return [
+    "请把以下 Markdown 草稿补写为完整成稿，只返回 Markdown，不要解释。",
+    `原始写作目标：${input.goal.trim()}`,
+    `当前全文字数：${currentUnits} 字`,
+    `目标全文字数：${targetWords} 字，必须控制在 ${range.min}-${range.max} 字之间。`,
+    `标题：${title}`,
+    "要求：保留原文标题、章节顺序和主要信息；只补充必要的场景、论述或细节，不要新增无关章节。",
+    "草稿：",
+    markdown.slice(0, 12000),
   ].join("\n");
 }
 
@@ -343,15 +515,34 @@ export function createAgentWriteService(deps: AgentWriteDependencies) {
       const sections: string[] = [];
       for (let index = 0; index < plan.outline.length; index += 1) {
         const section = plan.outline[index];
+        const sectionBudget = getSectionWordBudget(normalizedInput.targetWords!, index, plan.outline.length);
         const draft = await deps.completeText(
           "draft",
           buildDraftPrompt(normalizedInput, plan.title, section, sourceContext, index, plan.outline.length),
-          normalizedInput
+          {
+            ...normalizedInput,
+            targetWords: sectionBudget.target,
+          }
         );
-        sections.push(`## ${section.heading}\n\n${draft.trim()}`);
+        const cleanedDraft = sanitizeDraftMarkdown(draft);
+        const boundedDraft = trimMarkdownToUnitLimit(cleanedDraft, sectionBudget.max);
+        sections.push(`## ${section.heading}\n\n${boundedDraft}`);
       }
 
-      const markdown = `# ${plan.title}\n\n${sections.join("\n\n")}`;
+      let markdown = enforceMarkdownTarget(`# ${plan.title}\n\n${sections.join("\n\n")}`, normalizedInput.targetWords!);
+      const targetRange = getTargetWordRange(normalizedInput.targetWords!);
+      const draftUnits = countReadableUnits(markdown);
+      if (draftUnits < targetRange.min) {
+        const adjustedDraft = await deps.completeText(
+          "adjust",
+          buildLengthAdjustPrompt(normalizedInput, plan.title, markdown, draftUnits),
+          normalizedInput
+        );
+        const adjustedMarkdown = ensureMarkdownTitle(adjustedDraft, plan.title);
+        if (adjustedMarkdown) {
+          markdown = enforceMarkdownTarget(adjustedMarkdown, normalizedInput.targetWords!);
+        }
+      }
       await emit({
         stage: "draft",
         message: agentMessage(normalizedInput, "已完成草稿生成", "Draft generated"),
