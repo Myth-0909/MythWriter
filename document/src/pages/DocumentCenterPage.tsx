@@ -339,6 +339,9 @@ export function DocumentCenterPage({
   }, -1);
   const bestDayLabel =
     bestDayIndex >= 0 ? t(dayI18nKeys[chartData.dayIndices[bestDayIndex]]) : t("documents.noActivity");
+  const activeWritingDays = chartData.words.filter((value) => value > 0).length;
+  const peakWords = chartData.words.reduce((max, value) => Math.max(max, value), 0);
+  const averageWords = activeWritingDays > 0 ? Math.round(weeklyTotal / activeWritingDays) : 0;
   const latestText = getDocumentText(latestDoc);
   const latestWordEstimate = latestText.length;
   const ungroupedCount = documents.filter((doc) => !doc.groupId).length;
@@ -738,9 +741,52 @@ export function DocumentCenterPage({
                 </div>
               </div>
               {chartData.dayIndices.length > 0 ? (
-                <WriterFlowChart dayIndices={chartData.dayIndices} words={chartData.words} />
+                <>
+                  <WriterFlowChart dayIndices={chartData.dayIndices} words={chartData.words} />
+                  <div className="mt-4 grid grid-cols-3 gap-2">
+                    {[
+                      { label: t("documents.activeDays"), value: `${numberFormatter.format(activeWritingDays)} ${t("documents.daysUnit")}` },
+                      { label: t("documents.averageWords"), value: numberFormatter.format(averageWords) },
+                      { label: t("documents.peakWords"), value: numberFormatter.format(peakWords) },
+                    ].map((item) => (
+                      <div
+                        key={item.label}
+                        className="rounded-xl border border-surface-200 bg-surface-50/75 px-3 py-3 dark:border-surface-800 dark:bg-surface-950/35"
+                      >
+                        <div className="text-[11px] font-medium text-surface-500 dark:text-surface-400">{item.label}</div>
+                        <div className="mt-1 text-sm font-semibold text-surface-950 dark:text-surface-50">{item.value}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-4 rounded-xl border border-surface-200 bg-surface-50/75 p-3 dark:border-surface-800 dark:bg-surface-950/35">
+                    <div className="mb-3 flex items-center justify-between">
+                      <span className="text-xs font-semibold text-surface-700 dark:text-surface-200">{t("documents.rhythmMap")}</span>
+                      <span className="text-[11px] text-surface-400">{numberFormatter.format(weeklyTotal)}</span>
+                    </div>
+                    <div className="grid grid-cols-7 items-end gap-2">
+                      {chartData.dayIndices.map((dayIndex, index) => {
+                        const value = chartData.words[index] || 0;
+                        const height = peakWords > 0 ? Math.max(10, Math.round((value / peakWords) * 52)) : 10;
+                        return (
+                          <div key={`${dayIndex}-${index}`} className="flex flex-col items-center gap-2">
+                            <div className="flex h-[56px] w-full items-end rounded-full bg-surface-200/70 p-1 dark:bg-surface-800/70">
+                              <div
+                                className={cn(
+                                  "w-full rounded-full transition-all",
+                                  value > 0 ? "bg-brand-500 dark:bg-brand-400" : "bg-surface-300 dark:bg-surface-700"
+                                )}
+                                style={{ height }}
+                              />
+                            </div>
+                            <span className="text-[10px] font-medium text-surface-400">{t(dayI18nKeys[dayIndex])}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </>
               ) : (
-                <div className="flex h-[200px] items-center justify-center rounded-xl border border-dashed border-surface-200 text-xs text-surface-400 dark:border-surface-800">
+                <div className="flex h-[336px] items-center justify-center rounded-xl border border-dashed border-surface-200 text-xs text-surface-400 dark:border-surface-800">
                   {t("documents.noActivity")}
                 </div>
               )}
