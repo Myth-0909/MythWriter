@@ -16,6 +16,7 @@ import workRecordRoutes from "./routes/workRecords";
 import { connectRedis } from "./lib/redis";
 import prisma from "./lib/prisma";
 import { getMilvusStatus } from "./lib/milvus";
+import { startWorkRecordSummaryScheduler } from "./services/workRecordSummaryService";
 
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
@@ -63,6 +64,8 @@ async function start() {
   } else {
     console.warn("[Milvus] Vector setup unavailable:", milvusStatus.error);
   }
+
+  startWorkRecordSummaryScheduler();
 
   app.listen(PORT, HOST, () => {
     const localHost = HOST === "0.0.0.0" ? "localhost" : HOST;
