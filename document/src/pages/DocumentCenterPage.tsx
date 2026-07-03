@@ -745,8 +745,16 @@ export function DocumentCenterPage({
                                   <Clock3 className="h-3.5 w-3.5" />
                                   <span>{t("documents.currentFocus")}</span>
                                 </div>
-                                <div className="rounded-full px-2.5 py-1 text-xs font-semibold text-surface-500 ring-1 ring-surface-200 dark:text-surface-300 dark:ring-surface-700">
-                                  <CountUp value={latestWordEstimate} formatValue={(value) => numberFormatter.format(Math.round(value))} /> {t("documents.wordsUnit")}
+                                <div className="whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-semibold text-surface-500 ring-1 ring-surface-200 dark:text-surface-300 dark:ring-surface-700">
+                                  {latestDoc ? (
+                                    <>
+                                      <span>{t("documents.currentDocumentWords")} </span>
+                                      <CountUp value={latestWordEstimate} formatValue={(value) => numberFormatter.format(Math.round(value))} />
+                                      <span> {t("documents.wordsUnit")}</span>
+                                    </>
+                                  ) : (
+                                    <span>{t("documents.noLatestDoc")}</span>
+                                  )}
                                 </div>
                               </div>
                               <h2 className="mt-4 line-clamp-1 text-xl font-semibold leading-tight text-surface-950 dark:text-surface-50">
