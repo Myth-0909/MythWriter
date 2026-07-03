@@ -503,8 +503,8 @@ export function DocumentCenterPage({
       {(loading || actionLoading) && <LoadingOverlay />}
       <div className="mx-auto w-full max-w-[1360px] px-8 py-8 xl:px-10">
         <div className={cn("grid gap-5", isWorkbench ? "xl:grid-cols-[minmax(0,1.25fr)_440px]" : "grid-cols-1")}>
-          <section className="relative overflow-hidden rounded-2xl border border-surface-200 bg-white p-7 shadow-sm dark:border-surface-800 dark:bg-surface-900">
-            <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(90deg,rgba(15,23,42,0.035)_1px,transparent_1px),linear-gradient(0deg,rgba(15,23,42,0.035)_1px,transparent_1px)] bg-[size:28px_28px] dark:bg-[linear-gradient(90deg,rgba(148,163,184,0.06)_1px,transparent_1px),linear-gradient(0deg,rgba(148,163,184,0.06)_1px,transparent_1px)]" />
+          <section className="relative overflow-hidden rounded-2xl border border-surface-200 bg-white p-7 shadow-sm dark:border-surface-800 dark:bg-[#101826]">
+            <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_10%_0%,rgba(185,149,78,0.13),transparent_34%),linear-gradient(90deg,rgba(15,23,42,0.028)_1px,transparent_1px),linear-gradient(0deg,rgba(15,23,42,0.028)_1px,transparent_1px)] bg-[size:auto,32px_32px,32px_32px] dark:bg-[radial-gradient(circle_at_12%_0%,rgba(185,149,78,0.16),transparent_32%),linear-gradient(90deg,rgba(148,163,184,0.035)_1px,transparent_1px),linear-gradient(0deg,rgba(148,163,184,0.035)_1px,transparent_1px)]" />
             <div className="relative">
               {!isWorkbench && activeGroupId && (
                 <div className="mb-4 flex items-center gap-2 text-xs font-medium text-surface-500">
@@ -546,55 +546,77 @@ export function DocumentCenterPage({
                         {pageSubtitle}
                       </p>
 
-                      <div className="mt-6 grid gap-3 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
-                        <button
-                          type="button"
-                          onClick={() => latestDoc && onOpenDoc?.(latestDoc.id)}
-                          disabled={!latestDoc}
-                          className="group rounded-2xl border border-surface-200 bg-white/80 p-4 text-left transition-all hover:-translate-y-0.5 hover:border-brand-300 hover:shadow-sm disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:border-surface-200 dark:border-surface-800 dark:bg-surface-950/30 dark:hover:border-brand-500/50"
-                        >
-                          <div className="flex items-center gap-2 text-xs font-semibold text-brand-600 dark:text-brand-300">
-                            <Clock3 className="h-3.5 w-3.5" />
-                            <span>{t("documents.continueDraft")}</span>
+                      <div className="mt-6 grid gap-4">
+                        <div className="relative overflow-hidden rounded-2xl border border-brand-200/70 bg-gradient-to-br from-brand-50 via-white to-surface-50 p-5 shadow-sm dark:border-brand-500/25 dark:from-brand-500/15 dark:via-surface-950/55 dark:to-surface-900/70">
+                          <div className="pointer-events-none absolute right-0 top-0 h-32 w-32 rounded-full bg-brand-300/20 blur-3xl dark:bg-brand-400/10" />
+                          <div className="relative flex min-h-[190px] flex-col justify-between">
+                            <div>
+                              <div className="flex items-center justify-between gap-3">
+                                <div className="inline-flex items-center gap-2 rounded-full bg-white/70 px-3 py-1 text-xs font-semibold text-brand-700 ring-1 ring-brand-200/70 dark:bg-surface-950/55 dark:text-brand-200 dark:ring-brand-500/20">
+                                  <Clock3 className="h-3.5 w-3.5" />
+                                  <span>{t("documents.currentFocus")}</span>
+                                </div>
+                                <div className="rounded-full px-2.5 py-1 text-xs font-semibold text-surface-500 ring-1 ring-surface-200 dark:text-surface-300 dark:ring-surface-700">
+                                  {numberFormatter.format(latestWordEstimate)} {t("documents.wordsEstimate")}
+                                </div>
+                              </div>
+                              <h2 className="mt-5 line-clamp-2 text-2xl font-semibold leading-tight text-surface-950 dark:text-surface-50">
+                                {latestDoc?.title || t("documents.noLatestDoc")}
+                              </h2>
+                              <p className="mt-3 line-clamp-3 max-w-[620px] text-sm leading-6 text-surface-600 dark:text-surface-300">
+                                {latestText || t("documents.noDraftHint")}
+                              </p>
+                            </div>
+                            <div className="mt-6 flex flex-wrap items-center gap-2">
+                              <Button
+                                type="button"
+                                className="h-10 gap-1.5 px-4"
+                                onClick={() => latestDoc ? onOpenDoc?.(latestDoc.id) : handleNewDocument("general")}
+                              >
+                                <PenLine className="h-4 w-4" />
+                                <span>{latestDoc ? t("documents.openLatest") : t("documents.createFirstDraft")}</span>
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                className="h-10 gap-1.5 px-4 bg-white/65 dark:bg-surface-950/35"
+                                onClick={onOpenAgentWrite}
+                              >
+                                <Sparkles className="h-4 w-4" />
+                                <span>{t("documents.aiAssistNow")}</span>
+                              </Button>
+                            </div>
                           </div>
-                          <div className="mt-3 truncate text-base font-semibold text-surface-950 dark:text-surface-50">
-                            {latestDoc?.title || t("documents.noLatestDoc")}
-                          </div>
-                          <p className="mt-2 line-clamp-2 min-h-[40px] text-xs leading-5 text-surface-500 dark:text-surface-400">
-                            {latestText || t("documents.noDraftHint")}
-                          </p>
-                          <div className="mt-4 flex items-center gap-1.5 text-xs font-semibold text-brand-600 dark:text-brand-300">
-                            <span>{t("documents.openLatest")}</span>
-                            <ArrowUpRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
-                          </div>
-                        </button>
+                        </div>
 
-                        <div className="rounded-2xl border border-surface-200 bg-surface-50/80 p-4 dark:border-surface-800 dark:bg-surface-950/30">
-                          <div className="flex items-center justify-between gap-3">
+                        <div className="rounded-2xl border border-surface-200 bg-white/70 p-3 shadow-sm dark:border-surface-800 dark:bg-surface-950/35">
+                          <div className="flex items-center justify-between gap-3 px-2 pb-2 pt-1">
                             <div>
                               <h2 className="text-sm font-semibold text-surface-950 dark:text-surface-50">
-                                {t("documents.aiNextTitle")}
+                                {t("documents.nextActionQueue")}
                               </h2>
-                              <p className="mt-1 text-xs text-surface-500 dark:text-surface-400">{t("documents.aiNextDesc")}</p>
+                              <p className="mt-1 line-clamp-2 text-xs leading-5 text-surface-500 dark:text-surface-400">{t("documents.aiNextDesc")}</p>
                             </div>
-                            <Compass className="h-5 w-5 text-brand-500" />
+                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand-100 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300">
+                              <Compass className="h-[18px] w-[18px]" />
+                            </div>
                           </div>
-                          <div className="mt-4 grid gap-2">
+                          <div className="mt-1 grid gap-2">
                             {aiNextSteps.map((step) => (
                               <button
                                 key={step.title}
                                 type="button"
                                 onClick={step.onClick}
-                                className="group flex items-center gap-3 rounded-xl border border-transparent px-2 py-2 text-left transition-all hover:border-surface-200 hover:bg-white dark:hover:border-surface-800 dark:hover:bg-surface-900"
+                                className="group flex w-full items-center gap-3 rounded-xl border border-surface-200 bg-surface-50/70 px-3 py-3 text-left transition-colors hover:bg-white active:scale-[0.99] dark:border-surface-800 dark:bg-surface-900/45 dark:hover:bg-surface-900"
                               >
-                                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand-100 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300">
+                                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-brand-700 shadow-sm ring-1 ring-surface-200 dark:bg-surface-950 dark:text-brand-300 dark:ring-surface-800">
                                   <step.icon className="h-4 w-4" />
                                 </div>
                                 <div className="min-w-0 flex-1">
-                                  <div className="truncate text-xs font-semibold text-surface-900 dark:text-surface-100">{step.title}</div>
-                                  <div className="mt-0.5 line-clamp-1 text-[11px] text-surface-500">{step.desc}</div>
+                                  <div className="truncate text-sm font-semibold text-surface-900 dark:text-surface-100">{step.title}</div>
+                                  <div className="mt-0.5 line-clamp-1 text-xs leading-5 text-surface-500 dark:text-surface-400">{step.desc}</div>
                                 </div>
-                                <ArrowUpRight className="h-3.5 w-3.5 text-surface-300 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5 group-hover:text-brand-500" />
+                                <ArrowUpRight className="h-4 w-4 shrink-0 text-surface-300 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5 group-hover:text-brand-500" />
                               </button>
                             ))}
                           </div>
