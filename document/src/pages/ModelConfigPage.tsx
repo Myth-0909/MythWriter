@@ -430,15 +430,11 @@ export function ModelConfigPage() {
                     </button>
                   )}
                 </div>
-                <div className="mt-2 rounded-lg border border-surface-200 bg-surface-50 px-3 py-2 text-xs dark:border-surface-800 dark:bg-surface-950">
-                  <div className="font-medium text-surface-600 dark:text-surface-300">{t("apikey.testPrompt")}</div>
-                  {testReply && (
-                    <div className="mt-1 text-surface-500 dark:text-surface-400">
-                      <span className="font-medium">{t("apikey.testReply")}{t("date.separator")}</span>
-                      <span>{testReply}</span>
-                    </div>
-                  )}
-                </div>
+                {testReply && (
+                  <div className="mt-2 rounded-lg border border-surface-200 bg-surface-50 px-3 py-2 text-xs leading-relaxed text-surface-600 dark:border-surface-800 dark:bg-surface-950 dark:text-surface-300">
+                    {testReply}
+                  </div>
+                )}
               </div>
             </div>
           </section>
