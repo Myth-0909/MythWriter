@@ -585,17 +585,38 @@ textarea::placeholder {
   font-weight: 800;
 }
 
-.markdown-visual-editor {
-  min-height: inherit;
-  color: #0f172a;
+.markdown-image-strip {
+  border-bottom: 1px solid rgba(148, 163, 184, 0.22);
+  padding: 0.75rem;
 }
 
-.dark .markdown-visual-editor {
-  color: #f1f5f9;
+.markdown-image-strip-title {
+  margin-bottom: 0.5rem;
+  color: #64748b;
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+
+.dark .markdown-image-strip-title {
+  color: #94a3b8;
+}
+
+.markdown-image-strip-list {
+  display: flex;
+  max-width: 100%;
+  gap: 0.75rem;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.25rem 0.25rem 0.65rem;
 }
 
 .markdown-image-resize {
+  display: block;
+  border: 0;
   border-radius: 0.75rem;
+  background: transparent;
+  padding: 0;
+  text-align: left;
 }
 
 .markdown-image-resize.is-selected::after {
@@ -618,6 +639,19 @@ textarea::placeholder {
   background: #b8872e;
   box-shadow: 0 10px 24px rgba(15, 23, 42, 0.2);
   cursor: nwse-resize;
+}
+
+.markdown-image-size {
+  position: absolute;
+  right: 0.5rem;
+  bottom: 0.5rem;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.72);
+  padding: 0.2rem 0.45rem;
+  color: #f8fafc;
+  font-size: 0.68rem;
+  font-weight: 800;
+  line-height: 1;
 }
 
 .dark .markdown-image-resize-handle {
