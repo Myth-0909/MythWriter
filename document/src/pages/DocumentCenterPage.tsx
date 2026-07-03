@@ -680,8 +680,8 @@ export function DocumentCenterPage({
 
                       <div className="mt-6 grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
                         <div className="relative overflow-hidden rounded-2xl border border-brand-200/70 bg-gradient-to-br from-brand-50 via-white to-surface-50 p-4 shadow-sm dark:border-brand-500/25 dark:from-brand-500/15 dark:via-surface-950/55 dark:to-surface-900/70">
-                          <div className="relative flex flex-col justify-between">
-                            <div>
+                          <div className="relative flex h-full min-h-[300px] flex-col">
+                            <div className="flex flex-1 flex-col">
                               <div className="flex items-center justify-between gap-3">
                                 <div className="inline-flex items-center gap-2 rounded-full bg-white/70 px-3 py-1 text-xs font-semibold text-brand-700 ring-1 ring-brand-200/70 dark:bg-surface-950/55 dark:text-brand-200 dark:ring-brand-500/20">
                                   <Clock3 className="h-3.5 w-3.5" />
@@ -694,27 +694,27 @@ export function DocumentCenterPage({
                               <h2 className="mt-4 line-clamp-1 text-xl font-semibold leading-tight text-surface-950 dark:text-surface-50">
                                 {latestDoc?.title || t("documents.noLatestDoc")}
                               </h2>
-                              <p className="mt-2 line-clamp-2 max-w-[620px] text-sm leading-6 text-surface-600 dark:text-surface-300">
+                              <p className="mt-2 line-clamp-3 max-w-[620px] text-sm leading-6 text-surface-600 dark:text-surface-300">
                                 {latestText || t("documents.noDraftHint")}
                               </p>
                             </div>
-                            <div className="mt-4 flex flex-wrap items-center gap-2">
+                            <div className="mt-5 grid grid-cols-1 gap-2 sm:grid-cols-2">
                               <Button
                                 type="button"
-                                className="h-10 gap-1.5 px-4"
+                                className="h-10 min-w-0 justify-center gap-1.5 px-3"
                                 onClick={() => latestDoc ? onOpenDoc?.(latestDoc.id) : handleNewDocument("general")}
                               >
-                                <PenLine className="h-4 w-4" />
-                                <span>{latestDoc ? t("documents.openLatest") : t("documents.createFirstDraft")}</span>
+                                <PenLine className="h-4 w-4 shrink-0" />
+                                <span className="min-w-0 truncate whitespace-nowrap">{latestDoc ? t("documents.openLatest") : t("documents.createFirstDraft")}</span>
                               </Button>
                               <Button
                                 type="button"
                                 variant="outline"
-                                className="h-10 gap-1.5 px-4 bg-white/65 dark:bg-surface-950/35"
+                                className="h-10 min-w-0 justify-center gap-1.5 bg-white/65 px-3 dark:bg-surface-950/35"
                                 onClick={onOpenAgentWrite}
                               >
-                                <Sparkles className="h-4 w-4" />
-                                <span>{t("documents.aiAssistNow")}</span>
+                                <Sparkles className="h-4 w-4 shrink-0" />
+                                <span className="min-w-0 truncate whitespace-nowrap">{t("documents.aiAssistNow")}</span>
                               </Button>
                             </div>
                           </div>
