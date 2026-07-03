@@ -389,6 +389,7 @@ export function DocumentCenterPage({
   const favDocs = filteredDocs.filter((doc) => doc.isFavorite);
   const visibleDocsCount = favDocs.length + mainDocs.length;
   const latestDoc = useMemo(() => sortDocuments(documents, "updated", lang)[0] ?? null, [documents, lang]);
+  const latestDocGroup = latestDoc?.groupId ? groups.find((group) => group.id === latestDoc.groupId) : null;
   const journalWordsByDay = chartData.dates.map((dateKey) =>
     workRecords
       .filter((item) => getLocalDateKey(item.targetDate) === dateKey)
@@ -402,6 +403,28 @@ export function DocumentCenterPage({
     bestDayIndex >= 0 ? t(dayI18nKeys[chartData.dayIndices[bestDayIndex]]) : t("documents.noActivity");
   const latestText = getDocumentText(latestDoc);
   const latestWordEstimate = latestText.length;
+  const focusDetails = [
+    {
+      icon: Clock3,
+      label: t("documents.focusUpdated"),
+      value: latestDoc ? formatRelativeModified(latestDoc.updatedAt, t) : t("documents.noLatestDoc"),
+    },
+    {
+      icon: FolderOpen,
+      label: t("documents.focusGroup"),
+      value: latestDoc ? latestDocGroup?.name || t("group.ungrouped") : t("documents.noLatestDoc"),
+    },
+    {
+      icon: FileStack,
+      label: t("documents.focusType"),
+      value: latestDoc ? categoryLabels[latestDoc.category][lang] : categoryLabels.general[lang],
+    },
+    {
+      icon: Target,
+      label: t("documents.focusStatus"),
+      value: latestDoc ? t("documents.focusStatusReady") : t("documents.focusStatusEmpty"),
+    },
+  ];
   const ungroupedCount = documents.filter((doc) => !doc.groupId).length;
   const researchCount = documents.filter((doc) => doc.category === "research").length;
   const sortedWorkRecords = useMemo(
@@ -697,6 +720,22 @@ export function DocumentCenterPage({
                               <p className="mt-2 line-clamp-3 max-w-[620px] text-sm leading-6 text-surface-600 dark:text-surface-300">
                                 {latestText || t("documents.noDraftHint")}
                               </p>
+                              <div className="mt-6 grid grid-cols-2 gap-2">
+                                {focusDetails.map((item) => (
+                                  <div
+                                    key={item.label}
+                                    className="min-w-0 rounded-xl border border-surface-200/80 bg-white/60 px-3 py-3 dark:border-surface-700/80 dark:bg-surface-950/35"
+                                  >
+                                    <div className="flex items-center gap-1.5 text-[11px] font-medium text-surface-500 dark:text-surface-400">
+                                      <item.icon className="h-3.5 w-3.5 shrink-0" />
+                                      <span className="min-w-0 truncate">{item.label}</span>
+                                    </div>
+                                    <div className="mt-2 truncate text-sm font-semibold text-surface-950 dark:text-surface-50">
+                                      {item.value}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
                             </div>
                             <div className="mt-5 grid grid-cols-1 gap-2 sm:grid-cols-2">
                               <Button
