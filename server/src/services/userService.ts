@@ -146,12 +146,20 @@ function extractChatReplyFromJson(payload: any): string {
   return "";
 }
 
+function cleanChatReply(value: string): string {
+  return value
+    .replace(/<think>[\s\S]*?<\/think>/gi, "")
+    .replace(/<thinking>[\s\S]*?<\/thinking>/gi, "")
+    .replace(/^\s*(?:assistant|回复|模型回复)[:：]\s*/i, "")
+    .trim();
+}
+
 function extractChatReplyFromText(rawText: string): string {
   const text = rawText.trim();
   if (!text) return "";
 
   try {
-    return extractChatReplyFromJson(JSON.parse(text)) || text;
+    return cleanChatReply(extractChatReplyFromJson(JSON.parse(text)));
   } catch {
     // Continue with SSE/plain-text parsing below.
   }
@@ -169,7 +177,7 @@ function extractChatReplyFromText(rawText: string): string {
     }
   }
 
-  return (streamed || text).trim();
+  return cleanChatReply(streamed || text);
 }
 
 function defaultBaseUrl(value?: string | null) {

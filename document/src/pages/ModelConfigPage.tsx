@@ -431,8 +431,9 @@ export function ModelConfigPage() {
                   )}
                 </div>
                 {testReply && (
-                  <div className="mt-2 rounded-lg border border-surface-200 bg-surface-50 px-3 py-2 text-xs leading-relaxed text-surface-600 dark:border-surface-800 dark:bg-surface-950 dark:text-surface-300">
-                    {testReply}
+                  <div className="mt-2 space-y-2 rounded-lg border border-surface-200 bg-surface-50 px-3 py-2 text-xs leading-relaxed dark:border-surface-800 dark:bg-surface-950">
+                    <div className="text-surface-500 dark:text-surface-400">{t("apikey.testPrompt")}</div>
+                    <div className="text-surface-700 dark:text-surface-200">{testReply}</div>
                   </div>
                 )}
               </div>
