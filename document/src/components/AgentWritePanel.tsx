@@ -227,8 +227,8 @@ export function AgentWritePanel({ open, onOpenChange, onOpenDocument }: AgentWri
 
             <Scrollbar className="min-h-0 flex-1">
               <div className="px-7 py-6">
-                <section className="rounded-2xl border border-surface-200 bg-surface-50/70 p-5 dark:border-surface-800 dark:bg-surface-900/50">
-                  <div className="mb-5 flex items-center gap-3">
+                <section className="rounded-2xl border border-surface-200 bg-surface-50/70 p-6 dark:border-surface-800 dark:bg-surface-900/50">
+                  <div className="mb-6 flex items-center gap-3">
                     <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-50 text-brand-600 dark:bg-brand-500/10 dark:text-brand-300">
                       <PenLine className="h-4.5 w-4.5" />
                     </div>
@@ -243,8 +243,8 @@ export function AgentWritePanel({ open, onOpenChange, onOpenDocument }: AgentWri
                   </div>
 
                   <div className="space-y-5">
-                    <div className="space-y-2">
-                      <label className="text-xs font-semibold text-surface-600 dark:text-surface-300">
+                    <div className="rounded-xl border border-surface-200 bg-white p-4 shadow-sm dark:border-surface-800 dark:bg-surface-950">
+                      <label className="mb-3 block text-xs font-semibold text-surface-600 dark:text-surface-300">
                         {t("agent.goalLabel")}
                       </label>
                       <Textarea
@@ -252,13 +252,13 @@ export function AgentWritePanel({ open, onOpenChange, onOpenDocument }: AgentWri
                         onChange={(event) => setGoal(event.target.value)}
                         placeholder={t("agent.goalPlaceholder")}
                         disabled={running}
-                        className="min-h-36 rounded-xl bg-white text-sm leading-6 shadow-sm dark:bg-surface-950"
+                        className="min-h-36 rounded-xl bg-surface-50/80 text-sm leading-6 shadow-none dark:bg-surface-900"
                       />
                     </div>
 
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-[minmax(0,1fr)_180px]">
-                      <div className="space-y-2">
-                        <label className="text-xs font-semibold text-surface-600 dark:text-surface-300">
+                      <div className="rounded-xl border border-surface-200 bg-white p-4 shadow-sm dark:border-surface-800 dark:bg-surface-950">
+                        <label className="mb-3 block text-xs font-semibold text-surface-600 dark:text-surface-300">
                           {t("agent.style")}
                         </label>
                         <Input
@@ -266,13 +266,13 @@ export function AgentWritePanel({ open, onOpenChange, onOpenDocument }: AgentWri
                           onChange={(event) => setStylePrompt(event.target.value)}
                           placeholder={t("agent.stylePlaceholder")}
                           disabled={running}
-                          className="h-11 rounded-xl bg-white shadow-sm dark:bg-surface-950"
+                          className="h-11 rounded-xl bg-surface-50/80 shadow-none dark:bg-surface-900"
                         />
-                        <p className="text-[11px] leading-5 text-surface-400">{t("agent.styleHint")}</p>
+                        <p className="mt-2 text-[11px] leading-5 text-surface-400">{t("agent.styleHint")}</p>
                       </div>
 
-                      <div className="space-y-2">
-                        <label className="text-xs font-semibold text-surface-600 dark:text-surface-300">
+                      <div className="rounded-xl border border-surface-200 bg-white p-4 shadow-sm dark:border-surface-800 dark:bg-surface-950">
+                        <label className="mb-3 block text-xs font-semibold text-surface-600 dark:text-surface-300">
                           {t("agent.length")}
                         </label>
                         <Input
@@ -289,9 +289,9 @@ export function AgentWritePanel({ open, onOpenChange, onOpenDocument }: AgentWri
                           }}
                           placeholder={t("agent.wordCountPlaceholder")}
                           disabled={running}
-                          className="h-11 rounded-xl bg-white shadow-sm dark:bg-surface-950"
+                          className="h-11 rounded-xl bg-surface-50/80 shadow-none dark:bg-surface-900"
                         />
-                        <p className="text-[11px] leading-5 text-surface-400">{t("agent.wordCountHint")}</p>
+                        <p className="mt-2 text-[11px] leading-5 text-surface-400">{t("agent.wordCountHint")}</p>
                       </div>
                     </div>
                   </div>
