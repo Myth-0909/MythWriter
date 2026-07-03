@@ -31,10 +31,11 @@ import { useToast } from "@/components/Toast";
 import { sanitizeHtml } from "@/lib/html";
 import { cn } from "@/lib/utils";
 import type { WorkRecord, WorkRecordPeriod } from "@/types";
-import type { ChangeEvent, ClipboardEvent, RefObject } from "react";
+import type { ClipboardEvent, MouseEvent as ReactMouseEvent, RefObject } from "react";
 
 const MAX_INLINE_IMAGE_SIZE = 2 * 1024 * 1024;
 const imageSourcePattern = /!\[[^\]]*]\((data:image\/[^)]+)\)|<img\b[^>]*\bsrc=["'](data:image\/[^"']+)["'][^>]*>/gi;
+const imageTagPattern = /<img\b[^>]*\bsrc=["'](data:image\/[^"']+)["'][^>]*>/gi;
 
 type WorkRecordPanelView = "editor" | "list";
 
@@ -110,39 +111,192 @@ function highlightMarkdownSyntax(value: string) {
 
 interface MarkdownTextareaProps {
   value: string;
-  onChange: (event: ChangeEvent<HTMLTextAreaElement>) => void;
+  onValueChange: (value: string) => void;
   onPaste?: (event: ClipboardEvent<HTMLTextAreaElement>) => void;
   placeholder?: string;
   className?: string;
   textareaRef?: RefObject<HTMLTextAreaElement | null>;
 }
 
-function MarkdownTextarea({ value, onChange, onPaste, placeholder, className, textareaRef }: MarkdownTextareaProps) {
+function getImageAttribute(tag: string, name: "width" | "height") {
+  const match = tag.match(new RegExp(`${name}=["']?(\\d+)["']?`, "i"));
+  return match ? Number(match[1]) : undefined;
+}
+
+function upsertImageAttribute(tag: string, name: "width" | "height", value: number) {
+  const rounded = Math.max(80, Math.round(value));
+  const pattern = new RegExp(`\\s${name}=["']?\\d+["']?`, "i");
+  if (pattern.test(tag)) return tag.replace(pattern, ` ${name}="${rounded}"`);
+  return tag.replace(/\s*\/?>$/, ` ${name}="${rounded}" />`);
+}
+
+function parseMarkdownImages(value: string) {
+  const parts: { type: "text" | "image"; value: string; src?: string; width?: number; height?: number; index?: number }[] = [];
+  let lastIndex = 0;
+  let imageIndex = 0;
+  imageTagPattern.lastIndex = 0;
+  for (const match of value.matchAll(imageTagPattern)) {
+    const start = match.index || 0;
+    if (start > lastIndex) parts.push({ type: "text", value: value.slice(lastIndex, start) });
+    const tag = match[0];
+    parts.push({
+      type: "image",
+      value: tag,
+      src: match[1],
+      width: getImageAttribute(tag, "width"),
+      height: getImageAttribute(tag, "height"),
+      index: imageIndex,
+    });
+    imageIndex += 1;
+    lastIndex = start + tag.length;
+  }
+  if (lastIndex < value.length) parts.push({ type: "text", value: value.slice(lastIndex) });
+  if (!parts.length) parts.push({ type: "text", value });
+  return parts;
+}
+
+function replaceImageTagAt(value: string, imageIndex: number, nextTag: string) {
+  let currentIndex = 0;
+  return value.replace(imageTagPattern, (tag) => {
+    if (currentIndex === imageIndex) {
+      currentIndex += 1;
+      return nextTag;
+    }
+    currentIndex += 1;
+    return tag;
+  });
+}
+
+function MarkdownTextarea({ value, onValueChange, onPaste, placeholder, className, textareaRef }: MarkdownTextareaProps) {
   const highlightRef = useRef<HTMLPreElement>(null);
-  const highlightedHtml = useMemo(() => highlightMarkdownSyntax(value), [value]);
+  const resizeRef = useRef<{
+    imageIndex: number;
+    startX: number;
+    startY: number;
+    startWidth: number;
+    startHeight: number;
+    tag: string;
+  } | null>(null);
+  const [selectedImage, setSelectedImage] = useState<number | null>(null);
+  const parts = useMemo(() => parseMarkdownImages(value), [value]);
+
+  const handleResizeStart = (
+    event: ReactMouseEvent<HTMLButtonElement>,
+    imageIndex: number,
+    tag: string,
+    width: number,
+    height: number
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+    resizeRef.current = {
+      imageIndex,
+      startX: event.clientX,
+      startY: event.clientY,
+      startWidth: width,
+      startHeight: height,
+      tag,
+    };
+    setSelectedImage(imageIndex);
+
+    const handleMove = (moveEvent: MouseEvent) => {
+      if (!resizeRef.current) return;
+      const deltaX = moveEvent.clientX - resizeRef.current.startX;
+      const ratio = resizeRef.current.startHeight / resizeRef.current.startWidth;
+      const nextWidth = Math.max(120, Math.min(900, resizeRef.current.startWidth + deltaX));
+      const nextHeight = Math.max(80, Math.round(nextWidth * ratio));
+      const withWidth = upsertImageAttribute(resizeRef.current.tag, "width", nextWidth);
+      const withSize = upsertImageAttribute(withWidth, "height", nextHeight);
+      onValueChange(replaceImageTagAt(value, resizeRef.current.imageIndex, withSize));
+    };
+
+    const handleEnd = () => {
+      resizeRef.current = null;
+      window.removeEventListener("mousemove", handleMove);
+      window.removeEventListener("mouseup", handleEnd);
+    };
+
+    window.addEventListener("mousemove", handleMove);
+    window.addEventListener("mouseup", handleEnd);
+  };
 
   return (
     <div className={cn("markdown-input relative rounded-lg", className)}>
-      <Textarea
-        ref={textareaRef}
-        value={value}
-        onChange={onChange}
-        onPaste={onPaste}
-        placeholder={placeholder}
-        spellCheck
-        onScroll={(event) => {
-          if (!highlightRef.current) return;
-          highlightRef.current.scrollTop = event.currentTarget.scrollTop;
-          highlightRef.current.scrollLeft = event.currentTarget.scrollLeft;
-        }}
-        className="markdown-input-textarea relative z-10 min-h-full bg-transparent leading-6 text-transparent caret-surface-950 selection:bg-brand-200/60 placeholder:text-surface-400 dark:caret-surface-50 dark:selection:bg-brand-500/35"
-      />
-      <pre
-        ref={highlightRef}
-        aria-hidden="true"
-        className="markdown-input-highlight pointer-events-none absolute inset-0 z-20 overflow-hidden rounded-lg border border-transparent px-3 py-2 text-sm leading-6"
-        dangerouslySetInnerHTML={{ __html: highlightedHtml }}
-      />
+      {parts.length === 1 && parts[0].type === "text" ? (
+        <>
+          <Textarea
+            ref={textareaRef}
+            value={value}
+            onChange={(event) => onValueChange(event.target.value)}
+            onPaste={onPaste}
+            placeholder={placeholder}
+            spellCheck
+            onScroll={(event) => {
+              if (!highlightRef.current) return;
+              highlightRef.current.scrollTop = event.currentTarget.scrollTop;
+              highlightRef.current.scrollLeft = event.currentTarget.scrollLeft;
+            }}
+            className="markdown-input-textarea relative z-10 min-h-full bg-transparent leading-6 text-transparent caret-surface-950 selection:bg-brand-200/60 placeholder:text-surface-400 dark:caret-surface-50 dark:selection:bg-brand-500/35"
+          />
+          <pre
+            ref={highlightRef}
+            aria-hidden="true"
+            className="markdown-input-highlight pointer-events-none absolute inset-0 z-20 overflow-hidden rounded-lg border border-transparent px-3 py-2 text-sm leading-6"
+            dangerouslySetInnerHTML={{ __html: highlightMarkdownSyntax(value) }}
+          />
+        </>
+      ) : (
+        <div className="markdown-visual-editor min-h-full overflow-y-auto px-3 py-2">
+          {parts.map((part, index) => {
+            if (part.type === "image" && part.src && part.index !== undefined) {
+              const width = part.width || 480;
+              const height = part.height || Math.round(width * 0.62);
+              const isSelected = selectedImage === part.index;
+              return (
+                <div key={`${part.index}-${index}`} className="my-3">
+                  <div
+                    className={cn("markdown-image-resize relative inline-block max-w-full", isSelected && "is-selected")}
+                    style={{ width: Math.min(width, 900) }}
+                    onClick={() => setSelectedImage(part.index || 0)}
+                  >
+                    <img
+                      src={part.src}
+                      alt=""
+                      className="block max-w-full rounded-xl border border-surface-200 object-contain dark:border-surface-700"
+                      style={{ width, height: part.height ? height : "auto" }}
+                      draggable={false}
+                    />
+                    {isSelected && (
+                      <button
+                        type="button"
+                        className="markdown-image-resize-handle"
+                        aria-label="Resize image"
+                        onMouseDown={(event) => handleResizeStart(event, part.index || 0, part.value, width, height)}
+                      />
+                    )}
+                  </div>
+                </div>
+              );
+            }
+
+            return (
+              <Textarea
+                key={`text-${index}`}
+                value={part.value}
+                onChange={(event) => {
+                  const nextParts = [...parts];
+                  nextParts[index] = { ...part, value: event.target.value };
+                  onValueChange(nextParts.map((item) => item.value).join(""));
+                }}
+                onPaste={onPaste}
+                placeholder={index === 0 ? placeholder : undefined}
+                spellCheck
+                className="min-h-[92px] resize-y border-0 bg-transparent px-0 py-1 text-sm leading-6 text-surface-950 shadow-none focus-visible:ring-0 dark:text-surface-50"
+              />
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -740,7 +894,7 @@ export function WorkRecordPanel({ className, view = "editor" }: { className?: st
                 </div>
                 <MarkdownTextarea
                   value={content}
-                  onChange={(event) => setContent(event.target.value)}
+                  onValueChange={setContent}
                   onPaste={(event) => {
                     const file = Array.from(event.clipboardData.files || []).find((item) => item.type.startsWith("image/"));
                     if (!file) return;
@@ -974,7 +1128,7 @@ export function WorkRecordPanel({ className, view = "editor" }: { className?: st
             </span>
             <MarkdownTextarea
               value={editContent}
-              onChange={(event) => setEditContent(event.target.value)}
+              onValueChange={setEditContent}
               placeholder={t("workbench.recordContentPlaceholder")}
               className="min-h-[300px] bg-surface-50 dark:bg-[#0f1724]"
             />

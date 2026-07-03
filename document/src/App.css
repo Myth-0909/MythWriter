@@ -585,6 +585,46 @@ textarea::placeholder {
   font-weight: 800;
 }
 
+.markdown-visual-editor {
+  min-height: inherit;
+  color: #0f172a;
+}
+
+.dark .markdown-visual-editor {
+  color: #f1f5f9;
+}
+
+.markdown-image-resize {
+  border-radius: 0.75rem;
+}
+
+.markdown-image-resize.is-selected::after {
+  content: "";
+  pointer-events: none;
+  position: absolute;
+  inset: -4px;
+  border: 2px solid #b8872e;
+  border-radius: 0.95rem;
+}
+
+.markdown-image-resize-handle {
+  position: absolute;
+  right: -8px;
+  bottom: -8px;
+  width: 18px;
+  height: 18px;
+  border: 2px solid #ffffff;
+  border-radius: 999px;
+  background: #b8872e;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.2);
+  cursor: nwse-resize;
+}
+
+.dark .markdown-image-resize-handle {
+  border-color: #0f172a;
+  background: #d8b45f;
+}
+
 .dark .markdown-line-heading {
   color: #44d62c;
 }
