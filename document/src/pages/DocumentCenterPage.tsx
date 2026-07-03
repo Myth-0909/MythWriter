@@ -6,7 +6,6 @@ import { ConfirmModal } from "@/components/ConfirmModal";
 import { LoadingOverlay } from "@/components/LoadingSpinner";
 import { Scrollbar } from "@/components/ui/scrollbar";
 import { WriterFlowChart, WriterRhythmChart } from "@/components/WriterFlowChart";
-import { WorkRecordPanel } from "@/components/WorkRecordPanel";
 import { RotatingText } from "@/components/RotatingText";
 import { CountUp } from "@/components/CountUp";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
@@ -582,16 +581,16 @@ export function DocumentCenterPage({
                     <Sparkles className="h-3.5 w-3.5" />
                     <span>{t("documents.workbenchHeroMode")}</span>
                   </div>
-                  <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_330px]">
+                  <div className="grid gap-6">
                     <div className="min-w-0">
-                      <h1 className="max-w-[820px] text-[40px] font-semibold leading-[1.08] text-surface-950 dark:text-surface-50 xl:text-[52px]">
+                      <h1 className="max-w-[760px] text-[34px] font-semibold leading-[1.08] text-surface-950 dark:text-surface-50 xl:text-[42px]">
                         <RotatingText
                           texts={greetingLines}
                           interval={2800}
                           className="min-h-[1.12em]"
                         />
                       </h1>
-                      <div className="mt-3 flex flex-wrap items-baseline gap-x-3 gap-y-2 text-[28px] font-semibold leading-tight text-surface-800 dark:text-surface-100 xl:text-[36px]">
+                      <div className="mt-3 flex flex-wrap items-baseline gap-x-3 gap-y-2 text-[22px] font-semibold leading-tight text-surface-800 dark:text-surface-100 xl:text-[28px]">
                         <span>{t("documents.workbenchHeroPrefix")}</span>
                         <RotatingText
                           texts={greetingRotations}
@@ -603,10 +602,9 @@ export function DocumentCenterPage({
                         {t("documents.workbenchHeroDesc")}
                       </p>
 
-                      <div className="mt-6 grid gap-4 lg:grid-cols-[minmax(0,1fr)_250px]">
-                        <div className="relative overflow-hidden rounded-2xl border border-brand-200/70 bg-gradient-to-br from-brand-50 via-white to-surface-50 p-5 shadow-sm dark:border-brand-500/25 dark:from-brand-500/15 dark:via-surface-950/55 dark:to-surface-900/70">
-                          <div className="pointer-events-none absolute right-0 top-0 h-32 w-32 rounded-full bg-brand-300/20 blur-3xl dark:bg-brand-400/10" />
-                          <div className="relative flex min-h-[190px] flex-col justify-between">
+                      <div className="mt-6 grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
+                        <div className="relative overflow-hidden rounded-2xl border border-brand-200/70 bg-gradient-to-br from-brand-50 via-white to-surface-50 p-4 shadow-sm dark:border-brand-500/25 dark:from-brand-500/15 dark:via-surface-950/55 dark:to-surface-900/70">
+                          <div className="relative flex flex-col justify-between">
                             <div>
                               <div className="flex items-center justify-between gap-3">
                                 <div className="inline-flex items-center gap-2 rounded-full bg-white/70 px-3 py-1 text-xs font-semibold text-brand-700 ring-1 ring-brand-200/70 dark:bg-surface-950/55 dark:text-brand-200 dark:ring-brand-500/20">
@@ -617,14 +615,14 @@ export function DocumentCenterPage({
                                   <CountUp value={latestWordEstimate} formatValue={(value) => numberFormatter.format(Math.round(value))} /> {t("documents.wordsUnit")}
                                 </div>
                               </div>
-                              <h2 className="mt-5 line-clamp-2 text-2xl font-semibold leading-tight text-surface-950 dark:text-surface-50">
+                              <h2 className="mt-4 line-clamp-1 text-xl font-semibold leading-tight text-surface-950 dark:text-surface-50">
                                 {latestDoc?.title || t("documents.noLatestDoc")}
                               </h2>
-                              <p className="mt-3 line-clamp-3 max-w-[620px] text-sm leading-6 text-surface-600 dark:text-surface-300">
+                              <p className="mt-2 line-clamp-2 max-w-[620px] text-sm leading-6 text-surface-600 dark:text-surface-300">
                                 {latestText || t("documents.noDraftHint")}
                               </p>
                             </div>
-                            <div className="mt-6 flex flex-wrap items-center gap-2">
+                            <div className="mt-4 flex flex-wrap items-center gap-2">
                               <Button
                                 type="button"
                                 className="h-10 gap-1.5 px-4"
@@ -714,38 +712,6 @@ export function DocumentCenterPage({
                       </div>
                     </div>
 
-                    <div className="relative min-h-[360px] overflow-hidden rounded-[28px] border border-surface-200 bg-surface-950 p-5 text-white shadow-sm dark:border-surface-800 dark:bg-black">
-                      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_26%_18%,rgba(216,189,115,0.26),transparent_28%),radial-gradient(circle_at_72%_82%,rgba(74,144,217,0.22),transparent_34%)]" />
-                      <div className="pointer-events-none absolute -right-20 -top-20 h-52 w-52 rounded-full border border-brand-200/20" />
-                      <div className="relative flex h-full min-h-[320px] flex-col justify-between">
-                        <div className="flex items-center justify-between gap-3">
-                          <span className="text-xs font-semibold text-brand-200">{t("documents.todayStudio")}</span>
-                          <span className="rounded-full border border-white/10 bg-white/10 px-2.5 py-1 text-[11px] text-surface-200">
-                            {t("documents.signalNext")}
-                          </span>
-                        </div>
-                        <div className="relative mx-auto my-8 flex h-56 w-56 items-center justify-center">
-                          <div className="absolute inset-0 rounded-full border border-white/10" />
-                          <div className="absolute inset-6 animate-spin rounded-full border border-dashed border-brand-200/30 [animation-duration:18s]" />
-                          <div className="absolute inset-14 rounded-full bg-white/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.18)] backdrop-blur-md" />
-                          <div className="relative flex h-24 w-24 items-center justify-center rounded-full bg-brand-200 text-2xl font-semibold text-surface-950 shadow-[0_18px_50px_rgba(216,189,115,0.24)]">
-                            AI
-                          </div>
-                          <div className="absolute left-0 top-10 rounded-full border border-white/10 bg-white/10 px-3 py-1 text-xs text-surface-100 backdrop-blur">
-                            {t("documents.orbitPrompt")}
-                          </div>
-                          <div className="absolute right-0 top-28 rounded-full border border-white/10 bg-white/10 px-3 py-1 text-xs text-surface-100 backdrop-blur">
-                            {t("documents.orbitDraft")}
-                          </div>
-                          <div className="absolute bottom-3 left-16 rounded-full border border-white/10 bg-white/10 px-3 py-1 text-xs text-surface-100 backdrop-blur">
-                            {t("documents.orbitBrain")}
-                          </div>
-                        </div>
-                        <p className="text-sm leading-6 text-surface-300">
-                          {t(greeting.hint)}
-                        </p>
-                      </div>
-                    </div>
                   </div>
                 </>
               ) : (
@@ -873,8 +839,6 @@ export function DocumentCenterPage({
           )}
         </div>
 
-        {isWorkbench && <WorkRecordPanel />}
-
         {isWorkbench && (
           <section className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1.1fr)_420px]">
             <div className="rounded-2xl border border-surface-200 bg-white p-5 shadow-sm dark:border-surface-800 dark:bg-surface-900">
@@ -890,29 +854,29 @@ export function DocumentCenterPage({
                 <Bot className="h-5 w-5 text-brand-500" />
               </div>
 
-              <div className="grid gap-3 lg:grid-cols-3">
+              <div className="grid gap-3 lg:grid-cols-4">
                 <button
                   type="button"
                   onClick={onOpenAgentWrite}
-                  className="group relative min-h-[236px] overflow-hidden rounded-2xl bg-surface-950 p-5 text-left text-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md dark:bg-black lg:col-span-2"
+                  className="group relative overflow-hidden rounded-2xl bg-surface-950 p-4 text-left text-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md dark:bg-black lg:col-span-1"
                 >
                   <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_18%_20%,rgba(185,149,78,0.28),transparent_34%),radial-gradient(circle_at_80%_80%,rgba(99,102,241,0.18),transparent_36%)]" />
                   <div className="relative flex h-full flex-col justify-between">
                     <div>
-                      <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/10 text-brand-200">
-                        <Sparkles className="h-5 w-5" />
+                      <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/10 text-brand-200">
+                        <Sparkles className="h-4 w-4" />
                       </div>
-                      <h3 className="mt-5 text-xl font-semibold">{t("documents.aiContinue")}</h3>
-                      <p className="mt-3 max-w-[420px] text-sm leading-6 text-surface-300">{t("documents.aiContinueDesc")}</p>
+                      <h3 className="mt-4 text-base font-semibold">{t("documents.aiContinue")}</h3>
+                      <p className="mt-2 line-clamp-2 text-xs leading-5 text-surface-300">{t("documents.aiContinueDesc")}</p>
                     </div>
-                    <div className="mt-6 flex items-center gap-1.5 text-xs font-semibold text-brand-200">
+                    <div className="mt-4 flex items-center gap-1.5 text-xs font-semibold text-brand-200">
                       <span>{t("documents.openAiWriting")}</span>
                       <ArrowUpRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
                     </div>
                   </div>
                 </button>
 
-                <div className="grid gap-3">
+                <div className="grid gap-3 lg:col-span-3 lg:grid-cols-3">
                   {[
                     {
                       icon: PenLine,

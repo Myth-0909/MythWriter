@@ -6,6 +6,7 @@ import { Editor } from "@/components/Editor";
 import { DocumentList } from "@/components/DocumentList";
 import { DocumentCenterPage } from "@/pages/DocumentCenterPage";
 import { FavoritesPage } from "@/pages/FavoritesPage";
+import { WorkRecordsPage } from "@/pages/WorkRecordsPage";
 import { TrashPage } from "@/pages/TrashPage";
 import { SettingsPage } from "@/pages/SettingsPage";
 import { ModelConfigPage } from "@/pages/ModelConfigPage";
@@ -26,9 +27,9 @@ import { formatFullDateTime } from "@/lib/date";
 import { escapeHtml, sanitizeHtml } from "@/lib/html";
 import "./App.css";
 
-type Page = "editor" | "workbench" | "documents" | "favorites" | "share" | "login" | "trash" | "settings" | "model-config" | "brain" | "notfound";
+type Page = "editor" | "workbench" | "documents" | "favorites" | "records" | "share" | "login" | "trash" | "settings" | "model-config" | "brain" | "notfound";
 
-const VALID_PAGES = new Set<string>(["workbench", "documents", "favorites", "trash", "settings", "model-config", "login", "brain"]);
+const VALID_PAGES = new Set<string>(["workbench", "documents", "favorites", "records", "trash", "settings", "model-config", "login", "brain"]);
 
 function pageFromHash(hash: string): { page: Page; editorId?: string } | null {
   const name = hash.replace(/^#\//, "");
@@ -187,7 +188,7 @@ export default function App() {
       setFolderModalOpen(false);
       fetchGroups();
     } catch (err: any) {
-      toast(err.message || "操作失败", "error");
+      toast(err.message || t("login.actionFailed"), "error");
     }
   };
 
@@ -203,7 +204,7 @@ export default function App() {
       fetchGroups();
       refreshDocuments();
     } catch (err: any) {
-      toast(err.message || "删除失败", "error");
+      toast(err.message || t("toast.deleteFailed"), "error");
     }
   };
   const [currentPage, setCurrentPage] = useState<Page>(() => {
@@ -474,6 +475,9 @@ export default function App() {
             {currentPage === "favorites" && (
               <FavoritesPage onOpenDoc={handleOpenDoc} />
             )}
+            {currentPage === "records" && (
+              <WorkRecordsPage />
+            )}
             {currentPage === "trash" && (
               <TrashPage />
             )}
@@ -557,8 +561,8 @@ export default function App() {
         onOpenChange={(open) => !open && setDeleteFolderTargetId(null)}
         title={t("group.deleteGroup")}
         description={t("group.deleteGroupDesc")}
-        confirmLabel="删除"
-        cancelLabel="取消"
+        confirmLabel={t("common.delete")}
+        cancelLabel={t("common.cancel")}
         variant="danger"
         onConfirm={handleDeleteFolder}
       />

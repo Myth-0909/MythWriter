@@ -62,7 +62,7 @@ function stripMarkdown(value: string) {
     .trim();
 }
 
-export function WorkRecordPanel() {
+export function WorkRecordPanel({ className }: { className?: string } = {}) {
   const { t, lang } = useI18n();
   const { toast } = useToast();
   const todayKey = useMemo(() => localDateKey(), []);
@@ -261,7 +261,7 @@ export function WorkRecordPanel() {
   const numberFormatter = useMemo(() => new Intl.NumberFormat(locale), [locale]);
 
   return (
-    <section className="mt-5 overflow-hidden rounded-2xl border border-surface-200 bg-white shadow-sm dark:border-surface-800 dark:bg-[#0f1724]">
+    <section className={cn("mt-5 overflow-hidden rounded-2xl border border-surface-200 bg-white shadow-sm dark:border-surface-800 dark:bg-[#0f1724]", className)}>
       <div className="border-b border-surface-200 bg-surface-50/70 px-5 py-5 dark:border-surface-800 dark:bg-[#111b2a] xl:px-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="flex min-w-0 items-start gap-3">
