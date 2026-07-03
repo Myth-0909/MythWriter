@@ -851,25 +851,23 @@ export function DocumentCenterPage({
               {chartData.dayIndices.length > 0 ? (
                 <>
                   <WriterFlowChart dayIndices={chartData.dayIndices} words={chartData.words} journalWords={journalWordsByDay} />
-                  <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_220px]">
-                    <div className="grid grid-cols-3 gap-2">
-                      {[
-                        { label: t("documents.activeDays"), value: `${numberFormatter.format(activeWritingDays)} ${t("documents.daysUnit")}` },
-                        { label: t("documents.averageWords"), value: numberFormatter.format(averageWords) },
-                        { label: t("documents.peakWords"), value: numberFormatter.format(peakWords) },
-                      ].map((item) => (
-                        <div
-                          key={item.label}
-                          className="rounded-xl border border-surface-200 bg-surface-50/75 px-3 py-3 dark:border-surface-800 dark:bg-surface-950/35"
-                        >
-                          <div className="text-[11px] font-medium text-surface-500 dark:text-surface-400">{item.label}</div>
-                          <div className="mt-1 text-sm font-semibold text-surface-950 dark:text-surface-50">{item.value}</div>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="rounded-xl border border-surface-200 bg-surface-50/75 p-3 dark:border-surface-800 dark:bg-surface-950/35">
-                      <WriterSourceMixChart documentWords={weeklyTotal} journalWords={journalWeeklyTotal} />
-                    </div>
+                  <div className="mt-4 grid grid-cols-3 gap-2">
+                    {[
+                      { label: t("documents.activeDays"), value: `${numberFormatter.format(activeWritingDays)} ${t("documents.daysUnit")}` },
+                      { label: t("documents.averageWords"), value: numberFormatter.format(averageWords) },
+                      { label: t("documents.peakWords"), value: numberFormatter.format(peakWords) },
+                    ].map((item) => (
+                      <div
+                        key={item.label}
+                        className="rounded-xl border border-surface-200 bg-surface-50/75 px-3 py-3 dark:border-surface-800 dark:bg-surface-950/35"
+                      >
+                        <div className="whitespace-nowrap text-[11px] font-medium text-surface-500 dark:text-surface-400">{item.label}</div>
+                        <div className="mt-1 whitespace-nowrap text-lg font-semibold tabular-nums text-surface-950 dark:text-surface-50">{item.value}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-3 rounded-xl border border-surface-200 bg-surface-50/75 p-3 dark:border-surface-800 dark:bg-surface-950/35">
+                    <WriterSourceMixChart documentWords={weeklyTotal} journalWords={journalWeeklyTotal} />
                   </div>
                   <div className="mt-4 rounded-xl border border-surface-200 bg-surface-50/75 p-3 dark:border-surface-800 dark:bg-surface-950/35">
                     <div className="mb-3 flex items-center justify-between">

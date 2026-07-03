@@ -357,8 +357,8 @@ export function WriterSourceMixChart({ documentWords, journalWords }: { document
       series: [
         {
           type: "pie",
-          radius: ["48%", "72%"],
-          center: ["50%", "48%"],
+          radius: ["44%", "66%"],
+          center: ["50%", "46%"],
           avoidLabelOverlap: true,
           label: {
             color: isDark ? "#f8fafc" : "#0f172a",
@@ -376,5 +376,5 @@ export function WriterSourceMixChart({ documentWords, journalWords }: { document
     };
   }, [documentWords, isDark, journalWords, lang, t]);
 
-  return <ReactEChartsCore echarts={echarts} option={option} style={{ width: "100%", height: 168 }} notMerge lazyUpdate />;
+  return <ReactEChartsCore echarts={echarts} option={option} style={{ width: "100%", height: 136 }} notMerge lazyUpdate />;
 }
