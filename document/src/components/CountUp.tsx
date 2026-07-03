@@ -10,7 +10,7 @@ const easeOutCubic = (progress: number) => 1 - Math.pow(1 - progress, 3);
 
 export function CountUp({
   value,
-  duration = 900,
+  duration = 1200,
   formatValue = (nextValue) => Math.round(nextValue).toLocaleString(),
   ...props
 }: CountUpProps) {

@@ -403,6 +403,7 @@ export function DocumentCenterPage({
     bestDayIndex >= 0 ? t(dayI18nKeys[chartData.dayIndices[bestDayIndex]]) : t("documents.noActivity");
   const latestText = getDocumentText(latestDoc);
   const latestWordEstimate = latestText.length;
+  const latestDocumentDayWords = chartData.words[chartData.words.length - 1] || 0;
   const focusDetails = [
     {
       icon: Clock3,
@@ -548,6 +549,40 @@ export function DocumentCenterPage({
     { icon: FileText, label: t("documents.signalLatestWords"), value: latestWordEstimate, unit: t("documents.wordsUnit") },
     { icon: NotebookTabs, label: t("documents.signalJournalWords"), value: workRecordTextTotal, unit: t("documents.wordsUnit") },
     { icon: Clock3, label: t("documents.signalTodayJournalWords"), value: todayWorkRecordWords, unit: t("documents.wordsUnit") },
+  ];
+  const contextBoardCards = [
+    {
+      icon: FileText,
+      label: t("documents.contextLatestDraft"),
+      title: latestDoc?.title || t("documents.noLatestDoc"),
+      desc: latestText || t("documents.contextNoDraft"),
+      value: latestWordEstimate,
+      unit: t("documents.wordsUnit"),
+    },
+    {
+      icon: NotebookTabs,
+      label: t("documents.contextLatestEntry"),
+      title: latestWorkRecord?.title || t("documents.recordSignalEmpty"),
+      desc: latestWorkRecordText || t("documents.contextNoEntry"),
+      value: latestWorkRecordText.length,
+      unit: t("documents.wordsUnit"),
+    },
+    {
+      icon: Clock3,
+      label: t("documents.contextTodayProgress"),
+      title: `${numberFormatter.format(todayWorkRecordWords + latestDocumentDayWords)} ${t("documents.wordsUnit")}`,
+      desc: `${t("documents.signalDocumentWeeklyWords")} ${numberFormatter.format(latestDocumentDayWords)}${t("documents.wordsUnit")}${t("date.separator")}${t("documents.signalTodayJournalWords")} ${numberFormatter.format(todayWorkRecordWords)}${t("documents.wordsUnit")}`,
+      value: todayWorkRecordWords + latestDocumentDayWords,
+      unit: t("documents.wordsUnit"),
+    },
+    {
+      icon: Sparkles,
+      label: t("documents.contextNextMove"),
+      title: aiWorkbenchActions[0]?.title || t("documents.aiOutline"),
+      desc: aiWorkbenchActions[0]?.desc || t("documents.aiOutlineDesc"),
+      value: aiWorkbenchActions.length,
+      unit: t("documents.items"),
+    },
   ];
   const flowPanels: {
     key: "document" | "journal";
@@ -828,6 +863,67 @@ export function DocumentCenterPage({
                           <div className="mt-1 line-clamp-2 text-xs leading-5 text-surface-700 dark:text-surface-200">
                             {latestWorkRecord ? `${latestWorkRecord.title}${t("date.separator")}${latestWorkRecordText || t("documents.recordSignalEmpty")}` : t("documents.recordSignalEmpty")}
                           </div>
+                        </div>
+                      </div>
+                      <div className="mt-4 rounded-2xl border border-surface-200 bg-white/70 p-4 shadow-sm dark:border-surface-800 dark:bg-surface-950/35">
+                        <div className="flex items-start justify-between gap-4">
+                          <div>
+                            <h2 className="text-sm font-semibold text-surface-950 dark:text-surface-50">
+                              {t("documents.contextBoard")}
+                            </h2>
+                            <p className="mt-1 max-w-[620px] text-xs leading-5 text-surface-500 dark:text-surface-400">
+                              {t("documents.contextBoardDesc")}
+                            </p>
+                          </div>
+                          <div className="rounded-full border border-brand-200 bg-brand-50 px-3 py-1 text-[11px] font-semibold text-brand-700 dark:border-brand-500/20 dark:bg-brand-500/10 dark:text-brand-300">
+                            {t("documents.signalNext")}
+                          </div>
+                        </div>
+                        <div className="mt-4 grid gap-3 md:grid-cols-2">
+                          {contextBoardCards.map((item) => (
+                            <div
+                              key={item.label}
+                              className="min-w-0 rounded-xl border border-surface-200 bg-surface-50/75 p-3 dark:border-surface-800 dark:bg-surface-900/45"
+                            >
+                              <div className="flex items-center justify-between gap-3">
+                                <div className="flex min-w-0 items-center gap-2">
+                                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white text-brand-600 ring-1 ring-surface-200 dark:bg-surface-950/45 dark:text-brand-300 dark:ring-surface-800">
+                                    <item.icon className="h-4 w-4" />
+                                  </div>
+                                  <div className="min-w-0">
+                                    <div className="truncate text-[11px] font-medium text-surface-500 dark:text-surface-400">{item.label}</div>
+                                    <div className="mt-0.5 truncate text-sm font-semibold text-surface-950 dark:text-surface-50">{item.title}</div>
+                                  </div>
+                                </div>
+                                <div className="shrink-0 text-right">
+                                  <CountUp value={item.value} formatValue={(value) => numberFormatter.format(Math.round(value))} className="text-lg font-semibold text-surface-950 dark:text-surface-50" />
+                                  <div className="text-[10px] text-surface-400">{item.unit}</div>
+                                </div>
+                              </div>
+                              <p className="mt-3 line-clamp-2 text-xs leading-5 text-surface-600 dark:text-surface-300">
+                                {item.desc}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="h-10 min-w-0 justify-center gap-1.5 bg-white/70 px-3 dark:bg-surface-950/35"
+                            onClick={() => latestDoc ? onOpenDoc?.(latestDoc.id) : handleNewDocument("general")}
+                          >
+                            <FileText className="h-4 w-4 shrink-0" />
+                            <span className="min-w-0 truncate whitespace-nowrap">{latestDoc ? t("documents.openLatest") : t("documents.createFirstDraft")}</span>
+                          </Button>
+                          <Button
+                            type="button"
+                            className="h-10 min-w-0 justify-center gap-1.5 px-3"
+                            onClick={onOpenAgentWrite}
+                          >
+                            <Sparkles className="h-4 w-4 shrink-0" />
+                            <span className="min-w-0 truncate whitespace-nowrap">{t("documents.aiAssistNow")}</span>
+                          </Button>
                         </div>
                       </div>
                     </div>

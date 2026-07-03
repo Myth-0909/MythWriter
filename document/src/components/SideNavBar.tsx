@@ -14,9 +14,8 @@ import {
   Plus,
   type LucideIcon,
 } from "lucide-react";
-import { ShinyText } from "@/components/ShinyText";
+import { ShuffleText } from "@/components/ShuffleText";
 import { Tooltip } from "@/components/ui/tooltip";
-import { useTheme } from "@/components/ThemeProvider";
 import { useI18n } from "@/components/I18nProvider";
 import { BrandLogo } from "@/components/BrandLogo";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
@@ -110,7 +109,6 @@ export function SideNavBar({
   onRenameGroup = () => {},
   onDeleteGroup = () => {},
 }: SideNavBarProps) {
-  const { theme } = useTheme();
   const { t } = useI18n();
   const [logoPreviewOpen, setLogoPreviewOpen] = useState(false);
   const [logoEffectActive, setLogoEffectActive] = useState(false);
@@ -142,17 +140,18 @@ export function SideNavBar({
           ) : (
             <button
               onClick={handleLogoClick}
-              className="relative flex items-center gap-2 rounded-lg p-0 text-left cursor-pointer"
+              className="relative flex w-full items-center gap-2 rounded-2xl border border-surface-200 bg-white/70 px-2.5 py-2 text-left shadow-sm transition-all hover:border-brand-200 hover:bg-white dark:border-surface-800 dark:bg-surface-900/60 dark:hover:border-brand-500/30 dark:hover:bg-surface-900"
             >
               <BrandLogo size="sm" />
-              <ShinyText
-                text={t("app.name")}
-                color={theme === "dark" ? "#f1f5f9" : "#0f172a"}
-                shineColor={theme === "dark" ? "#d8bd73" : "#b9954e"}
-                speed={3}
-                direction="right"
-                className="text-lg font-bold tracking-normal"
-              />
+              <div className="min-w-0">
+                <ShuffleText
+                  text={t("app.name")}
+                  speed={110}
+                  delay={520}
+                  className="text-lg font-bold tracking-normal text-surface-950 dark:text-surface-50"
+                />
+                <div className="mt-0.5 h-px w-full rounded-full bg-gradient-to-r from-brand-400/80 via-brand-200/50 to-transparent dark:from-brand-300/80 dark:via-brand-500/30" />
+              </div>
             </button>
           )}
 
@@ -289,13 +288,11 @@ export function SideNavBar({
           <DialogTitle className="sr-only">{t("app.logoPreview")}</DialogTitle>
           <div className="flex flex-col items-center justify-center gap-6 px-8 py-10">
             <BrandLogo size="xl" />
-            <ShinyText
+            <ShuffleText
               text={t("app.name")}
-              color={theme === "dark" ? "#f8fafc" : "#0f172a"}
-              shineColor={theme === "dark" ? "#d8bd73" : "#b9954e"}
-              speed={3}
-              direction="right"
-              className="text-center text-5xl font-bold tracking-normal"
+              speed={120}
+              delay={520}
+              className="text-center text-5xl font-bold tracking-normal text-surface-950 dark:text-surface-50"
             />
           </div>
         </DialogContent>
