@@ -82,6 +82,16 @@ function normalizeWritingReview(raw: any, fallbackTitle = "Suggestion") {
   };
 }
 
+function normalizeAgentTargetWords(value: unknown): number {
+  const numeric = typeof value === "number" ? value : Number(String(value || "").replace(/\D/g, ""));
+  if (!Number.isFinite(numeric) || numeric <= 0) return 1200;
+  return Math.max(300, Math.min(8000, Math.round(numeric)));
+}
+
+function maxTokensForTargetWords(targetWords: number): number {
+  return Math.max(900, Math.min(3600, Math.ceil(targetWords * 0.95)));
+}
+
 async function requestChatCompletionText(params: {
   apiBaseUrl: string;
   apiKey: string;
@@ -315,8 +325,10 @@ router.post("/agent/write", async (req: Request, res: Response) => {
     const authReq = req as AuthRequest;
     const userId = authReq.user!.userId;
     const userLangFromRequest = getRequestLang(req);
-    const { goal, style, length, includeBrain, includeDocuments } = req.body || {};
+    const { goal, style, length, stylePrompt, targetWords, includeBrain, includeDocuments } = req.body || {};
     const trimmedGoal = typeof goal === "string" ? goal.trim() : "";
+    const normalizedTargetWords = normalizeAgentTargetWords(targetWords);
+    const normalizedStylePrompt = typeof stylePrompt === "string" ? stylePrompt.trim().slice(0, 120) : "";
 
     if (!trimmedGoal) {
       res.status(400).json({ error: t(userLangFromRequest, "写作目标不能为空", "Writing goal is required") });
@@ -379,7 +391,7 @@ router.post("/agent/write", async (req: Request, res: Response) => {
             { role: "user", content: prompt },
           ],
           temperature: 0.65,
-          maxTokens: length === "long" ? 2200 : length === "short" ? 900 : 1500,
+          maxTokens: maxTokensForTargetWords(normalizedTargetWords),
           signal: requestController.signal,
         });
       },
@@ -416,6 +428,8 @@ router.post("/agent/write", async (req: Request, res: Response) => {
         goal: trimmedGoal,
         style,
         length,
+        stylePrompt: normalizedStylePrompt,
+        targetWords: normalizedTargetWords,
         includeBrain: includeBrain !== false,
         includeDocuments: includeDocuments !== false,
         lang: userLang === "en" ? "en" : "zh",

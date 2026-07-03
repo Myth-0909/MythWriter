@@ -14,6 +14,8 @@ export type AgentWriteInput = {
   goal: string;
   style?: AgentStyle | string;
   length?: AgentLength | string;
+  stylePrompt?: string;
+  targetWords?: number;
   includeBrain?: boolean;
   includeDocuments?: boolean;
   lang?: "zh" | "en";
@@ -109,27 +111,39 @@ function normalizeStyle(value: AgentWriteInput["style"]): AgentStyle {
     : "default";
 }
 
+function normalizeTargetWords(input: AgentWriteInput): number {
+  const explicit = Number(input.targetWords);
+  if (Number.isFinite(explicit) && explicit > 0) {
+    return Math.max(300, Math.min(8000, Math.round(explicit)));
+  }
+  return lengthWords[normalizeLength(input.length)];
+}
+
+function getStylePrompt(input: AgentWriteInput): string {
+  const customStyle = typeof input.stylePrompt === "string" ? input.stylePrompt.trim() : "";
+  return customStyle || styleLabels[normalizeStyle(input.style)];
+}
+
 function cleanText(value: unknown, fallback: string): string {
   const text = typeof value === "string" ? value.trim() : "";
   return text || fallback;
 }
 
 function normalizeAnalysis(raw: any, input: AgentWriteInput): AgentAnalysis {
-  const length = normalizeLength(input.length);
   const themes = Array.isArray(raw?.themes)
     ? raw.themes.map((theme: unknown) => String(theme).trim()).filter(Boolean).slice(0, 6)
     : [];
   return {
     genre: cleanText(raw?.genre, "写作任务"),
-    tone: cleanText(raw?.tone, styleLabels[normalizeStyle(input.style)]),
+    tone: cleanText(raw?.tone, getStylePrompt(input)),
     themes: themes.length > 0 ? themes : [input.goal.trim().slice(0, 24)],
-    estimatedWords: Math.max(300, Math.min(5000, Number(raw?.estimatedWords) || lengthWords[length])),
+    estimatedWords: Math.max(300, Math.min(8000, Number(raw?.estimatedWords) || normalizeTargetWords(input))),
   };
 }
 
 function normalizeOutline(raw: any, input: AgentWriteInput): { title: string; outline: AgentOutlineItem[] } {
-  const length = normalizeLength(input.length);
-  const fallbackCount = length === "short" ? 2 : length === "long" ? 5 : 3;
+  const targetWords = normalizeTargetWords(input);
+  const fallbackCount = targetWords <= 800 ? 2 : targetWords >= 2000 ? 5 : 3;
   const rawItems = Array.isArray(raw?.outline) ? raw.outline : Array.isArray(raw?.sections) ? raw.sections : [];
   const outline = rawItems
     .map((item: any, index: number) => ({
@@ -202,13 +216,13 @@ function buildSourceContext(sources: AgentSource[]): string {
 }
 
 function buildAnalyzePrompt(input: AgentWriteInput): string {
-  const length = normalizeLength(input.length);
-  const style = normalizeStyle(input.style);
+  const stylePrompt = getStylePrompt(input);
+  const targetWords = normalizeTargetWords(input);
   return [
     "请分析写作目标，只返回 JSON。",
     `写作目标：${input.goal.trim()}`,
-    `风格：${styleLabels[style]}`,
-    `篇幅：约 ${lengthWords[length]} 字`,
+    `风格要求：${stylePrompt}`,
+    `目标字数：约 ${targetWords} 字`,
     "JSON 字段：genre, tone, themes, estimatedWords。",
   ].join("\n");
 }
@@ -232,12 +246,14 @@ function buildDraftPrompt(
   index: number,
   total: number
 ): string {
-  const style = normalizeStyle(input.style);
+  const stylePrompt = getStylePrompt(input);
+  const targetWords = normalizeTargetWords(input);
   return [
     "你是小安，请根据当前章节要求输出正文片段，不要输出 JSON。",
     `总标题：${title}`,
     `写作目标：${input.goal.trim()}`,
-    `风格：${styleLabels[style]}`,
+    `风格要求：${stylePrompt}`,
+    `目标总字数：约 ${targetWords} 字，请按章节数合理分配篇幅。`,
     `当前章节：${section.heading}`,
     `章节要求：${section.brief}`,
     `章节进度：${index + 1}/${total}`,
@@ -276,6 +292,8 @@ export function createAgentWriteService(deps: AgentWriteDependencies) {
         goal,
         length: normalizeLength(input.length),
         style: normalizeStyle(input.style),
+        stylePrompt: getStylePrompt(input),
+        targetWords: normalizeTargetWords(input),
         includeBrain: input.includeBrain !== false,
         includeDocuments: input.includeDocuments !== false,
       };

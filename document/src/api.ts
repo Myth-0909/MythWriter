@@ -92,8 +92,8 @@ export interface AgentDoneEvent {
 
 export interface AgentWriteRequest {
   goal: string;
-  style?: "default" | "literary" | "academic" | "business" | "technical";
-  length?: "short" | "medium" | "long";
+  stylePrompt?: string;
+  targetWords?: number;
   includeBrain?: boolean;
   includeDocuments?: boolean;
 }
