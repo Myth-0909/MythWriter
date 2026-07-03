@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   BookOpenText,
   CalendarDays,
   Clock3,
   FileText,
+  ImagePlus,
   Layers3,
   Loader2,
   NotebookTabs,
@@ -21,6 +22,9 @@ import { useI18n } from "@/components/I18nProvider";
 import { useToast } from "@/components/Toast";
 import { cn } from "@/lib/utils";
 import type { WorkRecord, WorkRecordPeriod } from "@/types";
+
+const MAX_INLINE_IMAGE_SIZE = 2 * 1024 * 1024;
+const markdownImagePattern = /!\[[^\]]*]\((data:image\/[^)]+)\)/g;
 
 function localDateKey(date = new Date()) {
   const year = date.getFullYear();
@@ -57,14 +61,20 @@ function normalizeDateForPeriod(value: string, period: WorkRecordPeriod) {
 
 function stripMarkdown(value: string) {
   return value
+    .replace(markdownImagePattern, " ")
     .replace(/[#*_>`-]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 }
 
+function getMarkdownImages(value: string) {
+  return Array.from(value.matchAll(markdownImagePattern)).map((match) => match[1]);
+}
+
 export function WorkRecordPanel({ className }: { className?: string } = {}) {
   const { t, lang } = useI18n();
   const { toast } = useToast();
+  const imageInputRef = useRef<HTMLInputElement>(null);
   const todayKey = useMemo(() => localDateKey(), []);
   const [period, setPeriod] = useState<WorkRecordPeriod>("daily");
   const [targetDate, setTargetDate] = useState(todayKey);
@@ -254,7 +264,25 @@ export function WorkRecordPanel({ className }: { className?: string } = {}) {
     }
   };
 
+  const handleAttachImage = (file?: File) => {
+    if (!file) return;
+    if (file.size > MAX_INLINE_IMAGE_SIZE) {
+      toast(t("editor.imageTooBig"), "error");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const src = String(reader.result || "");
+      if (!src.startsWith("data:image/")) return;
+      const imageMarkdown = `\n\n![${file.name}](${src})\n`;
+      setContent((value) => `${value.trimEnd()}${imageMarkdown}`);
+      toast(t("workbench.imageAttached"), "success");
+    };
+    reader.readAsDataURL(file);
+  };
+
   const currentPreview = stripMarkdown(content);
+  const currentImages = getMarkdownImages(content);
   const currentTargetDate = record?.targetDate.slice(0, 10) || targetDate;
   const currentPeriodLabel = formatRecordDate(currentTargetDate, period);
   const contentChars = currentPreview.length;
@@ -286,7 +314,17 @@ export function WorkRecordPanel({ className }: { className?: string } = {}) {
         </div>
       </div>
 
-      <div className="grid gap-0 xl:grid-cols-[280px_minmax(0,1fr)_420px]">
+      <div className="grid gap-0 xl:grid-cols-[260px_minmax(0,1fr)]">
+        <input
+          ref={imageInputRef}
+          type="file"
+          accept="image/png,image/jpeg,image/jpg,image/gif,image/webp"
+          className="hidden"
+          onChange={(event) => {
+            handleAttachImage(event.target.files?.[0]);
+            event.target.value = "";
+          }}
+        />
         <aside className="border-b border-surface-200 bg-white p-5 dark:border-surface-800 dark:bg-[#0f1724] xl:border-b-0 xl:border-r xl:p-6">
           <div className="rounded-2xl border border-surface-200 bg-surface-50 p-4 dark:border-surface-800 dark:bg-surface-950/35">
             <div className="flex items-center gap-2 text-xs font-semibold text-brand-700 dark:text-brand-300">
@@ -350,6 +388,18 @@ export function WorkRecordPanel({ className }: { className?: string } = {}) {
             <p className="mt-2 min-h-[4.5rem] whitespace-pre-line text-sm leading-6 text-surface-600 dark:text-surface-300">
               {currentPreview || t("workbench.emptySnapshot")}
             </p>
+            {currentImages.length > 0 && (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {currentImages.slice(0, 4).map((src) => (
+                  <img
+                    key={src}
+                    src={src}
+                    alt=""
+                    className="h-16 w-20 rounded-lg border border-surface-200 object-cover dark:border-surface-800"
+                  />
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="mt-4 rounded-2xl border border-surface-200 bg-white p-4 dark:border-surface-800 dark:bg-surface-950/30">
@@ -366,7 +416,7 @@ export function WorkRecordPanel({ className }: { className?: string } = {}) {
             </div>
 
             <div className="grid gap-3">
-              <label className="grid gap-2">
+              <div className="grid gap-2">
                 <span className="text-xs font-semibold text-surface-700 dark:text-surface-200">
                   {t("workbench.recordTitle")}
                 </span>
@@ -376,18 +426,30 @@ export function WorkRecordPanel({ className }: { className?: string } = {}) {
                   placeholder={t("workbench.recordTitlePlaceholder")}
                   className="bg-surface-50 dark:bg-[#0f1724]"
                 />
-              </label>
-              <label className="grid gap-2">
-                <span className="text-xs font-semibold text-surface-700 dark:text-surface-200">
-                  {t("workbench.recordContent")}
-                </span>
+              </div>
+              <div className="grid gap-2">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-xs font-semibold text-surface-700 dark:text-surface-200">
+                    {t("workbench.recordContent")}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-8 gap-1.5 px-3"
+                    onClick={() => imageInputRef.current?.click()}
+                  >
+                    <ImagePlus className="h-3.5 w-3.5" />
+                    <span>{t("workbench.attachImage")}</span>
+                  </Button>
+                </div>
                 <Textarea
                   value={content}
                   onChange={(event) => setContent(event.target.value)}
                   placeholder={t("workbench.recordContentPlaceholder")}
-                  className="min-h-[192px] bg-surface-50 leading-6 dark:bg-[#0f1724]"
+                  className="min-h-[340px] bg-surface-50 leading-6 dark:bg-[#0f1724]"
                 />
-              </label>
+              </div>
             </div>
 
             <div className="mt-4 flex flex-wrap items-center gap-2">
@@ -430,7 +492,7 @@ export function WorkRecordPanel({ className }: { className?: string } = {}) {
           </div>
         </div>
 
-        <aside className="border-t border-surface-200 bg-white p-5 dark:border-surface-800 dark:bg-[#0f1724] xl:border-l xl:border-t-0 xl:p-6">
+        <aside className="border-t border-surface-200 bg-white p-5 dark:border-surface-800 dark:bg-[#0f1724] xl:col-span-2 xl:p-6">
           <div className="mb-4 flex items-start justify-between gap-3">
             <div>
               <h3 className="text-sm font-semibold text-surface-950 dark:text-surface-50">
@@ -443,51 +505,66 @@ export function WorkRecordPanel({ className }: { className?: string } = {}) {
             {loading && <Loader2 className="h-4 w-4 animate-spin text-surface-400" />}
           </div>
 
-          <div className="relative grid gap-3">
+          <div className="overflow-hidden rounded-2xl border border-surface-200 dark:border-surface-800">
             {recentRecords.length === 0 && !loading ? (
-              <div className="rounded-xl border border-dashed border-surface-200 px-4 py-8 text-center text-xs leading-5 text-surface-400 dark:border-surface-800">
+              <div className="px-4 py-8 text-center text-xs leading-5 text-surface-400">
                 {t("workbench.noRecentRecords")}
               </div>
             ) : (
-              recentRecords.map((item) => {
-                const itemPreview = stripMarkdown(item.content) || t("workbench.recordContentPlaceholder");
-                const selected = record?.id === item.id;
-                return (
-                  <button
-                    key={item.id}
-                    type="button"
-                    onClick={() => handleSelectRecord(item)}
-                    className={cn(
-                      "group relative rounded-2xl border p-4 text-left transition-all hover:-translate-y-0.5 hover:border-brand-300 hover:bg-brand-50/30 dark:hover:border-brand-500/45 dark:hover:bg-brand-500/5",
-                      selected
-                        ? "border-brand-300 bg-brand-50/60 shadow-sm dark:border-brand-500/45 dark:bg-brand-500/10"
-                        : "border-surface-200 bg-surface-50/70 dark:border-surface-800 dark:bg-surface-950/25"
-                    )}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2 text-[11px] font-semibold text-brand-700 dark:text-brand-300">
-                          <CalendarDays className="h-3.5 w-3.5" />
-                          <span>{formatRecordDate(item.targetDate, item.period)}</span>
-                        </div>
-                        <h4 className="mt-2 line-clamp-1 text-sm font-semibold text-surface-950 dark:text-surface-50">
-                          {item.title}
-                        </h4>
-                      </div>
-                      <span className="shrink-0 rounded-md border border-surface-200 bg-white px-2 py-1 text-[11px] font-medium text-surface-500 dark:border-surface-700 dark:bg-surface-900 dark:text-surface-300">
-                        {periodLabel}
-                      </span>
-                    </div>
-                    <p className="mt-3 line-clamp-5 text-xs leading-5 text-surface-600 dark:text-surface-300">
-                      {itemPreview}
-                    </p>
-                    <div className="mt-3 flex items-center justify-between gap-3 border-t border-surface-200 pt-3 text-[11px] text-surface-400 dark:border-surface-800">
-                      <span>{t("workbench.lastUpdated")}</span>
-                      <span className="tabular-nums">{formatUpdatedAt(item.updatedAt)}</span>
-                    </div>
-                  </button>
-                );
-              })
+              <table className="w-full table-fixed border-collapse text-left text-xs">
+                <thead className="bg-surface-50 text-[11px] font-semibold text-surface-500 dark:bg-surface-950/35 dark:text-surface-400">
+                  <tr>
+                    <th className="w-[160px] px-4 py-3">{t("workbench.recordDate")}</th>
+                    <th className="w-[220px] px-4 py-3">{t("workbench.recordTitle")}</th>
+                    <th className="px-4 py-3">{t("workbench.recordPreview")}</th>
+                    <th className="w-[96px] px-4 py-3">{t("workbench.imageCount")}</th>
+                    <th className="w-[150px] px-4 py-3 text-right">{t("workbench.lastUpdated")}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-surface-200 dark:divide-surface-800">
+                  {recentRecords.map((item) => {
+                    const itemPreview = stripMarkdown(item.content) || t("workbench.recordContentPlaceholder");
+                    const selected = record?.id === item.id;
+                    const itemImages = getMarkdownImages(item.content);
+                    return (
+                      <tr
+                        key={item.id}
+                        onClick={() => handleSelectRecord(item)}
+                        className={cn(
+                          "cursor-pointer transition-colors hover:bg-brand-50/40 dark:hover:bg-brand-500/10",
+                          selected && "bg-brand-50/70 dark:bg-brand-500/10"
+                        )}
+                      >
+                        <td className="px-4 py-3 font-semibold text-brand-700 dark:text-brand-300">
+                          <div className="flex items-center gap-2">
+                            <CalendarDays className="h-3.5 w-3.5" />
+                            <span className="truncate">{formatRecordDate(item.targetDate, item.period)}</span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 font-semibold text-surface-950 dark:text-surface-50">
+                          <div className="truncate">{item.title}</div>
+                        </td>
+                        <td className="px-4 py-3 text-surface-600 dark:text-surface-300">
+                          <div className="line-clamp-2 leading-5">{itemPreview}</div>
+                        </td>
+                        <td className="px-4 py-3 text-surface-500 dark:text-surface-400">
+                          {itemImages.length > 0 ? (
+                            <div className="flex items-center gap-2">
+                              <img src={itemImages[0]} alt="" className="h-8 w-10 rounded-md object-cover" />
+                              <span>{numberFormatter.format(itemImages.length)}</span>
+                            </div>
+                          ) : (
+                            <span>0</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-right tabular-nums text-surface-400">
+                          {formatUpdatedAt(item.updatedAt)}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             )}
           </div>
         </aside>

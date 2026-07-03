@@ -1,6 +1,6 @@
 const allowedTags = new Set([
   "a", "b", "blockquote", "br", "code", "div", "em", "h1", "h2", "h3", "h4", "h5", "h6",
-  "hr", "i", "li", "mark", "ol", "p", "pre", "s", "span", "strong", "sub", "sup", "table",
+  "hr", "i", "img", "li", "mark", "ol", "p", "pre", "s", "span", "strong", "sub", "sup", "table",
   "tbody", "td", "th", "thead", "tr", "u", "ul",
 ]);
 

@@ -452,6 +452,17 @@ textarea::placeholder {
   background: #854d0e;
 }
 
+.prose-editor img,
+.prose-editor .editor-image {
+  display: block;
+  max-width: 100%;
+  max-height: 520px;
+  margin: 1rem auto;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 0.75rem;
+  object-fit: contain;
+}
+
 /* Font size marks are inline styles */
 
 /* Title input */

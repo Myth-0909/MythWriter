@@ -583,11 +583,11 @@ export function DocumentCenterPage({
                   </div>
                   <div className="grid gap-6">
                     <div className="min-w-0">
-                      <h1 className="max-w-[760px] text-[34px] font-semibold leading-[1.08] text-surface-950 dark:text-surface-50 xl:text-[42px]">
+                      <h1 className="max-w-[760px] pb-2 text-[34px] font-semibold leading-[1.16] text-surface-950 dark:text-surface-50 xl:text-[42px]">
                         <RotatingText
                           texts={greetingLines}
                           interval={2800}
-                          className="min-h-[1.12em]"
+                          className="min-h-[1.24em]"
                         />
                       </h1>
                       <div className="mt-3 flex flex-wrap items-baseline gap-x-3 gap-y-2 text-[22px] font-semibold leading-tight text-surface-800 dark:text-surface-100 xl:text-[28px]">

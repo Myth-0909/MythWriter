@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
+import Image from "@tiptap/extension-image";
 import { TextStyle } from "@tiptap/extension-text-style";
 import { FontSize } from "@tiptap/extension-text-style/font-size";
 import { LineHeight } from "@tiptap/extension-text-style/line-height";
@@ -18,7 +19,7 @@ import {
   List, ListOrdered, Code, Code2, Quote, Minus,
   AlignLeft, AlignCenter, AlignRight,
   Undo2, Redo2, Heading1, Heading2, Heading3,
-  Highlighter, Star, Palette, Eraser, ClipboardCheck, Loader2, X, Sparkles,
+  Highlighter, Star, Palette, Eraser, ClipboardCheck, Loader2, X, Sparkles, ImagePlus,
 } from "lucide-react";
 import { useI18n } from "@/components/I18nProvider";
 import { useDocuments } from "@/store";
@@ -45,6 +46,8 @@ const LINE_HEIGHTS = [
   { value: "2.5", label: "2.5" },
 ];
 
+const MAX_INLINE_IMAGE_SIZE = 2 * 1024 * 1024;
+
 interface EditorProps {
   documentId?: string;
 }
@@ -65,6 +68,7 @@ export function Editor({ documentId }: EditorProps) {
   const [currentColor, setCurrentColor] = useState("#1a1a1a");
   const [currentLineHeight, setCurrentLineHeight] = useState("1.5");
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
   const loadedDocumentIdRef = useRef<string | null>(null);
   const lastSavedContentRef = useRef<string | null>(null);
   const titleSyncDocumentIdRef = useRef<string | null>(null);
@@ -103,6 +107,12 @@ export function Editor({ documentId }: EditorProps) {
       TextStyle,
       FontSize,
       LineHeight,
+      Image.configure({
+        allowBase64: true,
+        HTMLAttributes: {
+          class: "editor-image",
+        },
+      }),
       Color,
       Highlight.configure({ multicolor: true }),
       Placeholder.configure({ placeholder: t("editor.placeholder") }),
@@ -254,6 +264,22 @@ export function Editor({ documentId }: EditorProps) {
     toast(current?.isFavorite ? t("toast.favRemoved") : t("toast.favAdded"), "success");
   };
 
+  const insertImageFile = useCallback((file?: File) => {
+    if (!file || !editor) return;
+    if (file.size > MAX_INLINE_IMAGE_SIZE) {
+      toast(t("editor.imageTooBig"), "error");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const src = String(reader.result || "");
+      if (!src.startsWith("data:image/")) return;
+      editor.chain().focus().setImage({ src, alt: file.name }).run();
+      toast(t("editor.imageInserted"), "success");
+    };
+    reader.readAsDataURL(file);
+  }, [editor, t, toast]);
+
   const runWritingReview = useCallback(async () => {
     if (!doc || !editor) return;
     const plain = editor.state.doc.textBetween(0, editor.state.doc.content.size, "\n\n", "\n").trim();
@@ -333,6 +359,16 @@ export function Editor({ documentId }: EditorProps) {
           data-toolbar-revision={toolbarRevision}
           className="flex flex-wrap items-center gap-0.5 border-b border-surface-200 px-4 py-1.5 dark:border-surface-800"
         >
+          <input
+            ref={imageInputRef}
+            type="file"
+            accept="image/png,image/jpeg,image/jpg,image/gif,image/webp"
+            className="hidden"
+            onChange={(event) => {
+              insertImageFile(event.target.files?.[0]);
+              event.target.value = "";
+            }}
+          />
           {/* Undo / Redo */}
           <Tooltip content={t("editor.undo")}>
             <Toggle size="sm" pressed={false} onPressedChange={() => editor.chain().focus().undo().run()} aria-label={t("editor.undo")}>
@@ -537,6 +573,17 @@ export function Editor({ documentId }: EditorProps) {
             </div>
           )}
         </div>
+        <Separator orientation="vertical" className="mx-1 h-4" />
+        <Tooltip content={t("editor.insertImage")}>
+          <Toggle
+            size="sm"
+            pressed={false}
+            onPressedChange={() => imageInputRef.current?.click()}
+            aria-label={t("editor.insertImage")}
+          >
+            <ImagePlus className="h-3.5 w-3.5" />
+          </Toggle>
+        </Tooltip>
         <Separator orientation="vertical" className="mx-1 h-4" />
         <Tooltip content={t("inspector.open")}>
           <Toggle
