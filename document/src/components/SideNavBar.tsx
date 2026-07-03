@@ -146,8 +146,11 @@ export function SideNavBar({
               <div className="min-w-0">
                 <ShuffleText
                   text={t("app.name")}
-                  speed={110}
+                  duration={0.9}
                   delay={520}
+                  shuffleTimes={2}
+                  stagger={0.055}
+                  shuffleDirection="right"
                   className="text-lg font-bold tracking-normal text-surface-950 dark:text-surface-50"
                 />
                 <div className="mt-0.5 h-px w-full rounded-full bg-gradient-to-r from-brand-400/80 via-brand-200/50 to-transparent dark:from-brand-300/80 dark:via-brand-500/30" />
@@ -290,8 +293,11 @@ export function SideNavBar({
             <BrandLogo size="xl" />
             <ShuffleText
               text={t("app.name")}
-              speed={120}
+              duration={1}
               delay={520}
+              shuffleTimes={2}
+              stagger={0.06}
+              shuffleDirection="right"
               className="text-center text-5xl font-bold tracking-normal text-surface-950 dark:text-surface-50"
             />
           </div>
