@@ -14,7 +14,7 @@ import {
   Plus,
   type LucideIcon,
 } from "lucide-react";
-import { ShuffleText } from "@/components/ShuffleText";
+import Shuffle from "@/components/Shuffle";
 import { Tooltip } from "@/components/ui/tooltip";
 import { useI18n } from "@/components/I18nProvider";
 import { BrandLogo } from "@/components/BrandLogo";
@@ -143,14 +143,16 @@ export function SideNavBar({
               className="relative flex w-full items-center gap-2 rounded-lg p-0 text-left cursor-pointer"
             >
               <BrandLogo size="sm" />
-              <ShuffleText
+              <Shuffle
                 text={t("app.name")}
-                duration={0.9}
-                delay={520}
-                shuffleTimes={2}
-                stagger={0.055}
-                shuffleDirection="right"
-                className="text-lg font-bold tracking-normal text-surface-950 dark:text-surface-50"
+                shuffleDirection="up"
+                duration={1.5}
+                loop
+                loopDelay={1.2}
+                shuffleTimes={1}
+                stagger={0.03}
+                triggerOnHover={false}
+                className="text-lg font-bold tracking-[0.14em] text-surface-950 dark:text-surface-50"
               />
             </button>
           )}
@@ -288,14 +290,16 @@ export function SideNavBar({
           <DialogTitle className="sr-only">{t("app.logoPreview")}</DialogTitle>
           <div className="flex flex-col items-center justify-center gap-6 px-8 py-10">
             <BrandLogo size="xl" />
-            <ShuffleText
+            <Shuffle
               text={t("app.name")}
-              duration={1}
-              delay={520}
-              shuffleTimes={2}
-              stagger={0.06}
-              shuffleDirection="right"
-              className="text-center text-5xl font-bold tracking-normal text-surface-950 dark:text-surface-50"
+              shuffleDirection="up"
+              duration={1.5}
+              loop
+              loopDelay={1.2}
+              shuffleTimes={1}
+              stagger={0.03}
+              triggerOnHover={false}
+              className="text-center text-5xl font-bold tracking-[0.14em] text-surface-950 dark:text-surface-50"
             />
           </div>
         </DialogContent>
