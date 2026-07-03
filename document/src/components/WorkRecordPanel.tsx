@@ -29,6 +29,8 @@ import type { WorkRecord, WorkRecordPeriod } from "@/types";
 const MAX_INLINE_IMAGE_SIZE = 2 * 1024 * 1024;
 const imageSourcePattern = /!\[[^\]]*]\((data:image\/[^)]+)\)|<img\b[^>]*\bsrc=["'](data:image\/[^"']+)["'][^>]*>/gi;
 
+type WorkRecordPanelView = "editor" | "list";
+
 function localDateKey(date = new Date()) {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -71,18 +73,15 @@ function stripMarkdown(value: string) {
     .trim();
 }
 
-function getContentImages(value: string) {
-  return Array.from(value.matchAll(imageSourcePattern)).map((match) => match[1] || match[2]);
-}
-
 function getDateKey(value: string) {
   return normalizeDateForPeriod(value, "daily").toISOString().slice(0, 10);
 }
 
-export function WorkRecordPanel({ className }: { className?: string } = {}) {
+export function WorkRecordPanel({ className, view = "editor" }: { className?: string; view?: WorkRecordPanelView } = {}) {
   const { t, lang } = useI18n();
   const { toast } = useToast();
   const contentTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const isListView = view === "list";
   const todayKey = useMemo(() => localDateKey(), []);
   const [period, setPeriod] = useState<WorkRecordPeriod>("daily");
   const [listPeriod, setListPeriod] = useState<WorkRecordPeriod>("daily");
@@ -194,8 +193,8 @@ export function WorkRecordPanel({ className }: { className?: string } = {}) {
   }, [listPeriod, t, toast]);
 
   useEffect(() => {
-    loadCurrentRecord();
-  }, [loadCurrentRecord]);
+    if (!isListView) loadCurrentRecord();
+  }, [isListView, loadCurrentRecord]);
 
   useEffect(() => {
     loadRecentRecords();
@@ -359,10 +358,15 @@ export function WorkRecordPanel({ className }: { className?: string } = {}) {
               </p>
             </div>
           </div>
-          <TabGroup items={periodItems} value={period} onChange={handlePeriodChange} />
+          <TabGroup
+            items={periodItems}
+            value={isListView ? listPeriod : period}
+            onChange={isListView ? (value) => setListPeriod(value as WorkRecordPeriod) : handlePeriodChange}
+          />
         </div>
       </div>
 
+      {!isListView ? (
       <div className="grid gap-0 xl:grid-cols-[260px_minmax(0,1fr)]">
         <aside className="border-b border-surface-200 bg-white p-5 dark:border-surface-800 dark:bg-[#0f1724] xl:border-b-0 xl:border-r xl:p-6">
           <div className="rounded-2xl border border-surface-200 bg-surface-50 p-4 dark:border-surface-800 dark:bg-surface-950/35">
@@ -523,8 +527,9 @@ export function WorkRecordPanel({ className }: { className?: string } = {}) {
             </div>
           </div>
         </div>
-
-        <aside className="border-t border-surface-200 bg-white p-5 dark:border-surface-800 dark:bg-[#0f1724] xl:col-span-2 xl:p-6">
+      </div>
+      ) : (
+        <aside className="bg-white p-5 dark:bg-[#0f1724] xl:p-6">
           <div className="mb-4 flex items-start justify-between gap-3">
             <div>
               <h3 className="text-sm font-semibold text-surface-950 dark:text-surface-50">
@@ -538,8 +543,7 @@ export function WorkRecordPanel({ className }: { className?: string } = {}) {
           </div>
 
           <div className="mb-4 grid gap-3 rounded-2xl border border-surface-200 bg-surface-50/70 p-3 dark:border-surface-800 dark:bg-surface-950/25">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <TabGroup items={periodItems} value={listPeriod} onChange={(value) => setListPeriod(value as WorkRecordPeriod)} />
+            <div className="flex flex-wrap items-center justify-end gap-3">
               {hasListFilters && (
                 <Button
                   type="button"
@@ -596,7 +600,7 @@ export function WorkRecordPanel({ className }: { className?: string } = {}) {
                     <th className="w-[160px] px-4 py-3">{t("workbench.recordDate")}</th>
                     <th className="w-[220px] px-4 py-3">{t("workbench.recordTitle")}</th>
                     <th className="px-4 py-3">{t("workbench.recordPreview")}</th>
-                    <th className="w-[96px] px-4 py-3">{t("workbench.imageCount")}</th>
+                    <th className="w-[150px] px-4 py-3">{t("workbench.recordCreatedAt")}</th>
                     <th className="w-[150px] px-4 py-3 text-right">{t("workbench.lastUpdated")}</th>
                   </tr>
                 </thead>
@@ -604,7 +608,6 @@ export function WorkRecordPanel({ className }: { className?: string } = {}) {
                   {filteredRecords.map((item) => {
                     const itemPreview = stripMarkdown(item.content) || t("workbench.recordContentPlaceholder");
                     const selected = record?.id === item.id;
-                    const itemImages = getContentImages(item.content);
                     return (
                       <tr
                         key={item.id}
@@ -626,15 +629,8 @@ export function WorkRecordPanel({ className }: { className?: string } = {}) {
                         <td className="px-4 py-3 text-surface-600 dark:text-surface-300">
                           <div className="line-clamp-2 leading-5">{itemPreview}</div>
                         </td>
-                        <td className="px-4 py-3 text-surface-500 dark:text-surface-400">
-                          {itemImages.length > 0 ? (
-                            <div className="flex items-center gap-2">
-                              <img src={itemImages[0]} alt="" className="h-8 w-10 rounded-md object-cover" />
-                              <span>{numberFormatter.format(itemImages.length)}</span>
-                            </div>
-                          ) : (
-                            <span>0</span>
-                          )}
+                        <td className="px-4 py-3 tabular-nums text-surface-400">
+                          {formatUpdatedAt(item.createdAt)}
                         </td>
                         <td className="px-4 py-3 text-right tabular-nums text-surface-400">
                           {formatUpdatedAt(item.updatedAt)}
@@ -647,7 +643,7 @@ export function WorkRecordPanel({ className }: { className?: string } = {}) {
             )}
           </div>
         </aside>
-      </div>
+      )}
     </section>
   );
 }

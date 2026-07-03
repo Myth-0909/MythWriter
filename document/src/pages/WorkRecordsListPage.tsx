@@ -1,9 +1,9 @@
-import { NotebookTabs } from "lucide-react";
+import { History } from "lucide-react";
 import { WorkRecordPanel } from "@/components/WorkRecordPanel";
 import { Scrollbar } from "@/components/ui/scrollbar";
 import { useI18n } from "@/components/I18nProvider";
 
-export function WorkRecordsPage() {
+export function WorkRecordsListPage() {
   const { t } = useI18n();
 
   return (
@@ -15,20 +15,20 @@ export function WorkRecordsPage() {
         <section className="rounded-2xl border border-surface-200 bg-white p-6 shadow-sm dark:border-surface-800 dark:bg-surface-900">
           <div className="flex items-start gap-3">
             <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-brand-100 text-brand-700 shadow-sm dark:bg-brand-500/15 dark:text-brand-300">
-              <NotebookTabs className="h-5 w-5" />
+              <History className="h-5 w-5" />
             </div>
             <div className="min-w-0">
               <h1 className="text-2xl font-semibold leading-tight text-surface-950 dark:text-surface-50">
-                {t("records.title")}
+                {t("records.historyTitle")}
               </h1>
               <p className="mt-2 max-w-[720px] text-sm leading-6 text-surface-500 dark:text-surface-400">
-                {t("records.subtitle")}
+                {t("records.historySubtitle")}
               </p>
             </div>
           </div>
         </section>
 
-        <WorkRecordPanel className="mt-5" view="editor" />
+        <WorkRecordPanel className="mt-5" view="list" />
       </div>
     </Scrollbar>
   );

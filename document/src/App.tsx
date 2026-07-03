@@ -7,6 +7,7 @@ import { DocumentList } from "@/components/DocumentList";
 import { DocumentCenterPage } from "@/pages/DocumentCenterPage";
 import { FavoritesPage } from "@/pages/FavoritesPage";
 import { WorkRecordsPage } from "@/pages/WorkRecordsPage";
+import { WorkRecordsListPage } from "@/pages/WorkRecordsListPage";
 import { TrashPage } from "@/pages/TrashPage";
 import { SettingsPage } from "@/pages/SettingsPage";
 import { ModelConfigPage } from "@/pages/ModelConfigPage";
@@ -27,9 +28,9 @@ import { formatFullDateTime } from "@/lib/date";
 import { escapeHtml, sanitizeHtml } from "@/lib/html";
 import "./App.css";
 
-type Page = "editor" | "workbench" | "documents" | "favorites" | "records" | "share" | "login" | "trash" | "settings" | "model-config" | "brain" | "notfound";
+type Page = "editor" | "workbench" | "documents" | "favorites" | "records" | "record-history" | "share" | "login" | "trash" | "settings" | "model-config" | "brain" | "notfound";
 
-const VALID_PAGES = new Set<string>(["workbench", "documents", "favorites", "records", "trash", "settings", "model-config", "login", "brain"]);
+const VALID_PAGES = new Set<string>(["workbench", "documents", "favorites", "records", "record-history", "trash", "settings", "model-config", "login", "brain"]);
 
 function pageFromHash(hash: string): { page: Page; editorId?: string } | null {
   const name = hash.replace(/^#\//, "");
@@ -477,6 +478,9 @@ export default function App() {
             )}
             {currentPage === "records" && (
               <WorkRecordsPage />
+            )}
+            {currentPage === "record-history" && (
+              <WorkRecordsListPage />
             )}
             {currentPage === "trash" && (
               <TrashPage />

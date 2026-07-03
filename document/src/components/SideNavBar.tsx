@@ -7,6 +7,7 @@ import {
   Settings,
   Bot,
   Brain,
+  History,
   LayoutDashboard,
   NotebookTabs,
   Folder,
@@ -28,11 +29,11 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { LogoClickEffect } from "@/components/LogoClickEffect";
 
-export type NavId = "workbench" | "documents" | "favorites" | "records" | "trash" | "settings" | "brain" | "model-config";
+export type NavId = "workbench" | "documents" | "favorites" | "records" | "record-history" | "trash" | "settings" | "brain" | "model-config";
 
 interface NavItem {
   id: NavId;
-  labelKey: "nav.workbench" | "nav.documents" | "nav.favorites" | "nav.records" | "nav.trash" | "nav.settings" | "nav.brain" | "nav.modelConfig";
+  labelKey: "nav.workbench" | "nav.documents" | "nav.favorites" | "nav.records" | "nav.recordHistory" | "nav.trash" | "nav.settings" | "nav.brain" | "nav.modelConfig";
   icon: LucideIcon;
 }
 
@@ -41,6 +42,7 @@ const navItems: NavItem[] = [
   { id: "documents", labelKey: "nav.documents", icon: FileText },
   { id: "favorites", labelKey: "nav.favorites", icon: Star },
   { id: "records", labelKey: "nav.records", icon: NotebookTabs },
+  { id: "record-history", labelKey: "nav.recordHistory", icon: History },
   { id: "brain", labelKey: "nav.brain", icon: Brain },
   { id: "model-config", labelKey: "nav.modelConfig", icon: Bot },
   { id: "trash", labelKey: "nav.trash", icon: Trash2 },
