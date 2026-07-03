@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { ConfirmModal } from "@/components/ConfirmModal";
 import { LoadingOverlay } from "@/components/LoadingSpinner";
 import { Scrollbar } from "@/components/ui/scrollbar";
-import { WriterFlowChart, WriterRhythmChart } from "@/components/WriterFlowChart";
+import { WriterFlowChart, WriterRhythmChart, WriterSourceMixChart } from "@/components/WriterFlowChart";
 import { RotatingText } from "@/components/RotatingText";
 import { CountUp } from "@/components/CountUp";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
@@ -205,8 +205,9 @@ export function DocumentCenterPage({
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [movingDocId, setMovingDocId] = useState<string | null>(null);
   const [moveDialogOpen, setMoveDialogOpen] = useState(false);
-  const [chartData, setChartData] = useState<{ dayIndices: number[]; words: number[] }>({
+  const [chartData, setChartData] = useState<{ dayIndices: number[]; dates: string[]; words: number[] }>({
     dayIndices: [],
+    dates: [],
     words: [],
   });
   const [workRecords, setWorkRecords] = useState<WorkRecord[]>([]);
@@ -221,6 +222,7 @@ export function DocumentCenterPage({
       .then((res) => {
         setChartData({
           dayIndices: res.stats.map((s) => s.dayIndex),
+          dates: res.stats.map((s) => s.date),
           words: res.stats.map((s) => s.words),
         });
       })
@@ -373,17 +375,25 @@ export function DocumentCenterPage({
   const favDocs = filteredDocs.filter((doc) => doc.isFavorite);
   const visibleDocsCount = favDocs.length + mainDocs.length;
   const latestDoc = useMemo(() => sortDocuments(documents, "updated", lang)[0] ?? null, [documents, lang]);
+  const journalWordsByDay = chartData.dates.map((dateKey) =>
+    workRecords
+      .filter((item) => getLocalDateKey(item.targetDate) === dateKey)
+      .reduce((sum, item) => sum + getPlainText(item.content).length, 0)
+  );
+  const totalWordsByDay = chartData.words.map((value, index) => value + (journalWordsByDay[index] || 0));
   const weeklyTotal = chartData.words.reduce((sum, value) => sum + value, 0);
-  const bestDayIndex = chartData.words.reduce((bestIndex, value, index, values) => {
+  const journalWeeklyTotal = journalWordsByDay.reduce((sum, value) => sum + value, 0);
+  const combinedWeeklyTotal = weeklyTotal + journalWeeklyTotal;
+  const bestDayIndex = totalWordsByDay.reduce((bestIndex, value, index, values) => {
     if (value <= 0) return bestIndex;
     if (bestIndex === -1 || value > values[bestIndex]) return index;
     return bestIndex;
   }, -1);
   const bestDayLabel =
     bestDayIndex >= 0 ? t(dayI18nKeys[chartData.dayIndices[bestDayIndex]]) : t("documents.noActivity");
-  const activeWritingDays = chartData.words.filter((value) => value > 0).length;
-  const peakWords = chartData.words.reduce((max, value) => Math.max(max, value), 0);
-  const averageWords = activeWritingDays > 0 ? Math.round(weeklyTotal / activeWritingDays) : 0;
+  const activeWritingDays = totalWordsByDay.filter((value) => value > 0).length;
+  const peakWords = totalWordsByDay.reduce((max, value) => Math.max(max, value), 0);
+  const averageWords = activeWritingDays > 0 ? Math.round(combinedWeeklyTotal / activeWritingDays) : 0;
   const latestText = getDocumentText(latestDoc);
   const latestWordEstimate = latestText.length;
   const ungroupedCount = documents.filter((doc) => !doc.groupId).length;
@@ -840,28 +850,33 @@ export function DocumentCenterPage({
               </div>
               {chartData.dayIndices.length > 0 ? (
                 <>
-                  <WriterFlowChart dayIndices={chartData.dayIndices} words={chartData.words} />
-                  <div className="mt-4 grid grid-cols-3 gap-2">
-                    {[
-                      { label: t("documents.activeDays"), value: `${numberFormatter.format(activeWritingDays)} ${t("documents.daysUnit")}` },
-                      { label: t("documents.averageWords"), value: numberFormatter.format(averageWords) },
-                      { label: t("documents.peakWords"), value: numberFormatter.format(peakWords) },
-                    ].map((item) => (
-                      <div
-                        key={item.label}
-                        className="rounded-xl border border-surface-200 bg-surface-50/75 px-3 py-3 dark:border-surface-800 dark:bg-surface-950/35"
-                      >
-                        <div className="text-[11px] font-medium text-surface-500 dark:text-surface-400">{item.label}</div>
-                        <div className="mt-1 text-sm font-semibold text-surface-950 dark:text-surface-50">{item.value}</div>
-                      </div>
-                    ))}
+                  <WriterFlowChart dayIndices={chartData.dayIndices} words={chartData.words} journalWords={journalWordsByDay} />
+                  <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_220px]">
+                    <div className="grid grid-cols-3 gap-2">
+                      {[
+                        { label: t("documents.activeDays"), value: `${numberFormatter.format(activeWritingDays)} ${t("documents.daysUnit")}` },
+                        { label: t("documents.averageWords"), value: numberFormatter.format(averageWords) },
+                        { label: t("documents.peakWords"), value: numberFormatter.format(peakWords) },
+                      ].map((item) => (
+                        <div
+                          key={item.label}
+                          className="rounded-xl border border-surface-200 bg-surface-50/75 px-3 py-3 dark:border-surface-800 dark:bg-surface-950/35"
+                        >
+                          <div className="text-[11px] font-medium text-surface-500 dark:text-surface-400">{item.label}</div>
+                          <div className="mt-1 text-sm font-semibold text-surface-950 dark:text-surface-50">{item.value}</div>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="rounded-xl border border-surface-200 bg-surface-50/75 p-3 dark:border-surface-800 dark:bg-surface-950/35">
+                      <WriterSourceMixChart documentWords={weeklyTotal} journalWords={journalWeeklyTotal} />
+                    </div>
                   </div>
                   <div className="mt-4 rounded-xl border border-surface-200 bg-surface-50/75 p-3 dark:border-surface-800 dark:bg-surface-950/35">
                     <div className="mb-3 flex items-center justify-between">
                       <span className="text-xs font-semibold text-surface-700 dark:text-surface-200">{t("documents.rhythmMap")}</span>
-                      <span className="text-[11px] text-surface-400">{numberFormatter.format(weeklyTotal)}</span>
+                      <span className="text-[11px] text-surface-400">{numberFormatter.format(combinedWeeklyTotal)}</span>
                     </div>
-                    <WriterRhythmChart dayIndices={chartData.dayIndices} words={chartData.words} />
+                    <WriterRhythmChart dayIndices={chartData.dayIndices} words={totalWordsByDay} />
                   </div>
                 </>
               ) : (

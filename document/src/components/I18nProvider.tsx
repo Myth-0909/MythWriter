@@ -369,6 +369,10 @@ const translations = {
   "documents.upgradeNow": { zh: "立即升级", en: "Upgrade Now" },
   "chart.words": { zh: "字数", en: "Words" },
   "chart.wordsWritten": { zh: "撰写字数", en: "Words written" },
+  "chart.documentWords": { zh: "文档字数", en: "Document words" },
+  "chart.journalWords": { zh: "随记字数", en: "Journal words" },
+  "chart.totalWords": { zh: "合计字数", en: "Total words" },
+  "chart.sourceMix": { zh: "来源占比", en: "Source mix" },
 
   // Editor
   "editor.untitled": { zh: "未命名文档", en: "Untitled Document" },
