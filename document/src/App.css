@@ -503,6 +503,87 @@ textarea::placeholder {
   object-fit: contain;
 }
 
+.markdown-input {
+  border: 1px solid rgba(226, 232, 240, 1);
+}
+
+.dark .markdown-input {
+  border-color: rgba(51, 65, 85, 1);
+}
+
+.markdown-input-highlight {
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  font-family: inherit;
+  color: #0f172a;
+  background: transparent;
+}
+
+.dark .markdown-input-highlight {
+  color: #f1f5f9;
+}
+
+.markdown-input-textarea {
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+.markdown-token {
+  font-weight: 700;
+}
+
+.markdown-token-heading {
+  color: #98743a;
+}
+
+.markdown-token-list,
+.markdown-token-number {
+  color: #0f9f94;
+}
+
+.markdown-token-strong {
+  color: #c2410c;
+}
+
+.markdown-token-code {
+  color: #7c3aed;
+}
+
+.markdown-token-quote {
+  color: #64748b;
+}
+
+.markdown-token-link,
+.markdown-token-link-url {
+  color: #2563eb;
+}
+
+.dark .markdown-token-heading {
+  color: #f0cf75;
+}
+
+.dark .markdown-token-list,
+.dark .markdown-token-number {
+  color: #67d2c8;
+}
+
+.dark .markdown-token-strong {
+  color: #fb923c;
+}
+
+.dark .markdown-token-code {
+  color: #c4b5fd;
+}
+
+.dark .markdown-token-quote {
+  color: #94a3b8;
+}
+
+.dark .markdown-token-link,
+.dark .markdown-token-link-url {
+  color: #93c5fd;
+}
+
 /* Font size marks are inline styles */
 
 /* Title input */

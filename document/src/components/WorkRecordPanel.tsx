@@ -31,6 +31,7 @@ import { useToast } from "@/components/Toast";
 import { sanitizeHtml } from "@/lib/html";
 import { cn } from "@/lib/utils";
 import type { WorkRecord, WorkRecordPeriod } from "@/types";
+import type { ChangeEvent, ClipboardEvent, RefObject } from "react";
 
 const MAX_INLINE_IMAGE_SIZE = 2 * 1024 * 1024;
 const imageSourcePattern = /!\[[^\]]*]\((data:image\/[^)]+)\)|<img\b[^>]*\bsrc=["'](data:image\/[^"']+)["'][^>]*>/gi;
@@ -77,6 +78,70 @@ function stripMarkdown(value: string) {
     .replace(/[#*_>`-]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function escapeMarkdownText(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function highlightMarkdownSyntax(value: string) {
+  const source = value || "\n";
+  return source
+    .split("\n")
+    .map((line) => {
+      let html = escapeMarkdownText(line);
+      html = html.replace(/^(\s*)(#{1,6})(\s+)/, '$1<span class="markdown-token markdown-token-heading">$2</span>$3');
+      html = html.replace(/^(\s*)([-*+])(\s+)/, '$1<span class="markdown-token markdown-token-list">$2</span>$3');
+      html = html.replace(/^(\s*)(\d+\.)(\s+)/, '$1<span class="markdown-token markdown-token-number">$2</span>$3');
+      html = html.replace(/(^|\s)(&gt;)(\s?)/g, '$1<span class="markdown-token markdown-token-quote">$2</span>$3');
+      html = html.replace(/(`+)([^`]*)(`+)/g, '<span class="markdown-token markdown-token-code">$1</span>$2<span class="markdown-token markdown-token-code">$3</span>');
+      html = html.replace(/(\*\*|__)(.*?)(\*\*|__)/g, '<span class="markdown-token markdown-token-strong">$1</span>$2<span class="markdown-token markdown-token-strong">$3</span>');
+      html = html.replace(/(\[[^\]]+])(\([^)]+\))/g, '<span class="markdown-token markdown-token-link">$1</span><span class="markdown-token markdown-token-link-url">$2</span>');
+      return html || " ";
+    })
+    .join("\n");
+}
+
+interface MarkdownTextareaProps {
+  value: string;
+  onChange: (event: ChangeEvent<HTMLTextAreaElement>) => void;
+  onPaste?: (event: ClipboardEvent<HTMLTextAreaElement>) => void;
+  placeholder?: string;
+  className?: string;
+  textareaRef?: RefObject<HTMLTextAreaElement | null>;
+}
+
+function MarkdownTextarea({ value, onChange, onPaste, placeholder, className, textareaRef }: MarkdownTextareaProps) {
+  const highlightRef = useRef<HTMLPreElement>(null);
+  const highlightedHtml = useMemo(() => highlightMarkdownSyntax(value), [value]);
+
+  return (
+    <div className={cn("markdown-input relative rounded-lg", className)}>
+      <pre
+        ref={highlightRef}
+        aria-hidden="true"
+        className="markdown-input-highlight pointer-events-none absolute inset-0 overflow-hidden rounded-lg border border-transparent px-3 py-2 text-sm leading-6"
+        dangerouslySetInnerHTML={{ __html: highlightedHtml }}
+      />
+      <Textarea
+        ref={textareaRef}
+        value={value}
+        onChange={onChange}
+        onPaste={onPaste}
+        placeholder={placeholder}
+        spellCheck
+        onScroll={(event) => {
+          if (!highlightRef.current) return;
+          highlightRef.current.scrollTop = event.currentTarget.scrollTop;
+          highlightRef.current.scrollLeft = event.currentTarget.scrollLeft;
+        }}
+        className="markdown-input-textarea relative min-h-full bg-transparent leading-6 text-transparent caret-surface-950 selection:bg-brand-200/60 placeholder:text-surface-400 dark:caret-surface-50 dark:selection:bg-brand-500/35"
+      />
+    </div>
+  );
 }
 
 function getDateKey(value: string) {
@@ -131,6 +196,11 @@ export function WorkRecordPanel({ className, view = "editor" }: { className?: st
     if (period === "weekly") return t("workbench.weeklyLedgerHint");
     if (period === "monthly") return t("workbench.monthlyLedgerHint");
     return t("workbench.dailyLedgerHint");
+  }, [period, t]);
+
+  const generateButtonLabel = useMemo(() => {
+    if (period === "monthly") return t("workbench.generateCurrentMonth");
+    return t("workbench.generateCurrentWeek");
   }, [period, t]);
 
   const locale = lang === "zh" ? "zh-CN" : "en-US";
@@ -261,7 +331,7 @@ export function WorkRecordPanel({ className, view = "editor" }: { className?: st
     if (period === "daily") return;
     setAiLoading("generate");
     try {
-      const res = await api.generateWorkRecord({ period, targetDate });
+      const res = await api.generateWorkRecord({ period, targetDate: todayKey });
       setRecord(res.record);
       setTargetDate(res.record.targetDate.slice(0, 10));
       setTitle(res.record.title);
@@ -617,14 +687,33 @@ export function WorkRecordPanel({ className, view = "editor" }: { className?: st
           <div className="mt-4 rounded-2xl border border-surface-200 bg-white p-4 dark:border-surface-800 dark:bg-surface-950/30">
             <div className="mb-3 flex items-center justify-between gap-3">
               <div>
-                <h3 className="text-sm font-semibold text-surface-950 dark:text-surface-50">
-                  {t("workbench.recordEditor")}
-                </h3>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="text-sm font-semibold text-surface-950 dark:text-surface-50">
+                    {t("workbench.recordEditor")}
+                  </h3>
+                  <span className="rounded-md bg-surface-100 px-2 py-0.5 text-[11px] font-medium text-surface-500 dark:bg-surface-800 dark:text-surface-300">
+                    {t("workbench.markdownHighlight")}
+                  </span>
+                </div>
                 <p className="mt-1 text-xs text-surface-500 dark:text-surface-400">
                   {periodLabel}{t("date.separator")}{currentPeriodLabel}
                 </p>
               </div>
-              {loading && <Loader2 className="h-4 w-4 animate-spin text-surface-400" />}
+              <div className="flex shrink-0 items-center gap-2">
+                {period !== "daily" && (
+                  <Button
+                    variant="outline"
+                    className="h-9 gap-1.5 px-3"
+                    onClick={handleGenerate}
+                    disabled={!!aiLoading || loading}
+                    title={t("workbench.generateCurrentHint")}
+                  >
+                    {aiLoading === "generate" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                    <span>{generateButtonLabel}</span>
+                  </Button>
+                )}
+                {loading && <Loader2 className="h-4 w-4 animate-spin text-surface-400" />}
+              </div>
             </div>
 
             <div className="grid gap-3">
@@ -646,8 +735,7 @@ export function WorkRecordPanel({ className, view = "editor" }: { className?: st
                   </span>
                   <span className="text-[11px] text-surface-400">{t("workbench.pasteImageHint")}</span>
                 </div>
-                <Textarea
-                  ref={contentTextareaRef}
+                <MarkdownTextarea
                   value={content}
                   onChange={(event) => setContent(event.target.value)}
                   onPaste={(event) => {
@@ -657,7 +745,8 @@ export function WorkRecordPanel({ className, view = "editor" }: { className?: st
                     handlePasteImage(file);
                   }}
                   placeholder={t("workbench.recordContentPlaceholder")}
-                  className="min-h-[340px] bg-surface-50 leading-6 dark:bg-[#0f1724]"
+                  textareaRef={contentTextareaRef}
+                  className="min-h-[340px] bg-surface-50 dark:bg-[#0f1724]"
                 />
               </div>
             </div>
@@ -667,17 +756,6 @@ export function WorkRecordPanel({ className, view = "editor" }: { className?: st
                 {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                 <span>{t("workbench.saveRecord")}</span>
               </Button>
-              {period !== "daily" && (
-                <Button
-                  variant="outline"
-                  className="h-10 gap-1.5 px-4"
-                  onClick={handleGenerate}
-                  disabled={!!aiLoading || loading}
-                >
-                  {aiLoading === "generate" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-                  <span>{t("workbench.generateRecord")}</span>
-                </Button>
-              )}
               <Button
                 variant="outline"
                 className="h-10 gap-1.5 px-4"
@@ -891,11 +969,11 @@ export function WorkRecordPanel({ className, view = "editor" }: { className?: st
             <span className="text-xs font-semibold text-surface-700 dark:text-surface-200">
               {t("workbench.recordContent")}
             </span>
-            <Textarea
+            <MarkdownTextarea
               value={editContent}
               onChange={(event) => setEditContent(event.target.value)}
               placeholder={t("workbench.recordContentPlaceholder")}
-              className="min-h-[300px] bg-surface-50 leading-6 dark:bg-[#0f1724]"
+              className="min-h-[300px] bg-surface-50 dark:bg-[#0f1724]"
             />
           </div>
         </div>
