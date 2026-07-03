@@ -935,6 +935,68 @@ export function DocumentCenterPage({
                           </div>
                         ))}
                       </div>
+                      <div className="mt-3 rounded-xl border border-surface-200 bg-white p-3 dark:border-surface-800 dark:bg-surface-900">
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-xs font-semibold text-surface-700 dark:text-surface-200">{t("documents.weeklyTrack")}</span>
+                          <span className="text-[11px] text-surface-400">
+                            {numberFormatter.format(flow.total)} {t("documents.wordsUnit")}
+                          </span>
+                        </div>
+                        <div className="mt-3 grid grid-cols-7 gap-1.5">
+                          {chartData.dayIndices.map((dayIndex, index) => {
+                            const dayWords = flow.words[index] || 0;
+                            const intensity = flow.stats.peakWords > 0 ? Math.max(18, Math.round((dayWords / flow.stats.peakWords) * 100)) : 0;
+
+                            return (
+                              <div
+                                key={`${flow.key}-${dayIndex}-${index}`}
+                                className={cn(
+                                  "min-w-0 rounded-lg border px-1.5 py-2 text-center",
+                                  dayWords > 0
+                                    ? flow.key === "journal"
+                                      ? "border-teal-200 bg-teal-50/70 dark:border-teal-500/20 dark:bg-teal-500/10"
+                                      : "border-brand-200 bg-brand-50/70 dark:border-brand-500/20 dark:bg-brand-500/10"
+                                    : "border-surface-200 bg-surface-50 dark:border-surface-800 dark:bg-surface-950/50"
+                                )}
+                              >
+                                <div className="truncate text-[10px] font-medium text-surface-500 dark:text-surface-400">{t(dayI18nKeys[dayIndex])}</div>
+                                <div className="mx-auto mt-2 h-1.5 w-full overflow-hidden rounded-full bg-surface-200 dark:bg-surface-800">
+                                  <div
+                                    className={cn(
+                                      "h-full rounded-full",
+                                      flow.key === "journal" ? "bg-teal-400 dark:bg-teal-300" : "bg-brand-400 dark:bg-brand-300"
+                                    )}
+                                    style={{ width: `${intensity}%` }}
+                                  />
+                                </div>
+                                <div className="mt-1.5 truncate text-[11px] font-semibold tabular-nums text-surface-800 dark:text-surface-100">
+                                  {numberFormatter.format(dayWords)}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        <div className="mt-3 grid grid-cols-2 gap-2">
+                          {[
+                            {
+                              label: t("documents.quietDays"),
+                              value: `${numberFormatter.format(Math.max(chartData.dayIndices.length - flow.stats.activeDays, 0))} ${t("documents.daysUnit")}`,
+                            },
+                            {
+                              label: t("documents.activeShare"),
+                              value: `${numberFormatter.format(Math.round((flow.stats.activeDays / Math.max(chartData.dayIndices.length, 1)) * 100))}%`,
+                            },
+                          ].map((item) => (
+                            <div
+                              key={item.label}
+                              className="rounded-lg border border-surface-200 bg-surface-50 px-3 py-2 dark:border-surface-800 dark:bg-surface-950/45"
+                            >
+                              <div className="text-[11px] font-medium text-surface-500 dark:text-surface-400">{item.label}</div>
+                              <div className="mt-1 text-base font-semibold tabular-nums text-surface-950 dark:text-surface-50">{item.value}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
                     </div>
                   ))}
                 </div>
