@@ -7,6 +7,8 @@ import { LoadingOverlay } from "@/components/LoadingSpinner";
 import { Scrollbar } from "@/components/ui/scrollbar";
 import { WriterFlowChart, WriterRhythmChart } from "@/components/WriterFlowChart";
 import { WorkRecordPanel } from "@/components/WorkRecordPanel";
+import { RotatingText } from "@/components/RotatingText";
+import { CountUp } from "@/components/CountUp";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import {
   DropdownMenu,
@@ -455,6 +457,31 @@ export function DocumentCenterPage({
       count: researchCount,
     },
   ];
+  const greetingRotations = useMemo(
+    () => [
+      t("documents.greetingRotateDraft"),
+      t("documents.greetingRotateWorld"),
+      t("documents.greetingRotateSpark"),
+      t("documents.greetingRotateReview"),
+    ],
+    [t]
+  );
+  const greetingLines = useMemo(
+    () => [
+      t(greeting.title).replace("{name}", greetingName),
+      t("workbench.greetingHeroOne").replace("{name}", greetingName),
+      t("workbench.greetingHeroTwo"),
+      t("workbench.greetingHeroThree"),
+      t("workbench.greetingHeroFour"),
+    ],
+    [greeting.title, greetingName, t]
+  );
+  const creativeSignals = [
+    { icon: BarChart3, label: t("documents.signalWeeklyWords"), value: weeklyTotal, unit: t("documents.wordsUnit") },
+    { icon: FileText, label: t("documents.signalLatestWords"), value: latestWordEstimate, unit: t("documents.wordsUnit") },
+    { icon: Clock3, label: t("documents.signalActiveDays"), value: activeWritingDays, unit: t("documents.dayUnitShort") },
+    { icon: Compass, label: t("documents.signalAverageWords"), value: averageWords, unit: t("documents.wordsUnit") },
+  ];
 
   const categoryTabs = useMemo(
     () =>
@@ -551,28 +578,32 @@ export function DocumentCenterPage({
 
               {isWorkbench ? (
                 <>
-                  <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-brand-200 bg-brand-50 px-3 py-1 text-xs font-semibold text-brand-700 dark:border-brand-500/20 dark:bg-brand-500/10 dark:text-brand-300">
+                  <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-brand-200 bg-brand-50 px-3 py-1 text-xs font-semibold text-brand-700 dark:border-brand-500/20 dark:bg-brand-500/10 dark:text-brand-300">
                     <Sparkles className="h-3.5 w-3.5" />
-                    <span>{t("documents.todayStudio")}</span>
+                    <span>{t("documents.workbenchHeroMode")}</span>
                   </div>
-                  <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_260px]">
+                  <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_330px]">
                     <div className="min-w-0">
-                      <h1 className="text-[34px] font-semibold leading-tight text-surface-950 dark:text-surface-50">
-                        {pageTitle}
+                      <h1 className="max-w-[820px] text-[40px] font-semibold leading-[1.08] text-surface-950 dark:text-surface-50 xl:text-[52px]">
+                        <RotatingText
+                          texts={greetingLines}
+                          interval={2800}
+                          className="min-h-[1.12em]"
+                        />
                       </h1>
-                      <div className="mt-3 rounded-2xl border border-brand-200/70 bg-brand-50/80 px-4 py-3 dark:border-brand-500/20 dark:bg-brand-500/10">
-                        <div className="text-sm font-semibold text-brand-700 dark:text-brand-200">
-                          {t(greeting.title).replace("{name}", greetingName)}
-                        </div>
-                        <p className="mt-1 text-xs leading-5 text-surface-600 dark:text-surface-300">
-                          {t(greeting.hint)}
-                        </p>
+                      <div className="mt-3 flex flex-wrap items-baseline gap-x-3 gap-y-2 text-[28px] font-semibold leading-tight text-surface-800 dark:text-surface-100 xl:text-[36px]">
+                        <span>{t("documents.workbenchHeroPrefix")}</span>
+                        <RotatingText
+                          texts={greetingRotations}
+                          interval={2400}
+                          className="rounded-2xl border border-brand-200/70 bg-brand-50 px-3 py-1 text-brand-700 shadow-sm dark:border-brand-500/25 dark:bg-brand-500/10 dark:text-brand-200"
+                        />
                       </div>
-                      <p className="mt-3 max-w-[680px] text-sm leading-6 text-surface-500 dark:text-surface-400">
-                        {pageSubtitle}
+                      <p className="mt-4 max-w-[720px] text-sm leading-6 text-surface-500 dark:text-surface-400">
+                        {t("documents.workbenchHeroDesc")}
                       </p>
 
-                      <div className="mt-6 grid gap-4">
+                      <div className="mt-6 grid gap-4 lg:grid-cols-[minmax(0,1fr)_250px]">
                         <div className="relative overflow-hidden rounded-2xl border border-brand-200/70 bg-gradient-to-br from-brand-50 via-white to-surface-50 p-5 shadow-sm dark:border-brand-500/25 dark:from-brand-500/15 dark:via-surface-950/55 dark:to-surface-900/70">
                           <div className="pointer-events-none absolute right-0 top-0 h-32 w-32 rounded-full bg-brand-300/20 blur-3xl dark:bg-brand-400/10" />
                           <div className="relative flex min-h-[190px] flex-col justify-between">
@@ -583,7 +614,7 @@ export function DocumentCenterPage({
                                   <span>{t("documents.currentFocus")}</span>
                                 </div>
                                 <div className="rounded-full px-2.5 py-1 text-xs font-semibold text-surface-500 ring-1 ring-surface-200 dark:text-surface-300 dark:ring-surface-700">
-                                  {numberFormatter.format(latestWordEstimate)} {t("documents.wordsEstimate")}
+                                  <CountUp value={latestWordEstimate} formatValue={(value) => numberFormatter.format(Math.round(value))} /> {t("documents.wordsUnit")}
                                 </div>
                               </div>
                               <h2 className="mt-5 line-clamp-2 text-2xl font-semibold leading-tight text-surface-950 dark:text-surface-50">
@@ -615,61 +646,105 @@ export function DocumentCenterPage({
                           </div>
                         </div>
 
-                        <div className="rounded-2xl border border-surface-200 bg-white/70 p-3 shadow-sm dark:border-surface-800 dark:bg-surface-950/35">
-                          <div className="flex items-center justify-between gap-3 px-2 pb-2 pt-1">
-                            <div>
-                              <h2 className="text-sm font-semibold text-surface-950 dark:text-surface-50">
-                                {t("documents.nextActionQueue")}
-                              </h2>
-                              <p className="mt-1 line-clamp-2 text-xs leading-5 text-surface-500 dark:text-surface-400">{t("documents.aiNextDesc")}</p>
-                            </div>
-                            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand-100 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300">
-                              <Compass className="h-[18px] w-[18px]" />
-                            </div>
+                        <div className="relative overflow-hidden rounded-2xl border border-surface-200 bg-white/75 p-4 shadow-sm dark:border-surface-800 dark:bg-surface-950/35">
+                          <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-brand-300/70 to-transparent dark:via-brand-400/45" />
+                          <div className="flex items-center justify-between gap-3">
+                            <h2 className="text-sm font-semibold text-surface-950 dark:text-surface-50">
+                              {t("documents.signalPanel")}
+                            </h2>
+                            <span className="rounded-full bg-brand-50 px-2.5 py-1 text-[11px] font-semibold text-brand-700 dark:bg-brand-500/10 dark:text-brand-300">
+                              {t("documents.signalReady")}
+                            </span>
                           </div>
-                          <div className="mt-1 grid gap-2">
-                            {aiNextSteps.map((step) => (
-                              <button
-                                key={step.title}
-                                type="button"
-                                onClick={step.onClick}
-                                className="group flex w-full items-center gap-3 rounded-xl border border-surface-200 bg-surface-50/70 px-3 py-3 text-left transition-colors hover:bg-white active:scale-[0.99] dark:border-surface-800 dark:bg-surface-900/45 dark:hover:bg-surface-900"
+                          <div className="mt-4 grid gap-2">
+                            {creativeSignals.map((signal) => (
+                              <div
+                                key={signal.label}
+                                className="group rounded-xl border border-surface-200 bg-surface-50/70 px-3 py-3 transition-all hover:-translate-y-0.5 hover:bg-white dark:border-surface-800 dark:bg-surface-900/45 dark:hover:bg-surface-900"
                               >
-                                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-brand-700 shadow-sm ring-1 ring-surface-200 dark:bg-surface-950 dark:text-brand-300 dark:ring-surface-800">
-                                  <step.icon className="h-4 w-4" />
+                                <div className="flex items-center justify-between gap-3">
+                                  <span className="text-[11px] font-medium text-surface-500 dark:text-surface-400">{signal.label}</span>
+                                  <signal.icon className="h-3.5 w-3.5 text-brand-500" />
                                 </div>
-                                <div className="min-w-0 flex-1">
-                                  <div className="truncate text-sm font-semibold text-surface-900 dark:text-surface-100">{step.title}</div>
-                                  <div className="mt-0.5 line-clamp-1 text-xs leading-5 text-surface-500 dark:text-surface-400">{step.desc}</div>
+                                <div className="mt-1 flex items-baseline gap-1.5">
+                                  <CountUp
+                                    value={signal.value}
+                                    formatValue={(value) => numberFormatter.format(Math.round(value))}
+                                    className="text-2xl font-semibold text-surface-950 dark:text-surface-50"
+                                  />
+                                  <span className="text-xs font-medium text-surface-400">{signal.unit}</span>
                                 </div>
-                                <ArrowUpRight className="h-4 w-4 shrink-0 text-surface-300 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5 group-hover:text-brand-500" />
-                              </button>
+                              </div>
                             ))}
                           </div>
                         </div>
                       </div>
-                    </div>
 
-                    <div className="grid grid-cols-2 gap-3 xl:grid-cols-1">
-                      {[
-                        { icon: FileStack, label: t("documents.totalDocs"), value: numberFormatter.format(documents.length) },
-                        { icon: Star, label: t("documents.favoriteDocs"), value: numberFormatter.format(favorites.length) },
-                        { icon: FolderOpen, label: t("documents.groupCount"), value: numberFormatter.format(groups.length) },
-                        { icon: BarChart3, label: t("documents.weeklyWords"), value: numberFormatter.format(weeklyTotal) },
-                      ].map((metric) => (
-                        <div
-                          key={metric.label}
-                          className="rounded-xl border border-surface-200 bg-surface-50/80 p-4 dark:border-surface-800 dark:bg-surface-950/40"
-                        >
-                          <div className="flex items-center justify-between gap-3">
-                            <span className="text-xs font-medium text-surface-500 dark:text-surface-400">{metric.label}</span>
-                            <metric.icon className="h-4 w-4 text-brand-500" />
+                      <div className="mt-4 rounded-2xl border border-surface-200 bg-white/70 p-3 shadow-sm dark:border-surface-800 dark:bg-surface-950/35">
+                        <div className="flex items-center justify-between gap-3 px-2 pb-2 pt-1">
+                          <div>
+                            <h2 className="text-sm font-semibold text-surface-950 dark:text-surface-50">
+                              {t("documents.nextActionQueue")}
+                            </h2>
+                            <p className="mt-1 line-clamp-2 text-xs leading-5 text-surface-500 dark:text-surface-400">{t("documents.aiNextDesc")}</p>
                           </div>
-                          <div className="mt-3 text-2xl font-semibold tracking-normal text-surface-950 dark:text-surface-50">
-                            {metric.value}
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand-100 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300">
+                            <Compass className="h-[18px] w-[18px]" />
                           </div>
                         </div>
-                      ))}
+                        <div className="mt-1 grid gap-2">
+                          {aiNextSteps.map((step) => (
+                            <button
+                              key={step.title}
+                              type="button"
+                              onClick={step.onClick}
+                              className="group flex w-full items-center gap-3 rounded-xl border border-surface-200 bg-surface-50/70 px-3 py-3 text-left transition-all hover:-translate-y-0.5 hover:bg-white active:scale-[0.99] dark:border-surface-800 dark:bg-surface-900/45 dark:hover:bg-surface-900"
+                            >
+                              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-brand-700 shadow-sm ring-1 ring-surface-200 dark:bg-surface-950 dark:text-brand-300 dark:ring-surface-800">
+                                <step.icon className="h-4 w-4" />
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <div className="truncate text-sm font-semibold text-surface-900 dark:text-surface-100">{step.title}</div>
+                                <div className="mt-0.5 line-clamp-1 text-xs leading-5 text-surface-500 dark:text-surface-400">{step.desc}</div>
+                              </div>
+                              <ArrowUpRight className="h-4 w-4 shrink-0 text-surface-300 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5 group-hover:text-brand-500" />
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="relative min-h-[360px] overflow-hidden rounded-[28px] border border-surface-200 bg-surface-950 p-5 text-white shadow-sm dark:border-surface-800 dark:bg-black">
+                      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_26%_18%,rgba(216,189,115,0.26),transparent_28%),radial-gradient(circle_at_72%_82%,rgba(74,144,217,0.22),transparent_34%)]" />
+                      <div className="pointer-events-none absolute -right-20 -top-20 h-52 w-52 rounded-full border border-brand-200/20" />
+                      <div className="relative flex h-full min-h-[320px] flex-col justify-between">
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-xs font-semibold text-brand-200">{t("documents.todayStudio")}</span>
+                          <span className="rounded-full border border-white/10 bg-white/10 px-2.5 py-1 text-[11px] text-surface-200">
+                            {t("documents.signalNext")}
+                          </span>
+                        </div>
+                        <div className="relative mx-auto my-8 flex h-56 w-56 items-center justify-center">
+                          <div className="absolute inset-0 rounded-full border border-white/10" />
+                          <div className="absolute inset-6 animate-spin rounded-full border border-dashed border-brand-200/30 [animation-duration:18s]" />
+                          <div className="absolute inset-14 rounded-full bg-white/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.18)] backdrop-blur-md" />
+                          <div className="relative flex h-24 w-24 items-center justify-center rounded-full bg-brand-200 text-2xl font-semibold text-surface-950 shadow-[0_18px_50px_rgba(216,189,115,0.24)]">
+                            AI
+                          </div>
+                          <div className="absolute left-0 top-10 rounded-full border border-white/10 bg-white/10 px-3 py-1 text-xs text-surface-100 backdrop-blur">
+                            {t("documents.orbitPrompt")}
+                          </div>
+                          <div className="absolute right-0 top-28 rounded-full border border-white/10 bg-white/10 px-3 py-1 text-xs text-surface-100 backdrop-blur">
+                            {t("documents.orbitDraft")}
+                          </div>
+                          <div className="absolute bottom-3 left-16 rounded-full border border-white/10 bg-white/10 px-3 py-1 text-xs text-surface-100 backdrop-blur">
+                            {t("documents.orbitBrain")}
+                          </div>
+                        </div>
+                        <p className="text-sm leading-6 text-surface-300">
+                          {t(greeting.hint)}
+                        </p>
+                      </div>
                     </div>
                   </div>
                 </>
