@@ -13,6 +13,7 @@ import {
   Send,
   Sparkles,
   Square,
+  X,
 } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -198,10 +199,23 @@ export function AgentWritePanel({ open, onOpenChange, onOpenDocument }: AgentWri
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="h-[86vh] w-[calc(100vw-1rem)] max-w-[1120px] overflow-hidden p-0 sm:w-[calc(100vw-2rem)]">
-        <div className="grid h-full min-h-0 grid-cols-1 bg-surface-50 dark:bg-surface-950 lg:grid-cols-[minmax(0,1fr)_390px]">
+      <DialogContent
+        hideCloseButton
+        className="relative h-[90vh] w-[calc(100vw-1rem)] max-w-[1280px] overflow-hidden p-0 sm:w-[calc(100vw-2rem)]"
+      >
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          aria-label={t("common.close")}
+          className="absolute right-4 top-4 z-30 h-10 w-10 rounded-2xl border border-surface-200 bg-white/90 text-surface-500 shadow-sm backdrop-blur transition-all hover:bg-surface-100 hover:text-surface-950 dark:border-surface-700 dark:bg-surface-950/90 dark:text-surface-300 dark:hover:bg-surface-800 dark:hover:text-surface-50"
+          onClick={() => onOpenChange(false)}
+        >
+          <X className="h-4.5 w-4.5" />
+        </Button>
+        <div className="grid h-full min-h-0 grid-cols-1 bg-surface-50 dark:bg-surface-950 lg:grid-cols-[minmax(0,1fr)_420px]">
           <div className="flex min-h-0 min-w-0 flex-col bg-white dark:bg-surface-950">
-            <div className="relative overflow-hidden border-b border-surface-200 px-7 py-6 dark:border-surface-800">
+            <div className="relative overflow-hidden border-b border-surface-200 px-7 py-6 pr-20 dark:border-surface-800">
               <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_18%_0%,rgba(59,130,246,0.14),transparent_30%),radial-gradient(circle_at_86%_22%,rgba(216,189,115,0.16),transparent_26%)]" />
               <div className="relative flex items-start justify-between gap-6">
                 <div className="flex items-start gap-4">
@@ -356,7 +370,7 @@ export function AgentWritePanel({ open, onOpenChange, onOpenDocument }: AgentWri
 
           <aside className="min-h-0 min-w-0 border-t border-surface-200 bg-surface-50 dark:border-surface-800 dark:bg-surface-900/70 lg:border-l lg:border-t-0">
             <Scrollbar className="h-full">
-              <div className="space-y-5 p-5">
+              <div className="space-y-5 p-5 lg:pt-16">
                 <section className="rounded-2xl border border-surface-200 bg-white p-4 shadow-sm dark:border-surface-800 dark:bg-surface-950">
                   <div className="flex items-start justify-between gap-3">
                     <div>
