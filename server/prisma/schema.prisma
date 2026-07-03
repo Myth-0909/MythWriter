@@ -34,6 +34,7 @@ model User {
   documentGroups  DocumentGroup[]
   apiKeyHistories  ApiKeyConfigHistory[]
   documentVersions DocumentVersion[]
+  workRecords      WorkRecord[]
 
   @@map("users")
 }
@@ -147,6 +148,31 @@ model ActivityLog {
   @@index([userId])
   @@index([userId, action])
   @@map("activity_logs")
+}
+
+model WorkRecord {
+  id         String           @id @default(uuid())
+  userId     String           @map("user_id")
+  period     WorkRecordPeriod
+  targetDate DateTime         @map("target_date")
+  title      String
+  content    String           @db.LongText
+  aiSummary  String?          @map("ai_summary") @db.LongText
+  createdAt  DateTime         @default(now()) @map("created_at")
+  updatedAt  DateTime         @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, period, targetDate])
+  @@index([userId])
+  @@index([userId, period, targetDate])
+  @@map("work_records")
+}
+
+enum WorkRecordPeriod {
+  daily
+  weekly
+  monthly
 }
 
 model DocumentGroup {

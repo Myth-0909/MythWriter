@@ -1,4 +1,4 @@
-import type { Document, DocumentVersion } from "@/types";
+import type { Document, DocumentVersion, WorkRecord, WorkRecordPeriod } from "@/types";
 
 const API_BASE = "http://localhost:3000/api";
 
@@ -304,6 +304,38 @@ export const api = {
 
   getWeeklyStats: () =>
     request<{ stats: { dayIndex: number; date: string; words: number }[] }>("/stats/weekly"),
+
+  listWorkRecords: (params?: { period?: WorkRecordPeriod; limit?: number }) => {
+    const query = new URLSearchParams();
+    if (params?.period) query.set("period", params.period);
+    if (params?.limit) query.set("limit", String(params.limit));
+    const suffix = query.toString() ? `?${query.toString()}` : "";
+    return request<{ records: WorkRecord[] }>(`/work-records${suffix}`);
+  },
+
+  getCurrentWorkRecord: (period: WorkRecordPeriod, targetDate: string) =>
+    request<{ record: WorkRecord | null }>(`/work-records/current?period=${period}&targetDate=${encodeURIComponent(targetDate)}`),
+
+  saveWorkRecord: (data: { period: WorkRecordPeriod; targetDate: string; title: string; content: string }) =>
+    request<{ record: WorkRecord }>("/work-records", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  deleteWorkRecord: (id: string) =>
+    request<{ success: boolean }>(`/work-records/${id}`, { method: "DELETE" }),
+
+  generateWorkRecord: (data: { period: "weekly" | "monthly"; targetDate: string }) =>
+    request<{ record: WorkRecord; sourceCount: number }>("/work-records/ai/generate", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
+
+  polishWorkRecord: (data: { period: WorkRecordPeriod; title: string; content: string }) =>
+    request<{ title: string; content: string }>("/work-records/ai/polish", {
+      method: "POST",
+      body: JSON.stringify(data),
+    }),
 
   aiGreeting: (data: { userName: string; personality: string }) =>
     request<{ greeting: string }>(

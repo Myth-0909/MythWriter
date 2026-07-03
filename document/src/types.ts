@@ -24,6 +24,20 @@ export interface DocumentVersion {
   createdAt: string;
 }
 
+export type WorkRecordPeriod = "daily" | "weekly" | "monthly";
+
+export interface WorkRecord {
+  id: string;
+  userId: string;
+  period: WorkRecordPeriod;
+  targetDate: string;
+  title: string;
+  content: string;
+  aiSummary?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export type DocumentCategory = "design" | "journal" | "planning" | "research" | "general";
 
 export const categoryLabels: Record<DocumentCategory, { zh: string; en: string }> = {

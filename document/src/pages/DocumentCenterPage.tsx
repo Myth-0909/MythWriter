@@ -6,6 +6,7 @@ import { ConfirmModal } from "@/components/ConfirmModal";
 import { LoadingOverlay } from "@/components/LoadingSpinner";
 import { Scrollbar } from "@/components/ui/scrollbar";
 import { WriterFlowChart, WriterRhythmChart } from "@/components/WriterFlowChart";
+import { WorkRecordPanel } from "@/components/WorkRecordPanel";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import {
   DropdownMenu,
@@ -59,6 +60,7 @@ import {
 import mammoth from "mammoth";
 import { marked } from "marked";
 import { useI18n, type TranslationKey } from "@/components/I18nProvider";
+import { useAuth } from "@/auth";
 import { useDocuments } from "@/store";
 import { useToast } from "@/components/Toast";
 import { api } from "@/api";
@@ -139,6 +141,16 @@ function getDocumentText(doc?: Document | null) {
   return (doc.preview || doc.content || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
 }
 
+function getGreetingKeys(hour: number): { title: TranslationKey; hint: TranslationKey } {
+  if (hour < 12) {
+    return { title: "workbench.greetingMorning", hint: "workbench.greetingMorningHint" };
+  }
+  if (hour < 18) {
+    return { title: "workbench.greetingAfternoon", hint: "workbench.greetingAfternoonHint" };
+  }
+  return { title: "workbench.greetingEvening", hint: "workbench.greetingEveningHint" };
+}
+
 interface DocumentCenterPageProps {
   mode?: "workbench" | "documents";
   onOpenDoc?: (id: string) => void;
@@ -159,6 +171,7 @@ export function DocumentCenterPage({
   setActiveGroupId = () => {},
 }: DocumentCenterPageProps) {
   const { t, lang } = useI18n();
+  const { user } = useAuth();
   const { toast } = useToast();
   const { documents, favorites, loading, createDocument, moveToTrash, updateDocument } = useDocuments();
   const isWorkbench = mode === "workbench";
@@ -180,6 +193,8 @@ export function DocumentCenterPage({
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const greeting = useMemo(() => getGreetingKeys(new Date().getHours()), []);
+  const greetingName = user?.name?.trim() || t("workbench.defaultName");
 
   useEffect(() => {
     api.getWeeklyStats()
@@ -545,6 +560,14 @@ export function DocumentCenterPage({
                       <h1 className="text-[34px] font-semibold leading-tight text-surface-950 dark:text-surface-50">
                         {pageTitle}
                       </h1>
+                      <div className="mt-3 rounded-2xl border border-brand-200/70 bg-brand-50/80 px-4 py-3 dark:border-brand-500/20 dark:bg-brand-500/10">
+                        <div className="text-sm font-semibold text-brand-700 dark:text-brand-200">
+                          {t(greeting.title).replace("{name}", greetingName)}
+                        </div>
+                        <p className="mt-1 text-xs leading-5 text-surface-600 dark:text-surface-300">
+                          {t(greeting.hint)}
+                        </p>
+                      </div>
                       <p className="mt-3 max-w-[680px] text-sm leading-6 text-surface-500 dark:text-surface-400">
                         {pageSubtitle}
                       </p>
@@ -774,6 +797,8 @@ export function DocumentCenterPage({
             </section>
           )}
         </div>
+
+        {isWorkbench && <WorkRecordPanel />}
 
         {isWorkbench && (
           <section className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1.1fr)_420px]">

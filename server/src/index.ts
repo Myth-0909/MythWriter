@@ -12,6 +12,7 @@ import groupsRoutes from "./routes/groups";
 import aiKnowledgeRoutes from "./routes/aiKnowledge";
 import aiCategoryRoutes from "./routes/aiCategory";
 import ragRoutes from "./routes/rag";
+import workRecordRoutes from "./routes/workRecords";
 import { connectRedis } from "./lib/redis";
 import prisma from "./lib/prisma";
 import { getMilvusStatus } from "./lib/milvus";
@@ -37,6 +38,7 @@ app.use("/api/groups", groupsRoutes);
 app.use("/api/ai/knowledge", aiKnowledgeRoutes);
 app.use("/api/ai/categories", aiCategoryRoutes);
 app.use("/api/rag", ragRoutes);
+app.use("/api/work-records", workRecordRoutes);
 
 // Health check
 app.get("/api/health", (_req, res) => {
