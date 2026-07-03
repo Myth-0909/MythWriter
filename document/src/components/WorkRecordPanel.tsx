@@ -3,6 +3,7 @@ import {
   BookOpenText,
   CalendarDays,
   Clock3,
+  Edit3,
   FileText,
   Layers3,
   Loader2,
@@ -16,7 +17,10 @@ import {
 } from "lucide-react";
 import { marked } from "marked";
 import { api } from "@/api";
+import { ConfirmModal } from "@/components/ConfirmModal";
 import { Button } from "@/components/ui/button";
+import { DatePicker } from "@/components/ui/date-picker";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { TabGroup } from "@/components/ui/tab-group";
 import { Textarea } from "@/components/ui/textarea";
@@ -88,6 +92,9 @@ export function WorkRecordPanel({ className, view = "editor" }: { className?: st
   const [targetDate, setTargetDate] = useState(todayKey);
   const [record, setRecord] = useState<WorkRecord | null>(null);
   const [recentRecords, setRecentRecords] = useState<WorkRecord[]>([]);
+  const [searchDraft, setSearchDraft] = useState("");
+  const [dateFromDraft, setDateFromDraft] = useState("");
+  const [dateToDraft, setDateToDraft] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
@@ -95,6 +102,12 @@ export function WorkRecordPanel({ className, view = "editor" }: { className?: st
   const [content, setContent] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [filterLoading, setFilterLoading] = useState(false);
+  const [editRecord, setEditRecord] = useState<WorkRecord | null>(null);
+  const [editTitle, setEditTitle] = useState("");
+  const [editContent, setEditContent] = useState("");
+  const [editTargetDate, setEditTargetDate] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<WorkRecord | null>(null);
   const [aiLoading, setAiLoading] = useState<"generate" | "polish" | null>(null);
 
   const periodItems = useMemo(
@@ -289,6 +302,87 @@ export function WorkRecordPanel({ className, view = "editor" }: { className?: st
     }
   };
 
+  const openEditRecord = (nextRecord: WorkRecord) => {
+    setEditRecord(nextRecord);
+    setEditTitle(nextRecord.title);
+    setEditContent(nextRecord.content);
+    setEditTargetDate(nextRecord.targetDate.slice(0, 10));
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editRecord) return;
+    setSaving(true);
+    try {
+      const res = await api.saveWorkRecord({
+        period: editRecord.period,
+        targetDate: editTargetDate || editRecord.targetDate.slice(0, 10),
+        title: editTitle,
+        content: editContent,
+      });
+      if (res.record.id !== editRecord.id) {
+        await api.deleteWorkRecord(editRecord.id);
+      }
+      setEditRecord(null);
+      if (record?.id === editRecord.id) {
+        setRecord(res.record);
+        setTargetDate(res.record.targetDate.slice(0, 10));
+        setTitle(res.record.title);
+        setContent(res.record.content);
+      }
+      await refreshRecent();
+      toast(t("workbench.recordUpdated"), "success");
+    } catch (error: any) {
+      toast(error.message || t("workbench.recordSaveFailed"), "error");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeleteRecord = async (target: WorkRecord) => {
+    setSaving(true);
+    try {
+      await api.deleteWorkRecord(target.id);
+      if (record?.id === target.id) {
+        setRecord(null);
+        setTitle("");
+        setContent("");
+      }
+      await refreshRecent();
+      toast(t("workbench.recordDeleted"), "success");
+    } catch (error: any) {
+      toast(error.message || t("workbench.recordDeleteFailed"), "error");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleApplyFilters = async () => {
+    setFilterLoading(true);
+    try {
+      setSearchQuery(searchDraft);
+      setDateFrom(dateFromDraft);
+      setDateTo(dateToDraft);
+      await refreshRecent();
+    } finally {
+      setFilterLoading(false);
+    }
+  };
+
+  const handleResetFilters = async () => {
+    setFilterLoading(true);
+    try {
+      setSearchDraft("");
+      setDateFromDraft("");
+      setDateToDraft("");
+      setSearchQuery("");
+      setDateFrom("");
+      setDateTo("");
+      await refreshRecent();
+    } finally {
+      setFilterLoading(false);
+    }
+  };
+
   const handlePasteImage = (file?: File) => {
     if (!file) return;
     if (file.size > MAX_INLINE_IMAGE_SIZE) {
@@ -337,6 +431,7 @@ export function WorkRecordPanel({ className, view = "editor" }: { className?: st
   const hasListFilters = !!searchQuery || !!dateFrom || !!dateTo;
 
   return (
+    <>
     <section className={cn("mt-5 overflow-hidden rounded-2xl border border-surface-200 bg-white shadow-sm dark:border-surface-800 dark:bg-[#0f1724]", className)}>
       <div className="border-b border-surface-200 bg-surface-50/70 px-5 py-5 dark:border-surface-800 dark:bg-[#111b2a] xl:px-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
@@ -543,48 +638,54 @@ export function WorkRecordPanel({ className, view = "editor" }: { className?: st
           </div>
 
           <div className="mb-4 grid gap-3 rounded-2xl border border-surface-200 bg-surface-50/70 p-3 dark:border-surface-800 dark:bg-surface-950/25">
-            <div className="flex flex-wrap items-center justify-end gap-3">
-              {hasListFilters && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-8 gap-1.5 px-2"
-                  onClick={() => {
-                    setSearchQuery("");
-                    setDateFrom("");
-                    setDateTo("");
-                  }}
-                >
-                  <X className="h-3.5 w-3.5" />
-                  <span>{t("workbench.clearFilters")}</span>
-                </Button>
-              )}
-            </div>
-            <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_170px_170px]">
+            <div className="grid gap-2 xl:grid-cols-[minmax(0,1fr)_170px_170px_auto]">
               <div className="relative">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-surface-400" />
                 <Input
-                  value={searchQuery}
-                  onChange={(event) => setSearchQuery(event.target.value)}
+                  value={searchDraft}
+                  onChange={(event) => setSearchDraft(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") handleApplyFilters();
+                  }}
                   placeholder={t("workbench.searchRecords")}
                   className="h-10 bg-white pl-9 dark:bg-[#0f1724]"
                 />
               </div>
-              <Input
-                type="date"
-                value={dateFrom}
-                onChange={(event) => setDateFrom(event.target.value)}
-                aria-label={t("workbench.dateFrom")}
-                className="h-10 bg-white dark:bg-[#0f1724]"
+              <DatePicker
+                value={dateFromDraft}
+                onChange={setDateFromDraft}
+                placeholder={t("workbench.dateFrom")}
+                ariaLabel={t("workbench.dateFrom")}
+                className="w-full"
               />
-              <Input
-                type="date"
-                value={dateTo}
-                onChange={(event) => setDateTo(event.target.value)}
-                aria-label={t("workbench.dateTo")}
-                className="h-10 bg-white dark:bg-[#0f1724]"
+              <DatePicker
+                value={dateToDraft}
+                onChange={setDateToDraft}
+                placeholder={t("workbench.dateTo")}
+                ariaLabel={t("workbench.dateTo")}
+                className="w-full"
               />
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  className="h-10 gap-1.5 px-4"
+                  onClick={handleApplyFilters}
+                  disabled={loading || filterLoading}
+                >
+                  {filterLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
+                  <span>{t("workbench.queryRecords")}</span>
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-10 gap-1.5 px-3"
+                  onClick={handleResetFilters}
+                  disabled={loading || filterLoading || (!hasListFilters && !searchDraft && !dateFromDraft && !dateToDraft)}
+                >
+                  {filterLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <X className="h-4 w-4" />}
+                  <span>{t("workbench.resetFilters")}</span>
+                </Button>
+              </div>
             </div>
           </div>
 
@@ -602,6 +703,7 @@ export function WorkRecordPanel({ className, view = "editor" }: { className?: st
                     <th className="px-4 py-3">{t("workbench.recordPreview")}</th>
                     <th className="w-[150px] px-4 py-3">{t("workbench.recordCreatedAt")}</th>
                     <th className="w-[150px] px-4 py-3 text-right">{t("workbench.lastUpdated")}</th>
+                    <th className="w-[132px] px-4 py-3 text-right">{t("workbench.recordActions")}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-surface-200 dark:divide-surface-800">
@@ -635,6 +737,35 @@ export function WorkRecordPanel({ className, view = "editor" }: { className?: st
                         <td className="px-4 py-3 text-right tabular-nums text-surface-400">
                           {formatUpdatedAt(item.updatedAt)}
                         </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center justify-end gap-1">
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon-sm"
+                              aria-label={t("workbench.editRecord")}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                openEditRecord(item);
+                              }}
+                            >
+                              <Edit3 className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon-sm"
+                              className="text-surface-500 hover:text-red-600 dark:text-surface-400 dark:hover:text-red-300"
+                              aria-label={t("common.delete")}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setDeleteTarget(item);
+                              }}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        </td>
                       </tr>
                     );
                   })}
@@ -645,5 +776,72 @@ export function WorkRecordPanel({ className, view = "editor" }: { className?: st
         </aside>
       )}
     </section>
+    <Dialog open={!!editRecord} onOpenChange={(open) => !open && setEditRecord(null)}>
+      <DialogContent className="max-w-[720px]">
+        <DialogTitle>{t("workbench.editRecord")}</DialogTitle>
+        <DialogDescription>
+          {t("workbench.editRecordDesc")}
+        </DialogDescription>
+        <div className="mt-4 grid gap-4">
+          <div className="grid gap-2">
+            <span className="text-xs font-semibold text-surface-700 dark:text-surface-200">
+              {t("workbench.recordDate")}
+            </span>
+            <DatePicker
+              value={editTargetDate}
+              onChange={setEditTargetDate}
+              placeholder={t("workbench.recordDate")}
+              ariaLabel={t("workbench.recordDate")}
+              className="w-full"
+            />
+          </div>
+          <div className="grid gap-2">
+            <span className="text-xs font-semibold text-surface-700 dark:text-surface-200">
+              {t("workbench.recordTitle")}
+            </span>
+            <Input
+              value={editTitle}
+              onChange={(event) => setEditTitle(event.target.value)}
+              placeholder={t("workbench.recordTitlePlaceholder")}
+              className="bg-surface-50 dark:bg-[#0f1724]"
+            />
+          </div>
+          <div className="grid gap-2">
+            <span className="text-xs font-semibold text-surface-700 dark:text-surface-200">
+              {t("workbench.recordContent")}
+            </span>
+            <Textarea
+              value={editContent}
+              onChange={(event) => setEditContent(event.target.value)}
+              placeholder={t("workbench.recordContentPlaceholder")}
+              className="min-h-[300px] bg-surface-50 leading-6 dark:bg-[#0f1724]"
+            />
+          </div>
+        </div>
+        <div className="mt-5 flex justify-end gap-2">
+          <Button type="button" variant="outline" onClick={() => setEditRecord(null)} disabled={saving}>
+            {t("common.cancel")}
+          </Button>
+          <Button type="button" onClick={handleSaveEdit} disabled={saving}>
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+            <span>{t("common.save")}</span>
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+    <ConfirmModal
+      open={!!deleteTarget}
+      onOpenChange={(open) => !open && setDeleteTarget(null)}
+      title={t("workbench.deleteRecordTitle")}
+      description={t("workbench.deleteRecordDesc")}
+      confirmLabel={t("common.delete")}
+      cancelLabel={t("common.cancel")}
+      variant="danger"
+      onConfirm={() => {
+        if (deleteTarget) handleDeleteRecord(deleteTarget);
+        setDeleteTarget(null);
+      }}
+    />
+    </>
   );
 }
