@@ -46,6 +46,11 @@ import {
   FolderOpen,
   BarChart3,
   Clock3,
+  ClipboardCheck,
+  Compass,
+  FileSearch,
+  Layers3,
+  PenLine,
   Sparkles,
   SlidersHorizontal,
   ArrowUpRight,
@@ -127,6 +132,11 @@ function sortDocuments(docs: Document[], sortMode: SortMode, lang: "zh" | "en") 
     const field = sortMode === "created" ? "createdAt" : "updatedAt";
     return new Date(b[field]).getTime() - new Date(a[field]).getTime();
   });
+}
+
+function getDocumentText(doc?: Document | null) {
+  if (!doc) return "";
+  return (doc.preview || doc.content || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
 }
 
 interface DocumentCenterPageProps {
@@ -329,6 +339,104 @@ export function DocumentCenterPage({
   }, -1);
   const bestDayLabel =
     bestDayIndex >= 0 ? t(dayI18nKeys[chartData.dayIndices[bestDayIndex]]) : t("documents.noActivity");
+  const latestText = getDocumentText(latestDoc);
+  const latestWordEstimate = latestText.length;
+  const ungroupedCount = documents.filter((doc) => !doc.groupId).length;
+  const researchCount = documents.filter((doc) => doc.category === "research").length;
+  const aiNextSteps = useMemo(() => {
+    const steps = latestDoc
+      ? [
+          {
+            icon: PenLine,
+            title: t("documents.nextContinueTitle"),
+            desc: t("documents.nextContinueDesc").replace("{title}", latestDoc.title || t("editor.untitled")),
+            action: t("documents.openLatest"),
+            onClick: () => onOpenDoc?.(latestDoc.id),
+          },
+          {
+            icon: ClipboardCheck,
+            title: t("documents.nextReviewTitle"),
+            desc: t("documents.nextReviewDesc"),
+            action: t("documents.openAiWriting"),
+            onClick: onOpenAgentWrite,
+          },
+        ]
+      : [
+          {
+            icon: PenLine,
+            title: t("documents.nextCreateTitle"),
+            desc: t("documents.nextCreateDesc"),
+            action: t("documents.newDocument"),
+            onClick: () => handleNewDocument("general"),
+          },
+          {
+            icon: Sparkles,
+            title: t("documents.aiOutline"),
+            desc: t("documents.aiOutlineDesc"),
+            action: t("documents.openAiWriting"),
+            onClick: onOpenAgentWrite,
+          },
+        ];
+
+    if (ungroupedCount > 0) {
+      steps.push({
+        icon: FolderOpen,
+        title: t("documents.nextOrganizeTitle"),
+        desc: t("documents.nextOrganizeDesc"),
+        action: t("documents.librarySection"),
+        onClick: () => setActiveGroupId(null),
+      });
+    } else {
+      steps.push({
+        icon: Brain,
+        title: t("documents.nextBrainTitle"),
+        desc: t("documents.nextBrainDesc"),
+        action: t("documents.openBrain"),
+        onClick: onOpenBrain,
+      });
+    }
+
+    return steps.slice(0, 3);
+  }, [latestDoc, onOpenAgentWrite, onOpenBrain, onOpenDoc, t, ungroupedCount]);
+
+  const checkupItems = [
+    {
+      label: t("documents.checkupStructure"),
+      value: latestWordEstimate > 600 ? t("documents.checkupReady") : t("documents.checkupNeedInput"),
+      active: latestWordEstimate > 600,
+    },
+    {
+      label: t("documents.checkupSetting"),
+      value: groups.length > 0 || documents.length > 2 ? t("documents.checkupReady") : t("documents.checkupNeedInput"),
+      active: groups.length > 0 || documents.length > 2,
+    },
+    {
+      label: t("documents.checkupExpansion"),
+      value: latestDoc ? t("documents.checkupReady") : t("documents.checkupNeedInput"),
+      active: !!latestDoc,
+    },
+  ];
+
+  const settingGaps = [
+    {
+      icon: FolderOpen,
+      title: t("documents.gapUngrouped"),
+      desc: t("documents.gapUngroupedDesc"),
+      count: ungroupedCount,
+    },
+    {
+      icon: Brain,
+      title: t("documents.gapBrain"),
+      desc: t("documents.gapBrainDesc"),
+      count: latestDoc ? 1 : 0,
+    },
+    {
+      icon: FileSearch,
+      title: t("documents.gapResearch"),
+      desc: t("documents.gapResearchDesc"),
+      count: researchCount,
+    },
+  ];
 
   const categoryTabs = useMemo(
     () =>
@@ -415,82 +523,181 @@ export function DocumentCenterPage({
                 </div>
               )}
 
-              <div className="flex items-start justify-between gap-8">
-                <div className="min-w-0">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".txt,.md,.docx,.doc"
+                className="hidden"
+                onChange={handleImport}
+              />
+
+              {isWorkbench ? (
+                <>
                   <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-brand-200 bg-brand-50 px-3 py-1 text-xs font-semibold text-brand-700 dark:border-brand-500/20 dark:bg-brand-500/10 dark:text-brand-300">
                     <Sparkles className="h-3.5 w-3.5" />
-                    <span>{isWorkbench ? t("documents.commandCenter") : t("documents.librarySection")}</span>
+                    <span>{t("documents.todayStudio")}</span>
                   </div>
-                  <div className="flex items-center gap-3">
-                    {!isWorkbench && activeGroupId && (
-                      <Tooltip content={t("documents.backToAll")} delay={150}>
-                        <Button
-                          variant="outline"
-                          size="icon"
-                          className="h-10 w-10 shrink-0"
-                          onClick={() => setActiveGroupId(null)}
-                          aria-label={t("documents.backToAll")}
+                  <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_260px]">
+                    <div className="min-w-0">
+                      <h1 className="text-[34px] font-semibold leading-tight text-surface-950 dark:text-surface-50">
+                        {pageTitle}
+                      </h1>
+                      <p className="mt-3 max-w-[680px] text-sm leading-6 text-surface-500 dark:text-surface-400">
+                        {pageSubtitle}
+                      </p>
+
+                      <div className="mt-6 grid gap-3 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+                        <button
+                          type="button"
+                          onClick={() => latestDoc && onOpenDoc?.(latestDoc.id)}
+                          disabled={!latestDoc}
+                          className="group rounded-2xl border border-surface-200 bg-white/80 p-4 text-left transition-all hover:-translate-y-0.5 hover:border-brand-300 hover:shadow-sm disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:hover:border-surface-200 dark:border-surface-800 dark:bg-surface-950/30 dark:hover:border-brand-500/50"
                         >
-                          <ArrowLeft className="h-4 w-4" />
-                        </Button>
-                      </Tooltip>
-                    )}
-                    <h1 className="truncate text-[34px] font-semibold leading-tight text-surface-950 dark:text-surface-50">
-                      {pageTitle}
-                    </h1>
-                  </div>
-                  <p className="mt-3 max-w-[680px] text-sm leading-6 text-surface-500 dark:text-surface-400">
-                    {pageSubtitle}
-                  </p>
-                </div>
+                          <div className="flex items-center gap-2 text-xs font-semibold text-brand-600 dark:text-brand-300">
+                            <Clock3 className="h-3.5 w-3.5" />
+                            <span>{t("documents.continueDraft")}</span>
+                          </div>
+                          <div className="mt-3 truncate text-base font-semibold text-surface-950 dark:text-surface-50">
+                            {latestDoc?.title || t("documents.noLatestDoc")}
+                          </div>
+                          <p className="mt-2 line-clamp-2 min-h-[40px] text-xs leading-5 text-surface-500 dark:text-surface-400">
+                            {latestText || t("documents.noDraftHint")}
+                          </p>
+                          <div className="mt-4 flex items-center gap-1.5 text-xs font-semibold text-brand-600 dark:text-brand-300">
+                            <span>{t("documents.openLatest")}</span>
+                            <ArrowUpRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+                          </div>
+                        </button>
 
-                <div className="flex shrink-0 items-center gap-2">
-                  <Button variant="outline" size="lg" className="h-11 gap-1.5 px-4" onClick={onOpenAgentWrite}>
-                    <Bot className="h-4 w-4" />
-                    <span>{t("documents.aiDraft")}</span>
-                  </Button>
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept=".txt,.md,.docx,.doc"
-                    className="hidden"
-                    onChange={handleImport}
-                  />
-                  <Button
-                    variant="outline"
-                    size="lg"
-                    className="h-11 gap-1.5 px-4"
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={importing}
-                  >
-                    {importing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-                    <span>{t("documents.importDraft")}</span>
-                  </Button>
-                  {renderCreateMenu()}
-                </div>
-              </div>
-
-              <div className="mt-8 grid grid-cols-4 gap-3">
-                {[
-                  { icon: FileStack, label: t("documents.totalDocs"), value: numberFormatter.format(documents.length) },
-                  { icon: Star, label: t("documents.favoriteDocs"), value: numberFormatter.format(favorites.length) },
-                  { icon: FolderOpen, label: t("documents.groupCount"), value: numberFormatter.format(groups.length) },
-                  { icon: BarChart3, label: t("documents.weeklyWords"), value: numberFormatter.format(weeklyTotal) },
-                ].map((metric) => (
-                  <div
-                    key={metric.label}
-                    className="rounded-xl border border-surface-200 bg-surface-50/80 p-4 dark:border-surface-800 dark:bg-surface-950/40"
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="text-xs font-medium text-surface-500 dark:text-surface-400">{metric.label}</span>
-                      <metric.icon className="h-4 w-4 text-brand-500" />
+                        <div className="rounded-2xl border border-surface-200 bg-surface-50/80 p-4 dark:border-surface-800 dark:bg-surface-950/30">
+                          <div className="flex items-center justify-between gap-3">
+                            <div>
+                              <h2 className="text-sm font-semibold text-surface-950 dark:text-surface-50">
+                                {t("documents.aiNextTitle")}
+                              </h2>
+                              <p className="mt-1 text-xs text-surface-500 dark:text-surface-400">{t("documents.aiNextDesc")}</p>
+                            </div>
+                            <Compass className="h-5 w-5 text-brand-500" />
+                          </div>
+                          <div className="mt-4 grid gap-2">
+                            {aiNextSteps.map((step) => (
+                              <button
+                                key={step.title}
+                                type="button"
+                                onClick={step.onClick}
+                                className="group flex items-center gap-3 rounded-xl border border-transparent px-2 py-2 text-left transition-all hover:border-surface-200 hover:bg-white dark:hover:border-surface-800 dark:hover:bg-surface-900"
+                              >
+                                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand-100 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300">
+                                  <step.icon className="h-4 w-4" />
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <div className="truncate text-xs font-semibold text-surface-900 dark:text-surface-100">{step.title}</div>
+                                  <div className="mt-0.5 line-clamp-1 text-[11px] text-surface-500">{step.desc}</div>
+                                </div>
+                                <ArrowUpRight className="h-3.5 w-3.5 text-surface-300 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5 group-hover:text-brand-500" />
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
                     </div>
-                    <div className="mt-3 text-2xl font-semibold tracking-normal text-surface-950 dark:text-surface-50">
-                      {metric.value}
+
+                    <div className="grid grid-cols-2 gap-3 xl:grid-cols-1">
+                      {[
+                        { icon: FileStack, label: t("documents.totalDocs"), value: numberFormatter.format(documents.length) },
+                        { icon: Star, label: t("documents.favoriteDocs"), value: numberFormatter.format(favorites.length) },
+                        { icon: FolderOpen, label: t("documents.groupCount"), value: numberFormatter.format(groups.length) },
+                        { icon: BarChart3, label: t("documents.weeklyWords"), value: numberFormatter.format(weeklyTotal) },
+                      ].map((metric) => (
+                        <div
+                          key={metric.label}
+                          className="rounded-xl border border-surface-200 bg-surface-50/80 p-4 dark:border-surface-800 dark:bg-surface-950/40"
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="text-xs font-medium text-surface-500 dark:text-surface-400">{metric.label}</span>
+                            <metric.icon className="h-4 w-4 text-brand-500" />
+                          </div>
+                          <div className="mt-3 text-2xl font-semibold tracking-normal text-surface-950 dark:text-surface-50">
+                            {metric.value}
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
-                ))}
-              </div>
+                </>
+              ) : (
+                <>
+                  <div className="flex items-start justify-between gap-8">
+                    <div className="min-w-0">
+                      <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-brand-200 bg-brand-50 px-3 py-1 text-xs font-semibold text-brand-700 dark:border-brand-500/20 dark:bg-brand-500/10 dark:text-brand-300">
+                        <Sparkles className="h-3.5 w-3.5" />
+                        <span>{t("documents.librarySection")}</span>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        {activeGroupId && (
+                          <Tooltip content={t("documents.backToAll")} delay={150}>
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              className="h-10 w-10 shrink-0"
+                              onClick={() => setActiveGroupId(null)}
+                              aria-label={t("documents.backToAll")}
+                            >
+                              <ArrowLeft className="h-4 w-4" />
+                            </Button>
+                          </Tooltip>
+                        )}
+                        <h1 className="truncate text-[34px] font-semibold leading-tight text-surface-950 dark:text-surface-50">
+                          {pageTitle}
+                        </h1>
+                      </div>
+                      <p className="mt-3 max-w-[680px] text-sm leading-6 text-surface-500 dark:text-surface-400">
+                        {pageSubtitle}
+                      </p>
+                    </div>
+
+                    <div className="flex shrink-0 items-center gap-2">
+                      <Button variant="outline" size="lg" className="h-11 gap-1.5 px-4" onClick={onOpenAgentWrite}>
+                        <Bot className="h-4 w-4" />
+                        <span>{t("documents.aiDraft")}</span>
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="lg"
+                        className="h-11 gap-1.5 px-4"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={importing}
+                      >
+                        {importing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                        <span>{t("documents.importDraft")}</span>
+                      </Button>
+                      {renderCreateMenu()}
+                    </div>
+                  </div>
+
+                  <div className="mt-8 grid grid-cols-4 gap-3">
+                    {[
+                      { icon: FileStack, label: t("documents.totalDocs"), value: numberFormatter.format(documents.length) },
+                      { icon: Star, label: t("documents.favoriteDocs"), value: numberFormatter.format(favorites.length) },
+                      { icon: FolderOpen, label: t("documents.groupCount"), value: numberFormatter.format(groups.length) },
+                      { icon: BarChart3, label: t("documents.weeklyWords"), value: numberFormatter.format(weeklyTotal) },
+                    ].map((metric) => (
+                      <div
+                        key={metric.label}
+                        className="rounded-xl border border-surface-200 bg-surface-50/80 p-4 dark:border-surface-800 dark:bg-surface-950/40"
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-xs font-medium text-surface-500 dark:text-surface-400">{metric.label}</span>
+                          <metric.icon className="h-4 w-4 text-brand-500" />
+                        </div>
+                        <div className="mt-3 text-2xl font-semibold tracking-normal text-surface-950 dark:text-surface-50">
+                          {metric.value}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
           </section>
 
@@ -520,75 +727,141 @@ export function DocumentCenterPage({
         </div>
 
         {isWorkbench && (
-          <section className="mt-5 grid gap-5 xl:grid-cols-[360px_minmax(0,1fr)]">
-            <div className="rounded-2xl border border-surface-200 bg-surface-950 p-5 text-white shadow-sm dark:border-surface-800 dark:bg-black">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/10 text-brand-200">
-                <Bot className="h-5 w-5" />
-              </div>
-              <h2 className="mt-5 text-xl font-semibold">{t("documents.aiStudioTitle")}</h2>
-              <p className="mt-3 text-sm leading-6 text-surface-300">{t("documents.aiStudioDesc")}</p>
-              <div className="mt-5 rounded-xl border border-white/10 px-4 py-3">
-                <div className="flex items-center gap-2 text-xs text-surface-400">
-                  <Clock3 className="h-3.5 w-3.5" />
-                  <span>{t("documents.latestDocument")}</span>
+          <section className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1.1fr)_420px]">
+            <div className="rounded-2xl border border-surface-200 bg-white p-5 shadow-sm dark:border-surface-800 dark:bg-surface-900">
+              <div className="mb-4 flex items-start justify-between gap-4">
+                <div>
+                  <h2 className="text-base font-semibold text-surface-950 dark:text-surface-50">
+                    {t("documents.aiWorkbench")}
+                  </h2>
+                  <p className="mt-1 text-xs leading-5 text-surface-500 dark:text-surface-400">
+                    {t("documents.aiWorkbenchDesc")}
+                  </p>
                 </div>
+                <Bot className="h-5 w-5 text-brand-500" />
+              </div>
+
+              <div className="grid gap-3 lg:grid-cols-3">
                 <button
                   type="button"
-                  onClick={() => latestDoc && onOpenDoc?.(latestDoc.id)}
-                  disabled={!latestDoc}
-                  className="mt-2 w-full truncate text-left text-sm font-semibold text-white transition-colors hover:text-brand-200 disabled:cursor-not-allowed disabled:text-surface-500"
+                  onClick={onOpenAgentWrite}
+                  className="group relative min-h-[236px] overflow-hidden rounded-2xl bg-surface-950 p-5 text-left text-white shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md dark:bg-black lg:col-span-2"
                 >
-                  {latestDoc?.title || t("documents.noLatestDoc")}
+                  <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_18%_20%,rgba(185,149,78,0.28),transparent_34%),radial-gradient(circle_at_80%_80%,rgba(99,102,241,0.18),transparent_36%)]" />
+                  <div className="relative flex h-full flex-col justify-between">
+                    <div>
+                      <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/10 text-brand-200">
+                        <Sparkles className="h-5 w-5" />
+                      </div>
+                      <h3 className="mt-5 text-xl font-semibold">{t("documents.aiContinue")}</h3>
+                      <p className="mt-3 max-w-[420px] text-sm leading-6 text-surface-300">{t("documents.aiContinueDesc")}</p>
+                    </div>
+                    <div className="mt-6 flex items-center gap-1.5 text-xs font-semibold text-brand-200">
+                      <span>{t("documents.openAiWriting")}</span>
+                      <ArrowUpRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
+                    </div>
+                  </div>
                 </button>
+
+                <div className="grid gap-3">
+                  {[
+                    {
+                      icon: PenLine,
+                      title: t("documents.aiOutline"),
+                      desc: t("documents.aiOutlineDesc"),
+                      onClick: onOpenAgentWrite,
+                    },
+                    {
+                      icon: Brain,
+                      title: t("documents.aiSettingGap"),
+                      desc: t("documents.aiSettingGapDesc"),
+                      onClick: onOpenBrain,
+                    },
+                    {
+                      icon: Layers3,
+                      title: t("documents.aiMaterialClean"),
+                      desc: t("documents.aiMaterialCleanDesc"),
+                      onClick: () => fileInputRef.current?.click(),
+                    },
+                  ].map((feature) => (
+                    <button
+                      key={feature.title}
+                      type="button"
+                      onClick={feature.onClick}
+                      className="group rounded-2xl border border-surface-200 bg-surface-50/80 p-4 text-left transition-all hover:-translate-y-0.5 hover:border-brand-300 hover:bg-white hover:shadow-sm dark:border-surface-800 dark:bg-surface-950/40 dark:hover:border-brand-500/50 dark:hover:bg-surface-900"
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-brand-100 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300">
+                          <feature.icon className="h-[18px] w-[18px]" />
+                        </div>
+                        <div className="min-w-0">
+                          <h3 className="text-sm font-semibold text-surface-950 dark:text-surface-50">{feature.title}</h3>
+                          <p className="mt-1 line-clamp-2 text-xs leading-5 text-surface-500 dark:text-surface-400">{feature.desc}</p>
+                        </div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-3">
-              {[
-                {
-                  icon: Sparkles,
-                  title: t("documents.aiWriteTitle"),
-                  desc: t("documents.aiWriteDesc"),
-                  actionLabel: t("documents.openAiWriting"),
-                  onClick: onOpenAgentWrite,
-                },
-                {
-                  icon: Brain,
-                  title: t("documents.aiBrainTitle"),
-                  desc: t("documents.aiBrainDesc"),
-                  actionLabel: t("documents.openBrain"),
-                  onClick: onOpenBrain,
-                },
-                {
-                  icon: Search,
-                  title: t("documents.aiContextTitle"),
-                  desc: t("documents.aiContextDesc"),
-                  actionLabel: t("documents.visibleDocs"),
-                  onClick: () => {
-                    const firstDoc = filteredDocs[0];
-                    if (firstDoc) onOpenDoc?.(firstDoc.id);
-                  },
-                },
-              ].map((feature) => (
-                <button
-                  key={feature.title}
-                  type="button"
-                  onClick={feature.onClick}
-                  className="group flex min-h-[180px] flex-col justify-between rounded-2xl border border-surface-200 bg-white p-5 text-left shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-brand-300 hover:shadow-md dark:border-surface-800 dark:bg-surface-900 dark:hover:border-brand-500/50"
-                >
+            <div className="grid gap-5">
+              <section className="rounded-2xl border border-surface-200 bg-white p-5 shadow-sm dark:border-surface-800 dark:bg-surface-900">
+                <div className="mb-4 flex items-start justify-between gap-4">
                   <div>
-                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-brand-50 text-brand-600 dark:bg-brand-500/10 dark:text-brand-300">
-                      <feature.icon className="h-5 w-5" />
+                    <h2 className="text-sm font-semibold text-surface-950 dark:text-surface-50">
+                      {t("documents.aiCheckupTitle")}
+                    </h2>
+                    <p className="mt-1 text-xs text-surface-500 dark:text-surface-400">{t("documents.aiCheckupDesc")}</p>
+                  </div>
+                  <ClipboardCheck className="h-5 w-5 text-brand-500" />
+                </div>
+                <div className="grid gap-2">
+                  {checkupItems.map((item) => (
+                    <div key={item.label} className="flex items-center justify-between rounded-xl bg-surface-50 px-3 py-2 dark:bg-surface-950/40">
+                      <span className="text-xs font-medium text-surface-600 dark:text-surface-300">{item.label}</span>
+                      <span className={cn(
+                        "rounded-md px-2 py-1 text-[11px] font-semibold",
+                        item.active
+                          ? "bg-brand-100 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300"
+                          : "bg-surface-200 text-surface-600 dark:bg-surface-800 dark:text-surface-300"
+                      )}>
+                        {item.value}
+                      </span>
                     </div>
-                    <h3 className="mt-4 text-sm font-semibold text-surface-950 dark:text-surface-50">{feature.title}</h3>
-                    <p className="mt-2 text-xs leading-5 text-surface-500 dark:text-surface-400">{feature.desc}</p>
-                  </div>
-                  <div className="mt-5 flex items-center gap-1.5 text-xs font-semibold text-brand-600 dark:text-brand-300">
-                    <span>{feature.actionLabel}</span>
-                    <ArrowUpRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
-                  </div>
-                </button>
-              ))}
+                  ))}
+                </div>
+              </section>
+
+              <section className="rounded-2xl border border-surface-200 bg-white p-5 shadow-sm dark:border-surface-800 dark:bg-surface-900">
+                <div className="mb-4">
+                  <h2 className="text-sm font-semibold text-surface-950 dark:text-surface-50">
+                    {t("documents.settingGapTitle")}
+                  </h2>
+                  <p className="mt-1 text-xs leading-5 text-surface-500 dark:text-surface-400">{t("documents.settingGapDesc")}</p>
+                </div>
+                <div className="grid gap-2">
+                  {settingGaps.map((gap) => (
+                    <button
+                      key={gap.title}
+                      type="button"
+                      onClick={gap.icon === Brain ? onOpenBrain : () => setActiveGroupId(null)}
+                      className="group flex items-center gap-3 rounded-xl border border-surface-200 px-3 py-2 text-left transition-all hover:border-brand-300 hover:bg-brand-50/50 dark:border-surface-800 dark:hover:border-brand-500/50 dark:hover:bg-brand-500/10"
+                    >
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-surface-100 text-surface-500 dark:bg-surface-800 dark:text-surface-300">
+                        <gap.icon className="h-4 w-4" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-xs font-semibold text-surface-900 dark:text-surface-100">{gap.title}</div>
+                        <div className="mt-0.5 line-clamp-1 text-[11px] text-surface-500">{gap.desc}</div>
+                      </div>
+                      <span className="rounded-md bg-surface-100 px-2 py-1 text-[11px] font-semibold text-surface-600 dark:bg-surface-800 dark:text-surface-300">
+                        {numberFormatter.format(gap.count)}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </section>
             </div>
           </section>
         )}
