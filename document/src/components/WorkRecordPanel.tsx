@@ -653,6 +653,7 @@ export function WorkRecordPanel({ className, view = "editor" }: { className?: st
   const currentTargetDate = record?.targetDate.slice(0, 10) || targetDate;
   const currentPeriodLabel = formatRecordDate(currentTargetDate, period);
   const contentChars = currentPreview.length;
+  const contentImageCount = useMemo(() => extractMarkdownImages(content).length, [content]);
   const numberFormatter = useMemo(() => new Intl.NumberFormat(locale), [locale]);
   const filteredRecords = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -685,7 +686,7 @@ export function WorkRecordPanel({ className, view = "editor" }: { className?: st
                   {t("workbench.notDocumentType")}
                 </span>
               </div>
-              <p className="mt-1 max-w-[70ch] text-xs leading-5 text-surface-500 dark:text-surface-400">
+              <p className="mt-1 text-xs leading-5 text-surface-500 dark:text-surface-400 xl:whitespace-nowrap">
                 {t("workbench.recordLedgerDesc")}
               </p>
             </div>
@@ -718,10 +719,10 @@ export function WorkRecordPanel({ className, view = "editor" }: { className?: st
             <div className="rounded-xl border border-surface-200 bg-white px-3 py-3 dark:border-surface-800 dark:bg-surface-950/25">
               <div className="flex items-center gap-1.5 text-[11px] text-surface-500 dark:text-surface-400">
                 <Layers3 className="h-3.5 w-3.5" />
-                <span>{t("workbench.recordCount")}</span>
+                <span>{t("workbench.imageCount")}</span>
               </div>
               <div className="mt-2 text-xl font-semibold tabular-nums text-surface-950 dark:text-surface-50">
-                <CountUp value={recentRecords.length} formatValue={(value) => numberFormatter.format(Math.round(value))} />
+                <CountUp value={contentImageCount} formatValue={(value) => numberFormatter.format(Math.round(value))} />
               </div>
             </div>
             <div className="rounded-xl border border-surface-200 bg-white px-3 py-3 dark:border-surface-800 dark:bg-surface-950/25">
@@ -837,14 +838,9 @@ export function WorkRecordPanel({ className, view = "editor" }: { className?: st
           <div className="mt-4 rounded-2xl border border-surface-200 bg-white p-4 dark:border-surface-800 dark:bg-surface-950/30">
             <div className="mb-3 flex items-center justify-between gap-3">
               <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="text-sm font-semibold text-surface-950 dark:text-surface-50">
-                    {t("workbench.recordEditor")}
-                  </h3>
-                  <span className="rounded-md bg-surface-100 px-2 py-0.5 text-[11px] font-medium text-surface-500 dark:bg-surface-800 dark:text-surface-300">
-                    {t("workbench.markdownHighlight")}
-                  </span>
-                </div>
+                <h3 className="text-sm font-semibold text-surface-950 dark:text-surface-50">
+                  {t("workbench.recordEditor")}
+                </h3>
                 <p className="mt-1 text-xs text-surface-500 dark:text-surface-400">
                   {periodLabel}{t("date.separator")}{currentPeriodLabel}
                 </p>
@@ -879,12 +875,9 @@ export function WorkRecordPanel({ className, view = "editor" }: { className?: st
                 />
               </div>
               <div className="grid gap-2">
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-xs font-semibold text-surface-700 dark:text-surface-200">
-                    {t("workbench.recordContent")}
-                  </span>
-                  <span className="text-[11px] text-surface-400">{t("workbench.pasteImageHint")}</span>
-                </div>
+                <span className="text-xs font-semibold text-surface-700 dark:text-surface-200">
+                  {t("workbench.recordContent")}
+                </span>
                 <MarkdownTextarea
                   value={content}
                   onValueChange={setContent}
