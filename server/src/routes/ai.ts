@@ -14,6 +14,11 @@ import { selectReferencedBrainIds, type ChatReference } from "../services/aiRefe
 import { formatBrainKnowledgeContext, RAG_SCORE_THRESHOLD, ragService } from "../services/ragService";
 import { createAgentWriteService, markdownToBasicHtml } from "../services/agentService";
 import { createDocument, updateDocument } from "../services/documentService";
+import {
+  buildToolFallbackReply,
+  buildToolFollowUpMessages,
+  type AssistantToolResult,
+} from "../services/aiToolConversation";
 
 const router = Router();
 const MAX_REFERENCE_DOCS = 4;
@@ -1054,11 +1059,12 @@ router.post("/chat", async (req: Request, res: Response) => {
     }
 
     // Execute any accumulated tool calls (native function calling)
-    const toolResults: { role: string; content: string }[] = [];
+    const toolResults: AssistantToolResult[] = [];
     let toolCallResults: { index: number; name: string; status: string; result?: string }[] = [];
     if (accumulatedToolCalls.length > 0) {
       console.log("[AI] Tool calls detected:", accumulatedToolCalls.length);
       for (const tc of accumulatedToolCalls) {
+        const toolCallIndex = accumulatedToolCalls.indexOf(tc);
         let status = "error";
         let resultMsg = "";
         try {
@@ -1067,7 +1073,13 @@ router.post("/chat", async (req: Request, res: Response) => {
             const query = args.query || "";
             if (query) {
               const searchResult = await webSearch(query);
-              toolResults.push({ role: "tool", content: `Web search results for "${query}":\n${searchResult}` });
+              toolResults.push({
+                index: toolCallIndex,
+                name: tc.name,
+                status: "done",
+                result: query,
+                content: `Web search results for "${query}":\n${searchResult}`,
+              });
               status = "done";
               resultMsg = query;
             }
@@ -1076,10 +1088,22 @@ router.post("/chat", async (req: Request, res: Response) => {
             const title = String(args.title || "").trim();
             const rawContent = String(args.content || "").trim();
             if (!title) {
-              toolResults.push({ role: "tool", content: `Error: document title is required.` });
+              toolResults.push({
+                index: toolCallIndex,
+                name: tc.name,
+                status: "error",
+                result: "missing title",
+                content: "Error: document title is required.",
+              });
               resultMsg = "missing title";
             } else if (!rawContent) {
-              toolResults.push({ role: "tool", content: `Error: document content is empty. Please provide the full document content in Markdown format.` });
+              toolResults.push({
+                index: toolCallIndex,
+                name: tc.name,
+                status: "error",
+                result: "empty content",
+                content: "Error: document content is empty. Please provide the full document content in Markdown format.",
+              });
               resultMsg = "empty content";
             } else {
               const htmlContent = markdownToBasicHtml(rawContent);
@@ -1089,7 +1113,13 @@ router.post("/chat", async (req: Request, res: Response) => {
                 category: "general",
               });
               ragService.reindexDocument({ userId: authReq.user!.userId, id: doc.id, content: doc.content }).catch(() => {});
-              toolResults.push({ role: "tool", content: `Document created successfully: "${title}" (id: ${doc.id})` });
+              toolResults.push({
+                index: toolCallIndex,
+                name: tc.name,
+                status: "done",
+                result: title,
+                content: `Document created successfully: "${title}" (id: ${doc.id})`,
+              });
               status = "done";
               resultMsg = title;
             }
@@ -1098,15 +1128,33 @@ router.post("/chat", async (req: Request, res: Response) => {
             const targetDocId = String(args.docId || "").trim();
             const rawContent = String(args.content || "").trim();
             if (!targetDocId) {
-              toolResults.push({ role: "tool", content: `Error: docId is required for update_document.` });
+              toolResults.push({
+                index: toolCallIndex,
+                name: tc.name,
+                status: "error",
+                result: "missing docId",
+                content: "Error: docId is required for update_document.",
+              });
               resultMsg = "missing docId";
             } else if (!rawContent) {
-              toolResults.push({ role: "tool", content: `Error: document content is empty.` });
+              toolResults.push({
+                index: toolCallIndex,
+                name: tc.name,
+                status: "error",
+                result: "empty content",
+                content: "Error: document content is empty.",
+              });
               resultMsg = "empty content";
             } else {
               const htmlContent = markdownToBasicHtml(rawContent);
               await updateDocument(targetDocId, authReq.user!.userId, { content: htmlContent });
-              toolResults.push({ role: "tool", content: `Document ${targetDocId} updated successfully.` });
+              toolResults.push({
+                index: toolCallIndex,
+                name: tc.name,
+                status: "done",
+                result: targetDocId,
+                content: `Document ${targetDocId} updated successfully.`,
+              });
               status = "done";
               resultMsg = targetDocId;
             }
@@ -1122,7 +1170,10 @@ router.post("/chat", async (req: Request, res: Response) => {
               where: { userId }, select: { content: true },
             })).reduce((s: number, r: { content: string | null }) => s + (r.content || "").length, 0);
             toolResults.push({
-              role: "tool",
+              index: toolCallIndex,
+              name: tc.name,
+              status: "done",
+              result: `${docCount} docs, ${journalCount} journals`,
               content: `用户工作区统计：\n- 文档总数：${docCount} 篇\n- 随记总数：${journalCount} 条\n- 随记总字数：${totalJournalWords} 字\n- 文档分组：${groupCount} 个\n- 脑库条目：${brainCount} 条`,
             });
             status = "done";
@@ -1142,7 +1193,10 @@ router.post("/chat", async (req: Request, res: Response) => {
               return `${i + 1}. 《${d.title}》— ${wordCount} 字，最后修改 ${date}`;
             });
             toolResults.push({
-              role: "tool",
+              index: toolCallIndex,
+              name: tc.name,
+              status: "done",
+              result: `${docs.length} docs`,
               content: `用户最近 ${limit} 篇文档：\n${lines.join("\n")}${docs.length === 0 ? "暂无文档" : ""}`,
             });
             status = "done";
@@ -1164,7 +1218,10 @@ router.post("/chat", async (req: Request, res: Response) => {
             const docWords = todayDocs.reduce((s: number, d: { content: string | null }) => s + stripHtml(d.content || "").replace(/\s+/g, "").length, 0);
             const journalWords = todayJournals.reduce((s: number, r: { content: string | null }) => s + (r.content || "").length, 0);
             toolResults.push({
-              role: "tool",
+              index: toolCallIndex,
+              name: tc.name,
+              status: "done",
+              result: `${docWords + journalWords} words today`,
               content: `今日写作统计（${todayStr}）：\n- 修改文档 ${todayDocs.length} 篇，新增 ${docWords} 字\n- 随记 ${todayJournals.length} 条，共 ${journalWords} 字\n- 合计 ${docWords + journalWords} 字`,
             });
             status = "done";
@@ -1172,9 +1229,17 @@ router.post("/chat", async (req: Request, res: Response) => {
           }
         } catch (err) {
           console.error("[AI] Tool execution error:", err);
+          const errMsg = err instanceof Error ? err.message : String(err);
+          toolResults.push({
+            index: toolCallIndex,
+            name: tc.name,
+            status: "error",
+            result: errMsg,
+            content: `Error: ${tc.name} failed. ${errMsg}`,
+          });
         }
-        toolCallResults.push({ index: accumulatedToolCalls.indexOf(tc), name: tc.name, status, result: resultMsg });
-        emitSse("tool_call", { index: accumulatedToolCalls.indexOf(tc), id: tc.id, name: tc.name, arguments: tc.arguments, status, result: resultMsg });
+        toolCallResults.push({ index: toolCallIndex, name: tc.name, status, result: resultMsg });
+        emitSse("tool_call", { index: toolCallIndex, id: tc.id, name: tc.name, arguments: tc.arguments, status, result: resultMsg });
       }
     }
 
@@ -1183,11 +1248,8 @@ router.post("/chat", async (req: Request, res: Response) => {
     let followUpReply = "";
     if (toolResults.length > 0) {
       try {
-        const toolMessages = toolResults.map((tr, i) => ({
-          role: "tool" as const,
-          tool_call_id: accumulatedToolCalls[i]?.id || `call_${i}`,
-          content: tr.content,
-        }));
+        const followUpSystemPrompt = `${finalSystemPrompt}\n\nTool follow-up instruction: tools have already been executed. Use the tool results below to answer the user's request directly with concrete numbers or outcomes. Do not call tools again. Do not say "please check the results".`;
+        const followUpMessages = buildToolFollowUpMessages(accumulatedToolCalls, toolResults);
         const followUpRes = await fetch(apiUrl, {
           method: "POST",
           headers: {
@@ -1197,12 +1259,9 @@ router.post("/chat", async (req: Request, res: Response) => {
           body: JSON.stringify({
             model: aiModel,
             messages: [
-              { role: "system", content: finalSystemPrompt },
+              { role: "system", content: followUpSystemPrompt },
               ...messages,
-              { role: "assistant", content: null, tool_calls: accumulatedToolCalls.map(tc => ({
-                id: tc.id, type: "function" as const, function: { name: tc.name, arguments: tc.arguments }
-              })) },
-              ...toolMessages,
+              ...followUpMessages,
             ],
             temperature: 0.7,
             max_tokens: 2048,
@@ -1238,13 +1297,12 @@ router.post("/chat", async (req: Request, res: Response) => {
       console.log("[AI] Real-time stream complete - reply length:", (reply || finalContent || "").length);
       console.log("[AI] parseAction result - action:", JSON.stringify(finalAction));
     } else if (!followUpReply) {
-      // Follow-up call failed or returned empty — build a fallback reply from tool results
-      const toolNames = toolCallResults.map(t => t.name).join("、");
-      followUpReply = t(userLang, `已完成操作（${toolNames}），请查看结果。`, `Completed (${toolNames}). Please check the results.`);
+      // Follow-up call failed or returned empty — build a concrete fallback reply from tool results.
+      followUpReply = buildToolFallbackReply(toolResults, userLang);
       for (const char of followUpReply) {
         emitSse("delta", { delta: char });
       }
-      console.log("[AI] Using fallback reply due to empty follow-up");
+      console.log("[AI] Using tool-result fallback reply due to empty follow-up");
     }
 
     // Send final message — use follow-up reply if tools were executed
