@@ -8,6 +8,11 @@ import { Scrollbar } from "@/components/ui/scrollbar";
 import { WriterFlowChart } from "@/components/WriterFlowChart";
 import { RotatingText } from "@/components/RotatingText";
 import { CountUp } from "@/components/CountUp";
+import {
+  DocumentLifeline,
+  type CreationWeatherTone,
+  type DocumentLifelineStage,
+} from "@/components/WorkbenchAtmosphere";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import {
   DropdownMenu,
@@ -184,6 +189,115 @@ function summarizeWordsByDay(words: number[]) {
   return { total, activeDays, peakWords, averageWords, bestDayIndex };
 }
 
+function getCreationWeatherProfile(input: {
+  hasLatestDoc: boolean;
+  todayTotal: number;
+  latestWordEstimate: number;
+  researchCount: number;
+  ungroupedCount: number;
+}): { tone: CreationWeatherTone; titleKey: TranslationKey; descKey: TranslationKey; intensity: number } {
+  if (!input.hasLatestDoc && input.todayTotal <= 0) {
+    return {
+      tone: "blank",
+      titleKey: "workbench.weather.blank.title",
+      descKey: "workbench.weather.blank.desc",
+      intensity: 14,
+    };
+  }
+
+  if (input.todayTotal >= 800) {
+    return {
+      tone: "active",
+      titleKey: "workbench.weather.active.title",
+      descKey: "workbench.weather.active.desc",
+      intensity: 86,
+    };
+  }
+
+  if (input.todayTotal > 0) {
+    return {
+      tone: "steady",
+      titleKey: "workbench.weather.steady.title",
+      descKey: "workbench.weather.steady.desc",
+      intensity: Math.min(76, 36 + Math.round(input.todayTotal / 24)),
+    };
+  }
+
+  if ((input.researchCount > 0 || input.ungroupedCount > 0) && input.latestWordEstimate >= 300) {
+    return {
+      tone: "organize",
+      titleKey: "workbench.weather.organize.title",
+      descKey: "workbench.weather.organize.desc",
+      intensity: 64,
+    };
+  }
+
+  return {
+    tone: "quiet",
+    titleKey: "workbench.weather.quiet.title",
+    descKey: "workbench.weather.quiet.desc",
+    intensity: 30,
+  };
+}
+
+function getDocumentLifelineProfile(input: {
+  hasLatestDoc: boolean;
+  wordEstimate: number;
+  isUngrouped: boolean;
+}): { stage: DocumentLifelineStage; titleKey: TranslationKey; descKey: TranslationKey; progress: number } {
+  if (!input.hasLatestDoc) {
+    return {
+      stage: "empty",
+      titleKey: "workbench.lifeline.empty.title",
+      descKey: "workbench.lifeline.empty.desc",
+      progress: 8,
+    };
+  }
+
+  if (input.isUngrouped && input.wordEstimate >= 300) {
+    return {
+      stage: "organize",
+      titleKey: "workbench.lifeline.organize.title",
+      descKey: "workbench.lifeline.organize.desc",
+      progress: 58,
+    };
+  }
+
+  if (input.wordEstimate < 120) {
+    return {
+      stage: "seed",
+      titleKey: "workbench.lifeline.seed.title",
+      descKey: "workbench.lifeline.seed.desc",
+      progress: 20,
+    };
+  }
+
+  if (input.wordEstimate < 800) {
+    return {
+      stage: "forming",
+      titleKey: "workbench.lifeline.forming.title",
+      descKey: "workbench.lifeline.forming.desc",
+      progress: 48,
+    };
+  }
+
+  if (input.wordEstimate < 1800) {
+    return {
+      stage: "polish",
+      titleKey: "workbench.lifeline.polish.title",
+      descKey: "workbench.lifeline.polish.desc",
+      progress: 74,
+    };
+  }
+
+  return {
+    stage: "settle",
+    titleKey: "workbench.lifeline.settle.title",
+    descKey: "workbench.lifeline.settle.desc",
+    progress: 92,
+  };
+}
+
 interface DocumentCenterPageProps {
   mode?: "workbench" | "documents";
   onOpenDoc?: (id: string) => void;
@@ -230,6 +344,20 @@ export function DocumentCenterPage({
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const greeting = useMemo(() => getGreetingKeys(new Date().getHours()), []);
   const greetingName = user?.name?.trim() || t("workbench.defaultName");
+  const todayDayIndex = useMemo(() => new Date().getDay(), []);
+  const todayWeekday = useMemo(() => t(dayI18nKeys[todayDayIndex]), [t, todayDayIndex]);
+  const todayVibeKey = useMemo((): TranslationKey => {
+    const vibeKeys: Record<number, TranslationKey> = {
+      1: "workbench.mondayVibe",
+      2: "workbench.tuesdayVibe",
+      3: "workbench.wednesdayVibe",
+      4: "workbench.thursdayVibe",
+      5: "workbench.fridayVibe",
+      6: "workbench.saturdayVibe",
+      0: "workbench.sundayVibe",
+    };
+    return vibeKeys[todayDayIndex] || "workbench.mondayVibe";
+  }, [todayDayIndex]);
 
   useEffect(() => {
     api.getWeeklyStats()
@@ -438,6 +566,37 @@ export function DocumentCenterPage({
     .filter((item) => getLocalDateKey(item.targetDate) === getLocalDateKey())
     .reduce((sum, item) => sum + getPlainText(item.content).length, 0);
   const latestWorkRecordText = getPlainText(latestWorkRecord?.content || "");
+  const todayCreativeWords = latestDocumentDayWords + todayWorkRecordWords;
+  const creationWeatherProfile = getCreationWeatherProfile({
+    hasLatestDoc: !!latestDoc,
+    todayTotal: todayCreativeWords,
+    latestWordEstimate,
+    researchCount,
+    ungroupedCount,
+  });
+  const documentLifelineProfile = getDocumentLifelineProfile({
+    hasLatestDoc: !!latestDoc,
+    wordEstimate: latestWordEstimate,
+    isUngrouped: !!latestDoc && !latestDoc.groupId,
+  });
+  const clampedWeatherIntensity = Math.max(0, Math.min(100, creationWeatherProfile.intensity));
+  const weeklyCreativeWords = weeklyTotal + journalWeeklyTotal;
+  const todayShareOfWeek = weeklyCreativeWords > 0
+    ? Math.max(6, Math.min(100, Math.round((todayCreativeWords / weeklyCreativeWords) * 100)))
+    : 0;
+  const lifelineSteps = [
+    t("workbench.lifeline.stepStart"),
+    t("workbench.lifeline.stepShape"),
+    t("workbench.lifeline.stepPolish"),
+    t("workbench.lifeline.stepSettle"),
+  ];
+  const lifelineTags = latestDoc
+    ? [
+        formatRelativeModified(latestDoc.updatedAt, t),
+        latestDoc.groupId ? t("workbench.lifeline.grouped") : t("workbench.lifeline.ungrouped"),
+        t("workbench.lifeline.aiReady"),
+      ]
+    : [];
   const aiWorkbenchActions = useMemo(() => {
     const actions: {
       icon: LucideIcon;
@@ -539,10 +698,13 @@ export function DocumentCenterPage({
       t(greeting.title).replace("{name}", greetingName),
       t("workbench.greetingHeroOne").replace("{name}", greetingName),
       t("workbench.greetingHeroTwo"),
+      `${todayWeekday}，${t(todayVibeKey)}`,
       t("workbench.greetingHeroThree"),
       t("workbench.greetingHeroFour"),
+      t("workbench.greetingHeroFive"),
+      t("workbench.greetingHeroSix"),
     ],
-    [greeting.title, greetingName, t]
+    [greeting.title, greetingName, t, todayWeekday, todayVibeKey]
   );
   const creativeSignals = [
     { icon: BarChart3, label: t("documents.signalDocumentWeeklyWords"), value: weeklyTotal, unit: t("documents.wordsUnit") },
@@ -678,7 +840,9 @@ export function DocumentCenterPage({
       className="flex-1 bg-surface-50 dark:bg-surface-950"
       options={{ scrollbars: { autoHide: "scroll" } }}
     >
-      {(loading || actionLoading) && <LoadingOverlay />}
+      {(loading || actionLoading) && (
+        <LoadingOverlay message={loading ? t("loading.documents") : t("loading.documentAction")} />
+      )}
       <div className="mx-auto w-full max-w-[1360px] px-8 py-8 xl:px-10">
         <div className={cn("grid gap-5", isWorkbench ? "xl:grid-cols-[minmax(0,1.25fr)_440px]" : "grid-cols-1")}>
           <section className="relative overflow-hidden rounded-2xl border border-surface-200 bg-white p-7 shadow-sm dark:border-surface-800 dark:bg-[#101826]">
@@ -736,34 +900,33 @@ export function DocumentCenterPage({
                         {t("documents.workbenchHeroDesc")}
                       </p>
 
-                      <div className="mt-6 grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
-                        <div className="relative overflow-hidden rounded-2xl border border-brand-200/70 bg-gradient-to-br from-brand-50 via-white to-surface-50 p-4 shadow-sm dark:border-brand-500/25 dark:from-brand-500/15 dark:via-surface-950/55 dark:to-surface-900/70">
+                      <div className="mt-6 grid items-stretch gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
+                        <div className="relative h-full overflow-hidden rounded-2xl border border-brand-200/70 bg-gradient-to-br from-brand-50 via-white to-surface-50 p-4 shadow-sm dark:border-brand-500/25 dark:from-brand-500/15 dark:via-surface-950/55 dark:to-surface-900/70">
                           <div className="relative flex h-full min-h-[300px] flex-col">
                             <div className="flex flex-1 flex-col">
-                              <div className="flex items-center justify-between gap-3">
+                              <div className="flex items-center gap-3">
                                 <div className="inline-flex items-center gap-2 rounded-full bg-white/70 px-3 py-1 text-xs font-semibold text-brand-700 ring-1 ring-brand-200/70 dark:bg-surface-950/55 dark:text-brand-200 dark:ring-brand-500/20">
                                   <Clock3 className="h-3.5 w-3.5" />
                                   <span>{t("documents.currentFocus")}</span>
                                 </div>
-                                <div className="whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-semibold text-surface-500 ring-1 ring-surface-200 dark:text-surface-300 dark:ring-surface-700">
-                                  {latestDoc ? (
-                                    <>
-                                      <span>{t("documents.currentDocumentWords")} </span>
-                                      <CountUp value={latestWordEstimate} formatValue={(value) => numberFormatter.format(Math.round(value))} />
-                                      <span> {t("documents.wordsUnit")}</span>
-                                    </>
-                                  ) : (
-                                    <span>{t("documents.noLatestDoc")}</span>
-                                  )}
-                                </div>
                               </div>
-                              <h2 className="mt-4 line-clamp-1 text-xl font-semibold leading-tight text-surface-950 dark:text-surface-50">
+                              <h2 className="mt-4 break-words text-xl font-semibold leading-snug text-surface-950 dark:text-surface-50">
                                 {latestDoc?.title || t("documents.noLatestDoc")}
                               </h2>
                               <p className="mt-2 line-clamp-3 max-w-[620px] text-sm leading-6 text-surface-600 dark:text-surface-300">
                                 {latestText || t("documents.noDraftHint")}
                               </p>
-                              <div className="mt-6 grid grid-cols-2 gap-2">
+                              <DocumentLifeline
+                                label={t("workbench.lifeline.label")}
+                                stage={documentLifelineProfile.stage}
+                                title={t(documentLifelineProfile.titleKey)}
+                                description={t(documentLifelineProfile.descKey)}
+                                progress={documentLifelineProfile.progress}
+                                steps={lifelineSteps}
+                                tags={lifelineTags}
+                                className="mt-4"
+                              />
+                              <div className="mt-4 grid grid-cols-2 gap-2">
                                 {focusDetails.map((item) => (
                                   <div
                                     key={item.label}
@@ -771,9 +934,9 @@ export function DocumentCenterPage({
                                   >
                                     <div className="flex items-center gap-1.5 text-[11px] font-medium text-surface-500 dark:text-surface-400">
                                       <item.icon className="h-3.5 w-3.5 shrink-0" />
-                                      <span className="min-w-0 truncate">{item.label}</span>
+                                      <span className="min-w-0">{item.label}</span>
                                     </div>
-                                    <div className="mt-2 truncate text-sm font-semibold text-surface-950 dark:text-surface-50">
+                                    <div className="mt-2 break-words text-sm font-semibold text-surface-950 dark:text-surface-50">
                                       {item.value}
                                     </div>
                                   </div>
@@ -802,7 +965,7 @@ export function DocumentCenterPage({
                           </div>
                         </div>
 
-                        <div className="relative overflow-hidden rounded-2xl border border-surface-200 bg-white/75 p-4 shadow-sm dark:border-surface-800 dark:bg-surface-950/35">
+                        <div className="relative flex h-full flex-col overflow-hidden rounded-2xl border border-surface-200 bg-white/75 p-4 shadow-sm dark:border-surface-800 dark:bg-surface-950/35">
                           <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-brand-300/70 to-transparent dark:via-brand-400/45" />
                           <div className="flex items-center justify-between gap-3">
                             <h2 className="text-sm font-semibold text-surface-950 dark:text-surface-50">
@@ -812,26 +975,70 @@ export function DocumentCenterPage({
                               {t("documents.signalReady")}
                             </span>
                           </div>
-                          <div className="mt-4 grid gap-2">
+                          <div className="mt-4 rounded-xl border border-brand-200/70 bg-brand-50/70 p-3 dark:border-brand-500/20 dark:bg-brand-500/10">
+                            <div className="flex items-start gap-2.5">
+                              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-brand-700 shadow-sm ring-1 ring-brand-200/70 dark:bg-surface-950/45 dark:text-brand-300 dark:ring-brand-500/20">
+                                <Sparkles className="h-4 w-4" />
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-[11px] font-semibold text-surface-500 dark:text-surface-400">
+                                  {t("workbench.weather.label")}
+                                </p>
+                                <h3 className="mt-0.5 break-words text-sm font-semibold leading-snug text-surface-950 dark:text-surface-50">
+                                  {t(creationWeatherProfile.titleKey)}
+                                </h3>
+                                <p className="mt-1 text-xs leading-5 text-surface-500 dark:text-surface-400">
+                                  {t(creationWeatherProfile.descKey)}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-surface-100 dark:bg-surface-900">
+                              <div
+                                className="h-full rounded-full bg-brand-400 dark:bg-brand-300"
+                                style={{ width: `${clampedWeatherIntensity}%` }}
+                              />
+                            </div>
+                          </div>
+                          <div className="mt-3 grid grid-cols-2 gap-2">
                             {creativeSignals.map((signal) => (
                               <div
                                 key={signal.label}
-                                className="group rounded-xl border border-surface-200 bg-surface-50/70 px-3 py-3 transition-all hover:-translate-y-0.5 hover:bg-white dark:border-surface-800 dark:bg-surface-900/45 dark:hover:bg-surface-900"
+                                className="min-w-0 rounded-xl border border-surface-200 bg-surface-50/75 p-3 dark:border-surface-800 dark:bg-surface-900/45"
                               >
-                                <div className="flex items-center justify-between gap-3">
-                                  <span className="text-[11px] font-medium text-surface-500 dark:text-surface-400">{signal.label}</span>
-                                  <signal.icon className="h-3.5 w-3.5 text-brand-500" />
+                                <div className="flex items-start justify-between gap-2">
+                                  <span className="min-w-0 text-[11px] font-medium leading-4 text-surface-500 dark:text-surface-400">{signal.label}</span>
+                                  <signal.icon className="h-3.5 w-3.5 shrink-0 text-brand-500" />
                                 </div>
-                                <div className="mt-1 flex items-baseline gap-1.5">
+                                <div className="mt-2 flex items-baseline gap-1.5">
                                   <CountUp
                                     value={signal.value}
                                     formatValue={(value) => numberFormatter.format(Math.round(value))}
-                                    className="text-2xl font-semibold text-surface-950 dark:text-surface-50"
+                                    className="text-xl font-semibold tabular-nums text-surface-950 dark:text-surface-50"
                                   />
-                                  <span className="text-xs font-medium text-surface-400">{signal.unit}</span>
+                                  <span className="text-[11px] font-medium text-surface-400">{signal.unit}</span>
                                 </div>
                               </div>
                             ))}
+                          </div>
+                          <div className="mt-3 rounded-xl border border-surface-200 bg-white/70 p-3 dark:border-surface-800 dark:bg-surface-900/45">
+                            <div className="flex items-center justify-between gap-3">
+                              <span className="text-[11px] font-medium text-surface-500 dark:text-surface-400">
+                                {t("documents.contextTodayProgress")}
+                              </span>
+                              <span className="text-sm font-semibold tabular-nums text-surface-950 dark:text-surface-50">
+                                <CountUp value={todayCreativeWords} formatValue={(value) => numberFormatter.format(Math.round(value))} /> {t("documents.wordsUnit")}
+                              </span>
+                            </div>
+                            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface-100 dark:bg-surface-800">
+                              <div
+                                className="h-full rounded-full bg-brand-400 dark:bg-brand-300"
+                                style={{ width: `${todayShareOfWeek}%` }}
+                              />
+                            </div>
+                            <div className="mt-2 flex items-center justify-between gap-3 text-[10px] font-medium text-surface-400">
+                              <span>{t("workbench.weather.weeklyTotal")}</span>
+                              <span>{numberFormatter.format(weeklyCreativeWords)} {t("documents.wordsUnit")}</span>
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -914,25 +1121,6 @@ export function DocumentCenterPage({
                             </div>
                           ))}
                         </div>
-                        <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            className="h-10 min-w-0 justify-center gap-1.5 bg-white/70 px-3 dark:bg-surface-950/35"
-                            onClick={() => latestDoc ? onOpenDoc?.(latestDoc.id) : handleNewDocument("general")}
-                          >
-                            <FileText className="h-4 w-4 shrink-0" />
-                            <span className="min-w-0 truncate whitespace-nowrap">{latestDoc ? t("documents.openLatest") : t("documents.createFirstDraft")}</span>
-                          </Button>
-                          <Button
-                            type="button"
-                            className="h-10 min-w-0 justify-center gap-1.5 px-3"
-                            onClick={onOpenAgentWrite}
-                          >
-                            <Sparkles className="h-4 w-4 shrink-0" />
-                            <span className="min-w-0 truncate whitespace-nowrap">{t("documents.aiAssistNow")}</span>
-                          </Button>
-                        </div>
                       </div>
                     </div>
 
@@ -990,10 +1178,10 @@ export function DocumentCenterPage({
 
                   <div className="mt-8 grid grid-cols-4 gap-3">
                     {[
-                      { icon: FileStack, label: t("documents.totalDocs"), value: numberFormatter.format(documents.length) },
-                      { icon: Star, label: t("documents.favoriteDocs"), value: numberFormatter.format(favorites.length) },
-                      { icon: FolderOpen, label: t("documents.groupCount"), value: numberFormatter.format(groups.length) },
-                      { icon: BarChart3, label: t("documents.weeklyWords"), value: numberFormatter.format(weeklyTotal) },
+                      { icon: FileStack, label: t("documents.totalDocs"), value: documents.length },
+                      { icon: Star, label: t("documents.favoriteDocs"), value: favorites.length },
+                      { icon: FolderOpen, label: t("documents.groupCount"), value: groups.length },
+                      { icon: BarChart3, label: t("documents.weeklyWords"), value: weeklyTotal },
                     ].map((metric) => (
                       <div
                         key={metric.label}
@@ -1004,7 +1192,7 @@ export function DocumentCenterPage({
                           <metric.icon className="h-4 w-4 text-brand-500" />
                         </div>
                         <div className="mt-3 text-2xl font-semibold tracking-normal text-surface-950 dark:text-surface-50">
-                          {metric.value}
+                          <CountUp value={metric.value} formatValue={(v) => numberFormatter.format(Math.round(v))} />
                         </div>
                       </div>
                     ))}
@@ -1051,7 +1239,7 @@ export function DocumentCenterPage({
                           <div>
                             <div className="text-sm font-semibold text-surface-950 dark:text-surface-50">{flow.title}</div>
                             <div className="mt-0.5 text-[11px] text-surface-400">
-                              {t("documents.flowTotal")} · {numberFormatter.format(flow.total)} {t("documents.wordsUnit")}
+                              {t("documents.flowTotal")} · <CountUp value={flow.total} formatValue={(v) => numberFormatter.format(Math.round(v))} /> {t("documents.wordsUnit")}
                             </div>
                           </div>
                         </div>
@@ -1062,19 +1250,22 @@ export function DocumentCenterPage({
                           </div>
                         </div>
                       </div>
-                      <WriterFlowChart dayIndices={chartData.dayIndices} words={flow.words} tone={flow.tone} label={flow.label} />
+                      <WriterFlowChart dayIndices={chartData.dayIndices} words={flow.words} height={154} tone={flow.tone} label={flow.label} />
                       <div className="mt-3 grid grid-cols-3 gap-2">
                         {[
-                          { label: t("documents.activeDays"), value: `${numberFormatter.format(flow.stats.activeDays)} ${t("documents.daysUnit")}` },
-                          { label: t("documents.averageWords"), value: numberFormatter.format(flow.stats.averageWords) },
-                          { label: t("documents.peakWords"), value: numberFormatter.format(flow.stats.peakWords) },
+                          { label: t("documents.activeDays"), value: flow.stats.activeDays, suffix: ` ${t("documents.daysUnit")}` },
+                          { label: t("documents.averageWords"), value: flow.stats.averageWords, suffix: "" },
+                          { label: t("documents.peakWords"), value: flow.stats.peakWords, suffix: "" },
                         ].map((item) => (
                           <div
                             key={item.label}
                             className="rounded-xl border border-surface-200 bg-white px-3 py-3 dark:border-surface-800 dark:bg-surface-900"
                           >
                             <div className="whitespace-nowrap text-[11px] font-medium text-surface-500 dark:text-surface-400">{item.label}</div>
-                            <div className="mt-1 whitespace-nowrap text-lg font-semibold tabular-nums text-surface-950 dark:text-surface-50">{item.value}</div>
+                            <div className="mt-1 whitespace-nowrap text-lg font-semibold tabular-nums text-surface-950 dark:text-surface-50">
+                              <CountUp value={item.value} formatValue={(v) => numberFormatter.format(Math.round(v))} />
+                              {item.suffix}
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -1082,7 +1273,7 @@ export function DocumentCenterPage({
                         <div className="flex items-center justify-between gap-3">
                           <span className="text-xs font-semibold text-surface-700 dark:text-surface-200">{t("documents.weeklyTrack")}</span>
                           <span className="text-[11px] text-surface-400">
-                            {numberFormatter.format(flow.total)} {t("documents.wordsUnit")}
+                            <CountUp value={flow.total} formatValue={(v) => numberFormatter.format(Math.round(v))} /> {t("documents.wordsUnit")}
                           </span>
                         </div>
                         <div className="mt-3 grid grid-cols-7 gap-1.5">
@@ -1113,7 +1304,7 @@ export function DocumentCenterPage({
                                   />
                                 </div>
                                 <div className="mt-1.5 truncate text-[11px] font-semibold tabular-nums text-surface-800 dark:text-surface-100">
-                                  {numberFormatter.format(dayWords)}
+                                  <CountUp value={dayWords} formatValue={(v) => numberFormatter.format(Math.round(v))} />
                                 </div>
                               </div>
                             );
@@ -1123,11 +1314,13 @@ export function DocumentCenterPage({
                           {[
                             {
                               label: t("documents.quietDays"),
-                              value: `${numberFormatter.format(Math.max(chartData.dayIndices.length - flow.stats.activeDays, 0))} ${t("documents.daysUnit")}`,
+                              value: Math.max(chartData.dayIndices.length - flow.stats.activeDays, 0),
+                              suffix: ` ${t("documents.daysUnit")}`,
                             },
                             {
                               label: t("documents.activeShare"),
-                              value: `${numberFormatter.format(Math.round((flow.stats.activeDays / Math.max(chartData.dayIndices.length, 1)) * 100))}%`,
+                              value: Math.round((flow.stats.activeDays / Math.max(chartData.dayIndices.length, 1)) * 100),
+                              suffix: "%",
                             },
                           ].map((item) => (
                             <div
@@ -1135,7 +1328,10 @@ export function DocumentCenterPage({
                               className="rounded-lg border border-surface-200 bg-surface-50 px-3 py-2 dark:border-surface-800 dark:bg-surface-950/45"
                             >
                               <div className="text-[11px] font-medium text-surface-500 dark:text-surface-400">{item.label}</div>
-                              <div className="mt-1 text-base font-semibold tabular-nums text-surface-950 dark:text-surface-50">{item.value}</div>
+                              <div className="mt-1 text-base font-semibold tabular-nums text-surface-950 dark:text-surface-50">
+                                <CountUp value={item.value} formatValue={(v) => numberFormatter.format(Math.round(v))} />
+                                {item.suffix}
+                              </div>
                             </div>
                           ))}
                         </div>
@@ -1144,7 +1340,7 @@ export function DocumentCenterPage({
                   ))}
                 </div>
               ) : (
-                <div className="flex h-[336px] items-center justify-center rounded-xl border border-dashed border-surface-200 text-xs text-surface-400 dark:border-surface-800">
+                <div className="flex min-h-[336px] flex-1 items-center justify-center rounded-xl border border-dashed border-surface-200 text-xs text-surface-400 dark:border-surface-800">
                   {t("documents.noActivity")}
                 </div>
               )}
@@ -1295,7 +1491,7 @@ export function DocumentCenterPage({
               <SlidersHorizontal className="h-3.5 w-3.5" />
               <span>{t("documents.visibleDocs")}</span>
               <span className="rounded-full bg-surface-100 px-2 py-1 text-surface-800 dark:bg-surface-800 dark:text-surface-100">
-                {numberFormatter.format(visibleDocsCount)}
+                <CountUp value={visibleDocsCount} formatValue={(v) => numberFormatter.format(Math.round(v))} />
               </span>
             </div>
           </div>
@@ -1309,7 +1505,7 @@ export function DocumentCenterPage({
                 <span>{t("documents.favoritesSection")}</span>
               </h2>
               <span className="text-xs font-medium text-surface-400">
-                {numberFormatter.format(favDocs.length)} {t("documents.items")}
+                <CountUp value={favDocs.length} formatValue={(v) => numberFormatter.format(Math.round(v))} /> {t("documents.items")}
               </span>
             </div>
             <div className={gridClass}>
@@ -1340,7 +1536,7 @@ export function DocumentCenterPage({
               <span>{!isWorkbench && activeGroupId ? t("documents.folderDocs") : t("documents.librarySection")}</span>
             </h2>
             <span className="text-xs font-medium text-surface-400">
-              {numberFormatter.format(mainDocs.length)} {t("documents.items")}
+              <CountUp value={mainDocs.length} formatValue={(v) => numberFormatter.format(Math.round(v))} /> {t("documents.items")}
             </span>
           </div>
 

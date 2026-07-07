@@ -7,6 +7,8 @@ import {
   DEFAULT_EMBEDDING_BASE_URL,
   DEFAULT_EMBEDDING_MODEL,
 } from "../lib/embedding";
+import { DEFAULT_FONT_FAMILY_KEY, normalizeFontFamilyKey } from "../lib/fontPreferences";
+import { t } from "../lib/i18n";
 
 const UPLOADS_DIR = path.join(__dirname, "../../uploads");
 
@@ -18,6 +20,7 @@ export async function getProfile(userId: string) {
       name: true,
       email: true,
       avatar: true,
+      fontFamilyKey: true,
       createdAt: true,
       _count: { select: { documents: true } },
     },
@@ -25,10 +28,20 @@ export async function getProfile(userId: string) {
 }
 
 export async function updateProfile(userId: string, data: {
-  name?: string; lang?: string; password?: string; newPassword?: string;
-}): Promise<{ error: string; status: number } | { user: NonNullable<Awaited<ReturnType<typeof getProfile>>> }> {
+  name?: string; lang?: string; password?: string; newPassword?: string; fontFamilyKey?: string;
+}, responseLang = "zh"): Promise<{ error: string; status: number } | { user: NonNullable<Awaited<ReturnType<typeof getProfile>>> }> {
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user) return { error: "用户不存在", status: 404 };
+
+  const nextFontFamilyKey = data.fontFamilyKey === undefined
+    ? undefined
+    : normalizeFontFamilyKey(data.fontFamilyKey);
+  if (data.fontFamilyKey !== undefined && !nextFontFamilyKey) {
+    return {
+      error: t(responseLang, "字体设置无效", "Invalid font setting"),
+      status: 400,
+    };
+  }
 
   if (data.newPassword) {
     if (!data.password) return { error: "请输入当前密码", status: 400 };
@@ -42,12 +55,26 @@ export async function updateProfile(userId: string, data: {
     data: {
       ...(data.name !== undefined && { name: data.name }),
       ...(data.lang !== undefined && { lang: data.lang }),
+      ...(nextFontFamilyKey !== undefined && { fontFamilyKey: nextFontFamilyKey }),
       ...(data.newPassword && { password: await bcrypt.hash(data.newPassword, 10) }),
     },
-    select: { id: true, name: true, email: true, avatar: true, createdAt: true },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      avatar: true,
+      fontFamilyKey: true,
+      createdAt: true,
+      _count: { select: { documents: true } },
+    },
   });
 
-  return { user: updated };
+  return {
+    user: {
+      ...updated,
+      fontFamilyKey: updated.fontFamilyKey || DEFAULT_FONT_FAMILY_KEY,
+    },
+  };
 }
 
 export async function uploadAvatar(userId: string, image: string): Promise<

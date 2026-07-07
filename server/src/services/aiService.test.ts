@@ -11,4 +11,12 @@ describe("ai assistant branding", () => {
     assert.doesNotMatch(prompt, /ZNWriter AI/);
     assert.doesNotMatch(prompt, /小麦|XiaoMai/);
   });
+
+  it("includes current date and time context", () => {
+    const prompt = buildSystemPrompt("normal", "");
+
+    assert.match(prompt, /Current date and time:/);
+    assert.match(prompt, /ISO 8601:/);
+    assert.match(prompt, /Day of week:/);
+  });
 });

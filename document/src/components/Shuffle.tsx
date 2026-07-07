@@ -26,7 +26,7 @@ interface ShuffleProps {
 
 gsap.registerPlugin(GSAPSplitText);
 
-const defaultCharset = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+const defaultCharset = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
 
 function randomFrom(charset: string) {
   return charset.charAt(Math.floor(Math.random() * charset.length)) || "";
@@ -38,10 +38,10 @@ export default function Shuffle({
   style,
   shuffleDirection = "right",
   duration = 0.35,
-  maxDelay = 0,
+  maxDelay = 0.25,
   ease = "power3.out",
   shuffleTimes = 1,
-  animationMode = "evenodd",
+  animationMode = "random",
   loop = false,
   loopDelay = 0,
   stagger = 0.03,
@@ -222,28 +222,50 @@ export default function Shuffle({
       });
 
       const addTween = (targets: HTMLElement[], at: number) => {
-        timeline.to(
-          targets,
-          {
-            duration,
-            ease,
-            force3D: true,
-            stagger: animationMode === "evenodd" ? stagger : 0,
-            x: (_index, target) => Number(target.getAttribute("data-final-x") || 0),
-            y: (_index, target) => Number(target.getAttribute("data-final-y") || 0),
-          },
-          at
-        );
+        targets.forEach((strip, i) => {
+          const jitter =
+            animationMode === "evenodd"
+              ? (Math.random() - 0.5) * stagger * 0.6
+              : 0;
+          const charDelay =
+            at +
+            (animationMode === "evenodd" ? i * stagger : 0) +
+            jitter +
+            (animationMode === "random" ? Math.random() * maxDelay : 0);
+          const charDuration = duration * (0.5 + Math.random() * 1.0);
+
+          timeline.to(
+            strip,
+            {
+              duration: charDuration,
+              ease,
+              force3D: true,
+              x: Number(strip.getAttribute("data-final-x") || 0),
+              y: Number(strip.getAttribute("data-final-y") || 0),
+              onUpdate() {
+                const now = performance.now();
+                const last = Number(strip.getAttribute("data-scramble-ts") || 0);
+                if (now - last < 80) return;
+                strip.setAttribute("data-scramble-ts", String(now));
+                const children = Array.from(strip.children);
+                for (let k = 1; k < children.length - 1; k++) {
+                  (children[k] as HTMLElement).textContent =
+                    randomFrom(scrambleCharset);
+                }
+              },
+            },
+            charDelay
+          );
+        });
       };
 
       if (animationMode === "evenodd") {
         const odd = strips.filter((_, index) => index % 2 === 1);
         const even = strips.filter((_, index) => index % 2 === 0);
-        const oddTotal = duration + Math.max(0, odd.length - 1) * stagger;
         if (odd.length) addTween(odd, 0);
-        if (even.length) addTween(even, odd.length ? oddTotal * 0.7 : 0);
+        if (even.length) addTween(even, (duration + Math.max(0, odd.length - 1) * stagger) * 0.55);
       } else {
-        strips.forEach((strip) => addTween([strip], Math.random() * maxDelay));
+        addTween(strips, 0);
       }
 
       timelineRef.current = timeline;

@@ -1,10 +1,19 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Mail, Lock, KeyRound, Loader2, ArrowLeft, CheckCircle } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import { Mail, Lock, KeyRound, Loader2, CheckCircle } from "lucide-react";
 import { api } from "@/api";
 import { useI18n } from "@/components/I18nProvider";
+import { useTheme } from "@/components/ThemeProvider";
 import { useToast } from "@/components/Toast";
+import { cn } from "@/lib/utils";
 
 interface ForgotPasswordModalProps {
   open: boolean;
@@ -15,49 +24,63 @@ interface ForgotPasswordModalProps {
 export function ForgotPasswordModal({ open, onOpenChange, defaultEmail = "" }: ForgotPasswordModalProps) {
   const { t } = useI18n();
   const { toast } = useToast();
+  const { theme } = useTheme();
+  const isLight = theme === "light";
 
-  const [step, setStep] = useState<"email" | "reset" | "done">("email");
+  const [phase, setPhase] = useState<"check" | "reset" | "done">("check");
   const [email, setEmail] = useState(defaultEmail);
   const [code, setCode] = useState("");
   const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [emailError, setEmailError] = useState("");
   const [returnedCode, setReturnedCode] = useState("");
 
-  if (!open) return null;
-
-  const reset = () => {
-    setStep("email");
+  const resetState = () => {
+    setPhase("check");
     setEmail(defaultEmail);
     setCode("");
     setNewPassword("");
+    setConfirmPassword("");
+    setEmailError("");
     setReturnedCode("");
   };
 
-  const handleClose = () => {
-    onOpenChange(false);
-    setTimeout(reset, 200);
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (!nextOpen) {
+      onOpenChange(false);
+      setTimeout(resetState, 200);
+    } else {
+      onOpenChange(true);
+      resetState();
+    }
   };
 
-  const handleSendCode = async () => {
-    if (!email) {
-      toast(t("forgot.emailPlaceholder"), "error");
+  const handleCheckEmail = async () => {
+    if (!email.trim()) {
+      setEmailError("请输入邮箱地址");
       return;
     }
     setLoading(true);
+    setEmailError("");
     try {
-      const res = await api.forgotPassword({ email });
+      const { exists } = await api.checkEmail(email.trim());
+      if (!exists) {
+        setEmailError(t("forgot.emailNotFound"));
+        return;
+      }
+      const res = await api.forgotPassword({ email: email.trim() });
       setReturnedCode(res.code);
-      toast(t("toast.exportSuccess"), "success");
-      setStep("reset");
+      setPhase("reset");
     } catch (error: any) {
-      toast(error.message || t("toast.saveFailed"), "error");
+      setEmailError(error.message || t("toast.saveFailed"));
     } finally {
       setLoading(false);
     }
   };
 
   const handleResetPassword = async () => {
-    if (!code) {
+    if (!code || code.length < 6) {
       toast(t("forgot.codePlaceholder"), "error");
       return;
     }
@@ -65,11 +88,19 @@ export function ForgotPasswordModal({ open, onOpenChange, defaultEmail = "" }: F
       toast(t("forgot.newPasswordPlaceholder"), "error");
       return;
     }
+    if (newPassword !== confirmPassword) {
+      toast(t("forgot.passwordMismatch"), "error");
+      return;
+    }
     setLoading(true);
     try {
-      await api.resetPassword({ email, code, newPassword });
+      await api.resetPassword({ email: email.trim(), code, newPassword });
       toast(t("forgot.successMessage"), "success");
-      setStep("done");
+      setPhase("done");
+      setTimeout(() => {
+        onOpenChange(false);
+        setTimeout(resetState, 200);
+      }, 2000);
     } catch (error: any) {
       toast(error.message || t("toast.saveFailed"), "error");
     } finally {
@@ -77,116 +108,172 @@ export function ForgotPasswordModal({ open, onOpenChange, defaultEmail = "" }: F
     }
   };
 
+  // Input styling — matches LoginPage's uiverse-auth-field pattern
+  const fieldClass = cn(
+    "uiverse-auth-input peer relative z-[1] h-[58px] rounded-[1rem] border-0 bg-transparent px-12 pb-2.5 pt-6 text-[0.94rem] font-medium shadow-none outline-none transition-colors focus-visible:ring-0",
+    isLight
+      ? "text-surface-950 caret-[#17435f] placeholder:text-transparent"
+      : "text-white caret-amber-200 placeholder:text-transparent"
+  );
+  const iconClass = cn(
+    "pointer-events-none absolute left-4 top-1/2 z-10 h-4 w-4 -translate-y-1/2 transition-all duration-300 group-focus-within:-translate-y-[1.05rem] group-focus-within:scale-90",
+    isLight
+      ? "text-surface-500 group-focus-within:text-[#17435f]"
+      : "text-slate-300/60 group-focus-within:text-amber-200"
+  );
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/50" onClick={handleClose} />
-      <div className="relative z-10 w-full max-w-[400px] rounded-2xl border border-surface-200 bg-white p-6 shadow-2xl dark:border-surface-700 dark:bg-surface-900">
-        {step === "done" ? (
-          <>
-            <div className="flex flex-col items-center text-center py-4">
-              <CheckCircle className="h-12 w-12 text-green-500 mb-4" />
-              <h3 className="text-lg font-semibold text-surface-900 dark:text-surface-100 mb-2">
-                {t("forgot.successTitle")}
-              </h3>
-              <p className="text-sm text-surface-500 mb-6">
-                {t("forgot.successMessage")}
-              </p>
-              <Button onClick={handleClose} className="w-full">
-                {t("forgot.backToLogin")}
-              </Button>
-            </div>
-          </>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
+      <DialogContent
+        className="w-full max-w-[400px] p-0 gap-0 overflow-hidden"
+        hideCloseButton={phase === "done"}
+      >
+        {phase === "done" ? (
+          /* ===== SUCCESS STATE ===== */
+          <div className="flex flex-col items-center text-center px-6 py-8">
+            <CheckCircle className="h-12 w-12 text-green-500 mb-4" />
+            <DialogHeader className="items-center mb-2">
+              <DialogTitle>{t("forgot.successTitle")}</DialogTitle>
+              <DialogDescription>{t("forgot.successMessage")}</DialogDescription>
+            </DialogHeader>
+            <p className="text-xs text-surface-400 mt-2">{t("forgot.autoCloseHint")}</p>
+          </div>
         ) : (
+          /* ===== CHECK + RESET STATES ===== */
           <>
-            <div className="flex items-center gap-3 mb-6">
-              {step === "reset" && (
-                <button
-                  onClick={() => setStep("email")}
-                  className="text-surface-400 hover:text-surface-600 cursor-pointer"
-                >
-                  <ArrowLeft className="h-5 w-5" />
-                </button>
-              )}
-              <div>
-                <h3 className="text-lg font-semibold text-surface-900 dark:text-surface-100">
-                  {step === "email" ? t("forgot.title") : t("forgot.resetPassword")}
-                </h3>
-                <p className="text-xs text-surface-500 mt-0.5">
-                  {step === "email" ? t("forgot.subtitle") : t("forgot.resetSubtitle")}
-                </p>
-              </div>
+            <div className="px-6 pt-6 pb-2">
+              <DialogHeader>
+                <DialogTitle>{t("forgot.title")}</DialogTitle>
+                <DialogDescription>
+                  {phase === "check" ? t("forgot.subtitle") : t("forgot.resetSubtitle")}
+                </DialogDescription>
+              </DialogHeader>
             </div>
 
-            {step === "email" ? (
-              <form onSubmit={(e) => { e.preventDefault(); handleSendCode(); }}>
-                <div className="relative mb-5">
-                  <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-surface-400" />
+            <div className="px-6 pb-6">
+              {/* ===== EMAIL FIELD (always visible) ===== */}
+              <div className={cn("uiverse-auth-form", isLight && "uiverse-auth-form-light")}>
+                <div className="uiverse-auth-field group">
+                  <Mail className={iconClass} />
                   <Input
                     type="email"
-                    placeholder={t("forgot.emailPlaceholder")}
-                    className="pl-10 h-10 text-sm"
+                    placeholder=" "
+                    aria-label={t("login.email")}
+                    className={fieldClass}
                     value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    onChange={(e) => {
+                      setEmail(e.target.value);
+                      setEmailError("");
+                    }}
+                    disabled={phase === "reset"}
                     required
                     autoFocus
                   />
+                  <span className="uiverse-auth-label">{t("login.email")}</span>
                 </div>
-                <Button type="submit" className="w-full h-10" disabled={loading}>
-                  {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : t("forgot.sendCode")}
+              </div>
+
+              {/* Inline email error */}
+              {emailError && (
+                <p className="text-xs text-red-500 mt-1.5 ml-1">{emailError}</p>
+              )}
+
+              {/* ===== CHECK PHASE: "下一步" button ===== */}
+              {phase === "check" && (
+                <Button
+                  type="button"
+                  className="w-full h-12 mt-4"
+                  onClick={handleCheckEmail}
+                  disabled={loading}
+                >
+                  {loading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    t("forgot.checkEmailBtn")
+                  )}
                 </Button>
-              </form>
-            ) : (
-              <form onSubmit={(e) => { e.preventDefault(); handleResetPassword(); }}>
-                {returnedCode && (
-                  <div className="mb-4 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:bg-amber-950 dark:text-amber-300">
-                    {t("forgot.codePlaceholder").replace("请输入6位验证码", "验证码")}:{" "}
-                    <span className="font-mono font-bold text-sm">{returnedCode}</span>
-                    <span className="block mt-0.5 opacity-70">({t("forgot.devNotice")})</span>
+              )}
+
+              {/* ===== RESET PHASE: expanding password form ===== */}
+              {phase === "reset" && (
+                <div className="mt-4 space-y-3 animate-[modalIn_0.35s_cubic-bezier(0.16,1,0.3,1)_forwards]">
+                  {/* Dev mode banner */}
+                  {returnedCode && (
+                    <div className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:bg-amber-950 dark:text-amber-300">
+                      {t("forgot.codePlaceholder").replace("请输入6位验证码", "验证码")}:{" "}
+                      <span className="font-mono font-bold text-sm">{returnedCode}</span>
+                      <span className="block mt-0.5 opacity-70">({t("forgot.devNotice")})</span>
+                    </div>
+                  )}
+
+                  {/* Code input */}
+                  <div className="uiverse-auth-field group">
+                    <KeyRound className={iconClass} />
+                    <Input
+                      type="text"
+                      placeholder=" "
+                      aria-label={t("forgot.codePlaceholder")}
+                      className={fieldClass}
+                      value={code}
+                      onChange={(e) =>
+                        setCode(e.target.value.replace(/\D/g, "").slice(0, 6))
+                      }
+                      maxLength={6}
+                      required
+                      autoFocus
+                    />
+                    <span className="uiverse-auth-label">{t("forgot.codePlaceholder")}</span>
                   </div>
-                )}
 
-                <div className="relative mb-3">
-                  <KeyRound className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-surface-400" />
-                  <Input
-                    type="text"
-                    placeholder={t("forgot.codePlaceholder")}
-                    className="pl-10 h-10 text-sm"
-                    value={code}
-                    onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                    maxLength={6}
-                    required
-                    autoFocus
-                  />
+                  {/* New password */}
+                  <div className="uiverse-auth-field group">
+                    <Lock className={iconClass} />
+                    <Input
+                      type="password"
+                      placeholder=" "
+                      aria-label={t("forgot.newPasswordPlaceholder")}
+                      className={fieldClass}
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      required
+                    />
+                    <span className="uiverse-auth-label">{t("forgot.newPasswordPlaceholder")}</span>
+                  </div>
+
+                  {/* Confirm password */}
+                  <div className="uiverse-auth-field group">
+                    <Lock className={iconClass} />
+                    <Input
+                      type="password"
+                      placeholder=" "
+                      aria-label={t("forgot.confirmPasswordPlaceholder")}
+                      className={fieldClass}
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      required
+                    />
+                    <span className="uiverse-auth-label">{t("forgot.confirmPasswordPlaceholder")}</span>
+                  </div>
+
+                  {/* Reset button */}
+                  <Button
+                    type="button"
+                    className="w-full h-12 mt-2"
+                    onClick={handleResetPassword}
+                    disabled={loading}
+                  >
+                    {loading ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      t("forgot.resetBtn")
+                    )}
+                  </Button>
                 </div>
-
-                <div className="relative mb-5">
-                  <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-surface-400" />
-                  <Input
-                    type="password"
-                    placeholder={t("forgot.newPasswordPlaceholder")}
-                    className="pl-10 h-10 text-sm"
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    required
-                  />
-                </div>
-
-                <Button type="submit" className="w-full h-10" disabled={loading}>
-                  {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : t("forgot.resetBtn")}
-                </Button>
-              </form>
-            )}
-
-            <button
-              type="button"
-              onClick={handleClose}
-              className="mt-3 w-full text-center text-xs text-surface-400 hover:text-surface-600 cursor-pointer"
-            >
-              {t("forgot.backToLogin")}
-            </button>
+              )}
+            </div>
           </>
         )}
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

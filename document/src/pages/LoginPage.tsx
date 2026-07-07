@@ -1,4 +1,4 @@
-import { useState, type CSSProperties } from "react";
+import { useState, useMemo, type CSSProperties } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ForgotPasswordModal } from "@/components/ForgotPasswordModal";
@@ -13,11 +13,12 @@ import { useI18n } from "@/components/I18nProvider";
 import { useTheme } from "@/components/ThemeProvider";
 import { useToast } from "@/components/Toast";
 import { api, setToken } from "@/api";
+import type { UserInfo } from "@/auth";
 
 type Mode = "login" | "register";
 
 interface LoginPageProps {
-  onLogin?: (user: { id: string; name: string; email: string; avatar: string | null }) => void;
+  onLogin?: (user: UserInfo) => void;
 }
 
 export function LoginPage({ onLogin }: LoginPageProps) {
@@ -42,11 +43,19 @@ export function LoginPage({ onLogin }: LoginPageProps) {
   const subtleTextClass = isLight ? "text-surface-500" : "text-slate-300/62";
   const linkTextClass = isLight ? "text-surface-800 hover:text-surface-950" : "text-indigo-200 hover:text-white";
   const registering = mode === "register";
-  const heroTitle = registering ? t("login.registerHeroTitle") : t("login.heroTitle");
-  const heroSubtitle = registering ? t("login.registerHeroSubtitle") : t("login.heroSubtitle");
+  const heroTitles = useMemo(() => registering
+    ? [t("login.registerHeroTitle"), t("login.registerHeroTitle2"), t("login.registerHeroTitle3"), t("login.registerHeroTitle4"), t("login.registerHeroTitle5")]
+    : [t("login.heroTitle"), t("login.heroTitle2"), t("login.heroTitle3"), t("login.heroTitle4"), t("login.heroTitle5")],
+    [t, registering]
+  );
+  const heroSubtitles = useMemo(() => registering
+    ? [t("login.registerHeroSubtitle"), t("login.registerHeroSubtitle2"), t("login.registerHeroSubtitle3"), t("login.registerHeroSubtitle4"), t("login.registerHeroSubtitle5")]
+    : [t("login.heroSubtitle"), t("login.heroSubtitle2"), t("login.heroSubtitle3"), t("login.heroSubtitle4"), t("login.heroSubtitle5")],
+    [t, registering]
+  );
   const heroTitleTypingSpeed = lang === "zh" ? 54 : 24;
   const heroSubtitleTypingSpeed = lang === "zh" ? 18 : 11;
-  const heroSubtitleDelay = 420 + Math.min(1800, Array.from(heroTitle).length * heroTitleTypingSpeed);
+  const heroSubtitleDelay = 420 + Math.min(1800, Array.from(heroTitles[0]).length * heroTitleTypingSpeed);
   const titleCursorClass = cn(
     "text-[0.76em] font-light",
     isLight ? "text-[#b46c08]" : "text-amber-200"
@@ -334,34 +343,33 @@ export function LoginPage({ onLogin }: LoginPageProps) {
           <h1 className={cn("max-w-[760px] [font-family:var(--font-zn-display)] [font-weight:650] text-[clamp(2.85rem,4.35vw,4.85rem)] leading-[1.14] tracking-[0.022em]", registering ? "lg:ml-auto" : "", isLight ? "text-surface-950" : "text-white")}>
             <TextType
               key={`title-type-${mode}-${lang}`}
-              text={heroTitle}
+              text={heroTitles}
               typingSpeed={heroTitleTypingSpeed}
               initialDelay={220}
-              pauseDuration={2400}
+              pauseDuration={2200}
               deletingSpeed={18}
-              loop={false}
+              loop
               showCursor
-              hideCursorOnComplete
               cursorClassName={titleCursorClass}
               cursorBlinkDuration={0.58}
               className="block"
-              aria-label={heroTitle}
+              aria-label={heroTitles[0]}
             />
           </h1>
           <p className={cn("mt-8 max-w-[600px] [font-family:var(--font-zn-sans)] [font-weight:450] text-[clamp(1rem,1.28vw,1.18rem)] leading-[1.95] tracking-[0.055em]", registering ? "lg:ml-auto" : "", isLight ? "text-surface-600" : "text-slate-300/78")}>
             <TextType
               key={`subtitle-type-${mode}-${lang}`}
-              text={heroSubtitle}
+              text={heroSubtitles}
               typingSpeed={heroSubtitleTypingSpeed}
               initialDelay={heroSubtitleDelay}
-              pauseDuration={2600}
+              pauseDuration={2400}
               deletingSpeed={12}
-              loop={false}
+              loop
               showCursor
               cursorClassName={subtitleCursorClass}
               cursorBlinkDuration={0.7}
               className="block"
-              aria-label={heroSubtitle}
+              aria-label={heroSubtitles[0]}
             />
           </p>
         </section>
@@ -409,7 +417,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
               "absolute bottom-1 left-1 top-1 w-[calc(50%-6px)] rounded-md transition-transform duration-300 ease-out",
               isLight
                 ? "bg-[linear-gradient(135deg,#17435f,#b46c08)] shadow-[0_12px_28px_rgba(23,67,95,0.18)]"
-                : "bg-[linear-gradient(135deg,rgba(99,102,241,0.46),rgba(168,85,247,0.3))] shadow-[0_0_26px_rgba(129,140,248,0.18)]"
+                : "bg-[linear-gradient(135deg,rgba(200,164,87,0.55),rgba(185,149,78,0.38))] shadow-[0_0_26px_rgba(185,149,78,0.22)]"
             )}
             style={{ transform: mode === "register" ? "translateX(calc(100% + 4px))" : "translateX(0)" }}
           />

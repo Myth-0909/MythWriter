@@ -1,17 +1,26 @@
 import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
 import { Scrollbar } from "@/components/ui/scrollbar";
 import { useTheme } from "@/components/ThemeProvider";
+import { useFont } from "@/components/FontProvider";
 import { useI18n } from "@/components/I18nProvider";
 import { useToast } from "@/components/Toast";
 import { useAuth } from "@/auth";
 import { api } from "@/api";
 import { getServerAssetUrl } from "@/lib/apiBase";
-import { Sun, Moon, Monitor, Languages, User, Camera, Info, Loader2 } from "lucide-react";
+import { getFontOption, isFontFamilyKey } from "@/lib/fontCatalog";
+import { Check, Sparkles, Sun, Moon, Monitor, Languages, User, Camera, Info, Loader2 } from "lucide-react";
 
 export function SettingsPage() {
   const { theme, themeMode, setThemeMode } = useTheme();
+  const { fontFamilyKey, fontOptions, kitConfigured, kitStatus, setFontFamilyKey } = useFont();
   const { t, lang, toggleLang } = useI18n();
   const { toast } = useToast();
   const { user, updateUser } = useAuth();
@@ -19,6 +28,8 @@ export function SettingsPage() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [saving, setSaving] = useState(false);
+  const [savingFont, setSavingFont] = useState(false);
+  const [fontModalOpen, setFontModalOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -71,6 +82,25 @@ export function SettingsPage() {
     }
   };
 
+  const handleFontChange = async (value: string) => {
+    if (!isFontFamilyKey(value) || value === fontFamilyKey || savingFont) return;
+
+    const previous = fontFamilyKey;
+    setFontFamilyKey(value);
+    setSavingFont(true);
+    try {
+      const res = await api.updateProfile({ fontFamilyKey: value });
+      updateUser({ fontFamilyKey: res.user.fontFamilyKey });
+      setFontFamilyKey(res.user.fontFamilyKey);
+      toast(t("settings.fontSaved"), "success");
+    } catch (error: any) {
+      setFontFamilyKey(previous);
+      toast(error.message || t("settings.fontSaveFailed"), "error");
+    } finally {
+      setSavingFont(false);
+    }
+  };
+
   const initials = name
     .split(" ")
     .map((n) => n[0])
@@ -81,6 +111,13 @@ export function SettingsPage() {
   const avatarUrl = getServerAssetUrl(user?.avatar ? `/uploads/${user.avatar}` : null);
 
   const themeModeIndex = { system: 0, light: 1, dark: 2 }[themeMode];
+  const selectedFont = getFontOption(fontFamilyKey);
+
+  const fontSourceLabel = (source: "current" | "adobe" | "local") => {
+    if (source === "adobe") return t("settings.fontAdobe");
+    if (source === "local") return t("settings.fontLocal");
+    return t("settings.fontBuiltIn");
+  };
 
   return (
     <Scrollbar className="flex-1 bg-surface-50 dark:bg-surface-950">
@@ -228,6 +265,40 @@ export function SettingsPage() {
 
               <Separator />
 
+              <div className="flex items-center justify-between gap-6 py-2">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-surface-800 dark:text-surface-200">
+                    {t("settings.font")}
+                  </p>
+                  <p className="text-xs text-surface-500 mt-0.5">{t("settings.fontDesc")}</p>
+                </div>
+                <div className="flex w-[320px] shrink-0 items-center gap-3">
+                  <div
+                    className="min-w-0 flex-1 rounded-lg border border-surface-200 bg-surface-50 px-3 py-2 dark:border-surface-700 dark:bg-surface-800"
+                    style={{ fontFamily: selectedFont.cssFamily }}
+                  >
+                    <div className="truncate text-sm font-semibold text-surface-900 dark:text-surface-100">
+                      {t(selectedFont.labelKey)}
+                    </div>
+                    <div className="truncate text-[11px] text-surface-500">
+                      {t(selectedFont.previewKey)}
+                    </div>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setFontModalOpen(true)}
+                    className="h-10 shrink-0"
+                  >
+                    <Sparkles className="h-4 w-4" />
+                    {t("settings.fontChange")}
+                  </Button>
+                </div>
+              </div>
+
+              <Separator />
+
               <div className="flex items-center justify-between py-2">
                 <div>
                   <p className="text-sm font-medium text-surface-800 dark:text-surface-200">
@@ -268,6 +339,92 @@ export function SettingsPage() {
           </div>
         </div>
       </div>
+
+      <Dialog open={fontModalOpen} onOpenChange={setFontModalOpen}>
+        <DialogContent className="max-h-[86vh] max-w-[920px] overflow-hidden p-0">
+          <div className="border-b border-surface-200 px-6 py-5 dark:border-surface-800">
+            <div className="flex items-start justify-between gap-6 pr-8">
+              <div>
+                <DialogTitle className="text-xl">{t("settings.fontGalleryTitle")}</DialogTitle>
+                <DialogDescription className="mt-2 max-w-[560px] leading-6">
+                  {t("settings.fontGalleryDesc")}
+                </DialogDescription>
+              </div>
+              <div className="hidden rounded-lg border border-brand-200 bg-brand-50 px-3 py-2 text-right dark:border-brand-800 dark:bg-brand-950/40 sm:block">
+                <div className="text-[11px] font-semibold text-brand-700 dark:text-brand-300">
+                  {t("settings.fontCurrent")}
+                </div>
+                <div className="mt-1 max-w-[180px] truncate text-sm text-surface-900 dark:text-surface-100">
+                  {t(selectedFont.labelKey)}
+                </div>
+              </div>
+            </div>
+            <p className="mt-3 text-[12px] leading-5 text-surface-500">
+              {kitConfigured
+                ? kitStatus === "ready"
+                  ? t("settings.fontKitReady")
+                  : kitStatus === "error"
+                    ? t("settings.fontKitError")
+                    : t("settings.fontKitLoading")
+                : t("settings.fontKitMissing")}
+            </p>
+          </div>
+
+          <div className="max-h-[62vh] overflow-y-auto px-6 py-5">
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {fontOptions.map((option) => {
+                const active = option.key === fontFamilyKey;
+                const disabled = savingFont && !active;
+                return (
+                  <button
+                    key={option.key}
+                    type="button"
+                    disabled={disabled}
+                    onClick={() => handleFontChange(option.key)}
+                    className={`group min-h-[168px] rounded-xl border p-4 text-left transition-all duration-200 ${
+                      active
+                        ? "border-brand-400 bg-brand-50 shadow-sm dark:border-brand-500 dark:bg-brand-950/35"
+                        : "border-surface-200 bg-white hover:-translate-y-0.5 hover:border-brand-300 hover:shadow-md dark:border-surface-800 dark:bg-surface-900 dark:hover:border-brand-600"
+                    } ${disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer active:scale-[0.99]"}`}
+                  >
+                    <div className="mb-4 grid grid-cols-[minmax(0,1fr)_32px] items-start gap-3">
+                      <div className="flex min-w-0 flex-wrap gap-2">
+                        <span className="max-w-full truncate rounded-full bg-surface-100 px-2.5 py-1 text-[11px] font-semibold text-surface-500 dark:bg-surface-800 dark:text-surface-400">
+                          {fontSourceLabel(option.source)}
+                        </span>
+                        <span className="max-w-full truncate rounded-full bg-white px-2.5 py-1 text-[11px] font-semibold text-surface-500 shadow-sm dark:bg-surface-800 dark:text-surface-300">
+                          {t(option.moodKey)}
+                        </span>
+                      </div>
+                      <span
+                        className={`flex h-8 w-8 items-center justify-center rounded-full transition-all duration-200 ${
+                          active
+                            ? "bg-brand-500 text-white shadow-sm"
+                            : "border border-transparent text-transparent group-hover:border-surface-200 group-hover:text-surface-300 dark:group-hover:border-surface-700"
+                        }`}
+                        aria-hidden={!active}
+                      >
+                        {active && (savingFont ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />)}
+                      </span>
+                    </div>
+                    <div style={{ fontFamily: option.cssFamily }}>
+                      <div className="text-[28px] font-semibold leading-tight text-surface-950 dark:text-surface-50">
+                        {t("settings.font.preview.sample")}
+                      </div>
+                      <div className="mt-2 text-base leading-7 text-surface-700 dark:text-surface-300">
+                        {t(option.previewKey)}
+                      </div>
+                      <div className="mt-4 truncate text-sm font-semibold text-surface-900 dark:text-surface-100">
+                        {t(option.labelKey)}
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
     </Scrollbar>
   );

@@ -1,5 +1,6 @@
 import bcrypt from "bcryptjs";
 import prisma from "../lib/prisma";
+import { DEFAULT_FONT_FAMILY_KEY } from "../lib/fontPreferences";
 
 export async function registerUser(name: string, email: string, password: string): Promise<UserResult | ErrorResult> {
   const existing = await prisma.user.findUnique({ where: { email } });
@@ -18,11 +19,20 @@ export async function registerUser(name: string, email: string, password: string
       name: user.name,
       email: user.email,
       avatar: user.avatar,
+      fontFamilyKey: user.fontFamilyKey || DEFAULT_FONT_FAMILY_KEY,
     },
   };
 }
 
-type UserResult = { user: { id: string; name: string; email: string; avatar: string | null } };
+type UserResult = {
+  user: {
+    id: string;
+    name: string;
+    email: string;
+    avatar: string | null;
+    fontFamilyKey: string;
+  };
+};
 type ErrorResult = { error: string; code?: string; status: number };
 
 export async function loginUser(email: string, password: string): Promise<UserResult | ErrorResult> {
@@ -37,7 +47,13 @@ export async function loginUser(email: string, password: string): Promise<UserRe
   }
 
   return {
-    user: { id: user.id, name: user.name, email: user.email, avatar: user.avatar },
+    user: {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      avatar: user.avatar,
+      fontFamilyKey: user.fontFamilyKey || DEFAULT_FONT_FAMILY_KEY,
+    },
   };
 }
 
@@ -93,4 +109,9 @@ export async function verifyPassword(userId: string, password: string): Promise<
   });
   if (!user) return false;
   return bcrypt.compare(password, user.password);
+}
+
+export async function checkEmailExists(email: string): Promise<boolean> {
+  const user = await prisma.user.findUnique({ where: { email } });
+  return user !== null;
 }

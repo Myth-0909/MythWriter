@@ -16,7 +16,9 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { Scrollbar } from "@/components/ui/scrollbar";
+import { CountUp } from "@/components/CountUp";
 import { ConfirmModal } from "@/components/ConfirmModal";
+import { CreativeLoader } from "@/components/LoadingSpinner";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { TabGroup } from "@/components/ui/tab-group";
 import { Button } from "@/components/ui/button";
@@ -536,8 +538,7 @@ export function BrainMemoryPage() {
         {/* Cards Grid */}
         {loading ? (
           <div className="flex flex-col items-center justify-center py-48">
-            <Loader2 className="h-8 w-8 text-brand-500 animate-spin mb-4" />
-            <p className="text-xs text-surface-400">{t("brain.loadingData")}</p>
+            <CreativeLoader variant="ai" size="lg" label={t("brain.loadingData")} />
           </div>
         ) : filteredCards.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
@@ -785,7 +786,7 @@ export function BrainMemoryPage() {
           <div className="px-6 py-5">
             <div className="mb-3 flex items-center gap-2 text-xs text-surface-500 dark:text-surface-400">
               <span className="font-semibold text-surface-700 dark:text-surface-200">
-                {categories.length}
+                <CountUp value={categories.length} />
               </span>
               <span>{t("brain.categoryCount")}</span>
               <span className="h-1 w-1 rounded-full bg-surface-300 dark:bg-surface-700" />

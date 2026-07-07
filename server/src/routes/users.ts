@@ -19,6 +19,10 @@ import {
 
 const router = Router();
 
+function requestLang(req: AuthRequest) {
+  return String(req.headers["accept-language"] || "").toLowerCase().startsWith("en") ? "en" : "zh";
+}
+
 router.use(authMiddleware);
 
 // GET /api/users/me - Get current user profile
@@ -39,7 +43,7 @@ router.get("/me", async (req: AuthRequest, res: Response) => {
 // PUT /api/users/me - Update current user profile
 router.put("/me", async (req: AuthRequest, res: Response) => {
   try {
-    const result = await updateProfile(req.user!.userId, req.body);
+    const result = await updateProfile(req.user!.userId, req.body, requestLang(req));
     if ("error" in result) {
       res.status(result.status).json({ error: result.error });
       return;

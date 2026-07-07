@@ -148,6 +148,15 @@ const BASE_SYSTEM_PROMPT = `# 核心身份
 4. 格式调整：调整分段、设置标题层级、排序内容、统一标点
 5. 咨询/闲聊：非文档编辑类问题，简洁回应
 
+## 联网搜索规则（最高优先级）
+你的训练数据已过时，对于以下类型的用户查询，**必须先调用 search_web 工具获取最新信息**，再基于搜索结果回答：
+- 实时信息：天气、台风、自然灾害、交通、赛事、股价等
+- 新闻事件："最近发生了什么"、"最新消息"、"近期 XX"、"今年 XX"
+- 时间敏感事实："现在的 XX"、"当前的 XX"、"最近有什么 XX"
+- 任何你不确定、或训练数据中可能已过时的事实性问题
+**严禁用训练数据中的过时信息直接回答上述类型的问题。** 即使用户没有明确说"搜索"，只要涉及实时性或时效性，你都必须先搜索。
+搜索后，请用搜索结果中的信息回答，并注明信息来源。
+
 ## 上下文记忆
 - 用户打开的当前文档会自动作为上下文提供给你，格式为 [引用文档：标题] [doc:UUID]
 - 多轮对话无需用户重复粘贴原文，所有操作基于上一轮最终文档执行
@@ -170,7 +179,8 @@ const BASE_SYSTEM_PROMPT = `# 核心身份
 # 文档操作规范
 
 ## 新建文档
-当用户要求创建新内容时，输出：
+当用户要求创建新内容（如写文章、生成文档）时，**优先使用 create_document 函数工具**来创建文档。
+如果模型不支持函数调用，则通过文本输出：
 <<ACTION_JSON>>
 {
   "reply": "已为您生成文档「标题」，请查看~",
@@ -183,7 +193,8 @@ const BASE_SYSTEM_PROMPT = `# 核心身份
 <<ACTION_JSON_END>>
 
 ## 修改文档
-当用户要求修改当前文档时，输出：
+当用户要求修改当前文档时，**优先使用 update_document 函数工具**来更新文档。
+如果模型不支持函数调用，则通过文本输出：
 <<ACTION_JSON>>
 {
   "reply": "SHORT confirmation only, like '已为您完成修改，请查看文档~'.",
@@ -196,11 +207,14 @@ const BASE_SYSTEM_PROMPT = `# 核心身份
 <<ACTION_JSON_END>>
 
 ## 重要约束
-- "reply" 只能是一句简短确认，如 "已为您完成修改，请查看文档~"
+- 使用函数工具时，直接在函数参数中传入完整内容，不要在 reply 文本中重复输出内容
+- 函数调用完成后，只需简短确认，不要输出文章全文
+- "reply" 只能是一句简短确认，如 "已为您完成修改，请查看文档~" 或 "已为您生成文档「标题」，请查看~"
 - 绝对禁止在 reply 中输出任何文章内容、改动说明、操作摘要、段落对比
 - 禁止使用 "以下是"、"改动说明"、"具体改动如下"、"本次修改"、"新增了"、"删除了" 等引导词
 - 完整内容只放在 "action.content" 中，reply 只做一句话通知
 - docId 必须是 UUID（如 15e429e0-6a61-4711-bee8-8fa688cdec67），不能用文档标题
+- 调用 create_document 或 update_document 函数后，只需回复确认语，不要再输出 <<ACTION_JSON>> 标记
 
 # 全局规则
 - 效率：用户消息模糊或无明确写作需求（如 "你好"、"在吗"、表情、随机字符），简短回复，不要长篇大论
@@ -208,9 +222,68 @@ const BASE_SYSTEM_PROMPT = `# 核心身份
 - 保持专注：始终围绕写作辅助场景
 - 用与用户相同的语言回复`;
 
-export function buildSystemPrompt(personality: Personality, memoryContext: string): string {
+export function buildDateTimeContext(): string {
+  const now = new Date();
+  const zh = now.toLocaleDateString("zh-CN", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    weekday: "long",
+  });
+  const time = now.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
+  const iso = now.toISOString().slice(0, 10);
+  return [
+    `Current date and time: ${zh} ${time} (ISO 8601: ${iso})`,
+    `- Day of week: ${now.toLocaleDateString("en-US", { weekday: "long" })}`,
+    ``,
+    `CRITICAL — Your training data is OUTDATED:`,
+    `- Your knowledge cuts off well before the current date above.`,
+    `- You do NOT know about events, news, weather, or facts from ${now.getFullYear()} unless you SEARCH.`,
+    `- When users ask about "recent", "latest", "this year", "current", or any time-sensitive topic — you MUST call the search_web tool.`,
+    `- If you answer from training data alone, you WILL give wrong/outdated information.`,
+    `- Examples of queries that REQUIRE search_web: weather/typhoons, news, current events, "what happened recently", "latest X", "this year's Y".`,
+  ].join("\n");
+}
+
+export type UserContext = {
+  name?: string;
+  currentDocTitle?: string;
+  todayDocWords?: number;
+  todayJournalWords?: number;
+};
+
+function buildUserContext(uc?: UserContext): string {
+  if (!uc) return "";
+  const lines: string[] = [];
+  if (uc.name) {
+    lines.push(`- 当前用户：${uc.name}`);
+  }
+  if (uc.currentDocTitle) {
+    lines.push(`- 当前打开的文档：${uc.currentDocTitle}`);
+  }
+  if (uc.todayDocWords !== undefined && uc.todayDocWords > 0) {
+    lines.push(`- 今日文档已写：${uc.todayDocWords} 字`);
+  }
+  if (uc.todayJournalWords !== undefined && uc.todayJournalWords > 0) {
+    lines.push(`- 今日随记已写：${uc.todayJournalWords} 字`);
+  }
+  if (lines.length === 0) return "";
+  return `# Current User Context\n${lines.join("\n")}\n- Use this information naturally in conversation — greet the user by name, acknowledge their progress, or reference their current document when relevant. Do NOT list these stats unless the user specifically asks.`;
+}
+
+export function buildSystemPrompt(
+  personality: Personality,
+  memoryContext: string,
+  userContext?: UserContext,
+): string {
   const personalityPrompt = PERSONALITY_PROMPTS[personality] || PERSONALITY_PROMPTS.normal;
-  let prompt = `${personalityPrompt}\n\n${BASE_SYSTEM_PROMPT}`;
+  const parts = [
+    personalityPrompt,
+    buildDateTimeContext(),
+    buildUserContext(userContext),
+    BASE_SYSTEM_PROMPT,
+  ].filter(Boolean);
+  let prompt = parts.join("\n\n");
   if (memoryContext) {
     prompt += `\n\nPrevious conversation context (long-term memory):\n${memoryContext}`;
   }

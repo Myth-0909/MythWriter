@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  Bot,
   BookOpen,
   ChevronDown,
   ChevronUp,
@@ -9,6 +8,7 @@ import {
   ClipboardCheck,
   FileText,
   Loader2,
+  NotebookTabs,
   PenLine,
   RotateCcw,
   Search,
@@ -17,22 +17,25 @@ import {
   Square,
   X,
 } from "lucide-react";
+import catAvatar from "@/assets/cat-avatar.png";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { Toggle } from "@/components/ui/toggle";
 import { Scrollbar } from "@/components/ui/scrollbar";
 import { useI18n, type TranslationKey } from "@/components/I18nProvider";
+import { markdownToHtml } from "@/lib/markdown";
+import { sanitizeHtml } from "@/lib/html";
 import { useToast } from "@/components/Toast";
 import { useDocuments } from "@/store";
 import { cn } from "@/lib/utils";
-import { streamAgentWrite, type AgentDoneEvent, type AgentProgressEvent, type AgentStage } from "@/api";
+import { streamAgentWrite, api, type AgentDoneEvent, type AgentProgressEvent, type AgentStage } from "@/api";
 
 interface AgentWritePanelProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onOpenDocument: (docId: string) => void;
+  currentDocumentId?: string;
 }
 
 const stageOrder: AgentStage[] = ["analyze", "research", "plan", "draft", "review", "publish"];
@@ -50,15 +53,24 @@ function sanitizeWordCount(value: string) {
   return value.replace(/\D/g, "").slice(0, 5);
 }
 
-export function AgentWritePanel({ open, onOpenChange, onOpenDocument }: AgentWritePanelProps) {
+export function AgentWritePanel({ open, onOpenChange, onOpenDocument, currentDocumentId }: AgentWritePanelProps) {
   const { t } = useI18n();
   const { toast } = useToast();
-  const { refreshDocuments } = useDocuments();
+  const { refreshDocuments, documents: allDocuments } = useDocuments();
   const [goal, setGoal] = useState("");
   const [stylePrompt, setStylePrompt] = useState("");
-  const [wordCount, setWordCount] = useState("1200");
-  const [includeBrain, setIncludeBrain] = useState(true);
-  const [includeDocuments, setIncludeDocuments] = useState(true);
+  const [wordCount, setWordCount] = useState("600");
+  const [includeBrain, setIncludeBrain] = useState(false);
+  const [includeDocuments, setIncludeDocuments] = useState(false);
+  const [includeJournal, setIncludeJournal] = useState(false);
+  const [selectedDocIds, setSelectedDocIds] = useState<string[]>([]);
+  const [selectedBrainIds, setSelectedBrainIds] = useState<string[]>([]);
+  const [selectedJournalIds, setSelectedJournalIds] = useState<string[]>([]);
+  const [brainKnowledges, setBrainKnowledges] = useState<{ id: string; title: string; description: string; category: string }[]>([]);
+  const [journalRecords, setJournalRecords] = useState<{ id: string; title: string }[]>([]);
+  const [docFilter, setDocFilter] = useState("");
+  const [brainFilter, setBrainFilter] = useState("");
+  const [journalFilter, setJournalFilter] = useState("");
   const [events, setEvents] = useState<Partial<Record<AgentStage, AgentProgressEvent>>>({});
   const [activeStage, setActiveStage] = useState<AgentStage | null>(null);
   const [done, setDone] = useState<AgentDoneEvent | null>(null);
@@ -83,8 +95,57 @@ export function AgentWritePanel({ open, onOpenChange, onOpenDocument }: AgentWri
     };
   }, []);
 
+  // Restore form draft from localStorage when opening
+  useEffect(() => {
+    if (!open) return;
+    try {
+      const saved = localStorage.getItem("agent-write-draft");
+      if (saved) {
+        const draft = JSON.parse(saved);
+        if (draft.goal) setGoal(draft.goal);
+        if (draft.stylePrompt) setStylePrompt(draft.stylePrompt);
+        if (draft.wordCount) setWordCount(draft.wordCount);
+      }
+    } catch { /* ignore */ }
+  }, [open]);
+
+  // Auto-select current document when panel opens with includeDocuments
+  useEffect(() => {
+    if (open && currentDocumentId && includeDocuments && !selectedDocIds.includes(currentDocumentId)) {
+      setSelectedDocIds((prev) => [...prev, currentDocumentId]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, currentDocumentId]);
+
+  // Save form draft to localStorage (debounced)
+  useEffect(() => {
+    if (!open) return;
+    const timer = setTimeout(() => {
+      try {
+        localStorage.setItem("agent-write-draft", JSON.stringify({ goal, stylePrompt, wordCount }));
+      } catch { /* ignore */ }
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [open, goal, stylePrompt, wordCount]);
+
+  useEffect(() => {
+    if (open && includeBrain) {
+      api.listBrainKnowledges().then((res) => setBrainKnowledges(res.knowledges || []));
+    }
+  }, [open, includeBrain]);
+
+  useEffect(() => {
+    if (open && includeJournal) {
+      api.listWorkRecords({ limit: 100 }).then((res) =>
+        setJournalRecords((res.records || []).map((r: any) => ({ id: r.id, title: r.title })))
+      );
+    }
+  }, [open, includeJournal]);
+
+  const analysis = events.analyze?.analysis || done?.analysis;
   const sources = events.research?.sources || done?.sources || [];
   const outline = events.plan?.outline || done?.outline || [];
+  const draftContent = (done?.content as string) || events.draft?.content || "";
   const review = events.review?.review || done?.review;
   const hasStarted = Boolean(activeStage || done || error || stopped || running);
   const activeStageIndex = activeStage ? stageOrder.indexOf(activeStage) : -1;
@@ -103,6 +164,9 @@ export function AgentWritePanel({ open, onOpenChange, onOpenDocument }: AgentWri
     setDone(null);
     setError("");
     setStopped(false);
+    setSelectedDocIds([]);
+    setSelectedBrainIds([]);
+    setSelectedJournalIds([]);
   };
 
   const stopFlow = () => {
@@ -139,7 +203,7 @@ export function AgentWritePanel({ open, onOpenChange, onOpenDocument }: AgentWri
 
   const adjustWordCount = (delta: number) => {
     setWordCount((prev) => {
-      const current = Number(sanitizeWordCount(prev)) || 1200;
+      const current = Number(sanitizeWordCount(prev)) || 600;
       const next = Math.min(8000, Math.max(300, current + delta));
       return String(next);
     });
@@ -169,6 +233,10 @@ export function AgentWritePanel({ open, onOpenChange, onOpenDocument }: AgentWri
           targetWords,
           includeBrain,
           includeDocuments,
+          includeJournal,
+          referenceDocIds: includeDocuments ? selectedDocIds : [],
+          referenceBrainIds: includeBrain ? selectedBrainIds : [],
+          referenceJournalIds: includeJournal ? selectedJournalIds : [],
         },
         {
           onProgress(event) {
@@ -229,8 +297,8 @@ export function AgentWritePanel({ open, onOpenChange, onOpenDocument }: AgentWri
               <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_18%_0%,rgba(59,130,246,0.14),transparent_30%),radial-gradient(circle_at_86%_22%,rgba(216,189,115,0.16),transparent_26%)]" />
               <div className="relative flex items-start justify-between gap-6">
                 <div className="flex items-start gap-4">
-                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-surface-950 text-brand-200 shadow-sm dark:bg-surface-100 dark:text-surface-950">
-                    <Bot className="h-6 w-6" />
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-surface-950 text-brand-200 shadow-sm dark:bg-surface-100 dark:text-surface-950 overflow-hidden">
+                    <img src={catAvatar} alt="AI" className="h-12 w-12 object-cover" />
                   </div>
                   <div className="min-w-0">
                     <DialogTitle className="text-2xl font-semibold text-surface-950 dark:text-surface-50">
@@ -292,7 +360,19 @@ export function AgentWritePanel({ open, onOpenChange, onOpenDocument }: AgentWri
                           disabled={running}
                           className="h-11 rounded-xl bg-surface-50/80 shadow-none dark:bg-surface-900"
                         />
-                        <p className="mt-2 text-[11px] leading-5 text-surface-400">{t("agent.styleHint")}</p>
+                        {stylePrompt.length > 100 && (
+                          <p className={cn(
+                            "mt-2 text-[11px] leading-5",
+                            stylePrompt.length > 120 ? "text-red-500 font-medium" : "text-amber-500"
+                          )}>
+                            {stylePrompt.length > 120
+                              ? `${t("agent.styleTruncated")}（${stylePrompt.length}/120）`
+                              : `${stylePrompt.length}/120`}
+                          </p>
+                        )}
+                        {stylePrompt.length <= 100 && (
+                          <p className="mt-2 text-[11px] leading-5 text-surface-400">{t("agent.styleHint")}</p>
+                        )}
                       </div>
 
                       <div className="rounded-xl border border-surface-200 bg-white p-4 shadow-sm dark:border-surface-800 dark:bg-surface-950">
@@ -375,29 +455,211 @@ export function AgentWritePanel({ open, onOpenChange, onOpenDocument }: AgentWri
                       {t("agent.contextDesc")}
                     </p>
                   </div>
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                    <Toggle
-                      pressed={includeBrain}
-                      onPressedChange={setIncludeBrain}
-                      disabled={running}
-                      variant="outline"
-                      size="lg"
-                      className="h-14 w-full justify-start gap-3 rounded-xl px-4 text-xs"
-                    >
-                      <BookOpen className="h-4 w-4" />
-                      <span>{t("agent.includeBrain")}</span>
-                    </Toggle>
-                    <Toggle
-                      pressed={includeDocuments}
-                      onPressedChange={setIncludeDocuments}
-                      disabled={running}
-                      variant="outline"
-                      size="lg"
-                      className="h-14 w-full justify-start gap-3 rounded-xl px-4 text-xs"
-                    >
-                      <FileText className="h-4 w-4" />
-                      <span>{t("agent.includeDocs")}</span>
-                    </Toggle>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                    {/* Brain Knowledge Picker */}
+                    <div className={cn(
+                      "rounded-xl border transition-all duration-200 overflow-hidden",
+                      includeBrain
+                        ? "border-brand-200 dark:border-brand-500/25 shadow-sm"
+                        : "border-surface-200 dark:border-surface-800 hover:border-brand-200/50 hover:shadow-sm"
+                    )}>
+                      <button
+                        type="button"
+                        disabled={running}
+                        onClick={() => { setIncludeBrain(!includeBrain); if (includeBrain) { setSelectedBrainIds([]); setBrainFilter(""); } }}
+                        className={cn(
+                          "flex w-full items-center gap-3 px-4 py-3 text-xs font-medium transition-all duration-200 cursor-pointer",
+                          includeBrain
+                            ? "bg-brand-50 text-brand-700 dark:bg-brand-500/10 dark:text-brand-300"
+                            : "text-surface-500 hover:bg-surface-50 hover:text-surface-700 dark:text-surface-400 dark:hover:bg-surface-900 dark:hover:text-surface-200"
+                        )}
+                      >
+                        <BookOpen className="h-4 w-4 shrink-0" />
+                        <span className="flex-1 text-left">{t("agent.includeBrain")}</span>
+                        <span className="text-[10px] text-surface-400">{selectedBrainIds.length > 0 ? selectedBrainIds.length : includeBrain ? t("agent.autoSelect") : t("agent.off")}</span>
+                      </button>
+                      {includeBrain && (
+                        <div className="border-t border-surface-200 dark:border-surface-800 bg-surface-50/50 dark:bg-surface-950/30">
+                          {brainKnowledges.length > 0 && (
+                            <div className="px-3 pt-2">
+                              <Input
+                                className="h-8 text-[11px] dark:bg-surface-900"
+                                placeholder={t("agent.filterBrain")}
+                                value={brainFilter}
+                                onChange={(e) => setBrainFilter(e.target.value)}
+                              />
+                            </div>
+                          )}
+                          <div className="max-h-[140px] overflow-y-auto">
+                            {brainKnowledges
+                              .filter((item) => !brainFilter || item.title.includes(brainFilter) || item.category.includes(brainFilter))
+                              .map((item) => (
+                                <label
+                                  key={item.id}
+                                  className={cn(
+                                    "flex cursor-pointer items-center gap-2 px-4 py-2 text-xs transition-colors hover:bg-surface-100 dark:hover:bg-surface-800",
+                                    selectedBrainIds.includes(item.id) && "bg-brand-50/50 dark:bg-brand-500/5"
+                                  )}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    className="h-3.5 w-3.5 rounded accent-brand-500"
+                                    checked={selectedBrainIds.includes(item.id)}
+                                    onChange={(e) => {
+                                      setSelectedBrainIds((prev) =>
+                                        e.target.checked ? [...prev, item.id] : prev.filter((id) => id !== item.id)
+                                      );
+                                    }}
+                                  />
+                                  <span className="truncate">{item.title}</span>
+                                  <span className="ml-auto shrink-0 text-[10px] text-surface-400">{item.category}</span>
+                                </label>
+                              ))}
+                          </div>
+                          {brainKnowledges.length === 0 && (
+                            <div className="px-4 py-3 text-[11px] text-surface-400">
+                              {t("agent.noBrainEntries")}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Document Picker */}
+                    <div className={cn(
+                      "rounded-xl border transition-all duration-200 overflow-hidden",
+                      includeDocuments
+                        ? "border-brand-200 dark:border-brand-500/25 shadow-sm"
+                        : "border-surface-200 dark:border-surface-800 hover:border-brand-200/50 hover:shadow-sm"
+                    )}>
+                      <button
+                        type="button"
+                        disabled={running}
+                        onClick={() => { setIncludeDocuments(!includeDocuments); if (includeDocuments) { setSelectedDocIds([]); setDocFilter(""); } }}
+                        className={cn(
+                          "flex w-full items-center gap-3 px-4 py-3 text-xs font-medium transition-all duration-200 cursor-pointer",
+                          includeDocuments
+                            ? "bg-brand-50 text-brand-700 dark:bg-brand-500/10 dark:text-brand-300"
+                            : "text-surface-500 hover:bg-surface-50 hover:text-surface-700 dark:text-surface-400 dark:hover:bg-surface-900 dark:hover:text-surface-200"
+                        )}
+                      >
+                        <FileText className="h-4 w-4 shrink-0" />
+                        <span className="flex-1 text-left">{t("agent.includeDocs")}</span>
+                        <span className="text-[10px] text-surface-400">{selectedDocIds.length > 0 ? selectedDocIds.length : includeDocuments ? t("agent.autoSelect") : t("agent.off")}</span>
+                      </button>
+                      {includeDocuments && (
+                        <div className="border-t border-surface-200 dark:border-surface-800 bg-surface-50/50 dark:bg-surface-950/30">
+                          {allDocuments.length > 0 && (
+                            <div className="px-3 pt-2">
+                              <Input
+                                className="h-8 text-[11px] dark:bg-surface-900"
+                                placeholder={t("agent.filterDocs")}
+                                value={docFilter}
+                                onChange={(e) => setDocFilter(e.target.value)}
+                              />
+                            </div>
+                          )}
+                          <div className="max-h-[140px] overflow-y-auto">
+                            {allDocuments
+                              .filter((d) => !d.isDeleted && (!docFilter || d.title.includes(docFilter)))
+                              .map((doc) => (
+                                <label
+                                  key={doc.id}
+                                  className={cn(
+                                    "flex cursor-pointer items-center gap-2 px-4 py-2 text-xs transition-colors hover:bg-surface-100 dark:hover:bg-surface-800",
+                                    selectedDocIds.includes(doc.id) && "bg-brand-50/50 dark:bg-brand-500/5"
+                                  )}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    className="h-3.5 w-3.5 rounded accent-brand-500"
+                                    checked={selectedDocIds.includes(doc.id)}
+                                    onChange={(e) => {
+                                      setSelectedDocIds((prev) =>
+                                        e.target.checked ? [...prev, doc.id] : prev.filter((id) => id !== doc.id)
+                                      );
+                                    }}
+                                  />
+                                  <span className="truncate">{doc.title}</span>
+                                </label>
+                              ))}
+                          </div>
+                          {allDocuments.length === 0 && (
+                            <div className="px-4 py-3 text-[11px] text-surface-400">
+                              {t("agent.noDocuments")}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Journal Picker */}
+                    <div className={cn(
+                      "rounded-xl border transition-all duration-200 overflow-hidden",
+                      includeJournal
+                        ? "border-brand-200 dark:border-brand-500/25 shadow-sm"
+                        : "border-surface-200 dark:border-surface-800 hover:border-brand-200/50 hover:shadow-sm"
+                    )}>
+                      <button
+                        type="button"
+                        disabled={running}
+                        onClick={() => { setIncludeJournal(!includeJournal); if (includeJournal) { setSelectedJournalIds([]); setJournalFilter(""); } }}
+                        className={cn(
+                          "flex w-full items-center gap-3 px-4 py-3 text-xs font-medium transition-all duration-200 cursor-pointer",
+                          includeJournal
+                            ? "bg-brand-50 text-brand-700 dark:bg-brand-500/10 dark:text-brand-300"
+                            : "text-surface-500 hover:bg-surface-50 hover:text-surface-700 dark:text-surface-400 dark:hover:bg-surface-900 dark:hover:text-surface-200"
+                        )}
+                      >
+                        <NotebookTabs className="h-4 w-4 shrink-0" />
+                        <span className="flex-1 text-left">{t("agent.includeJournal")}</span>
+                        <span className="text-[10px] text-surface-400">{selectedJournalIds.length > 0 ? selectedJournalIds.length : includeJournal ? t("agent.autoSelect") : t("agent.off")}</span>
+                      </button>
+                      {includeJournal && (
+                        <div className="border-t border-surface-200 dark:border-surface-800 bg-surface-50/50 dark:bg-surface-950/30">
+                          {journalRecords.length > 0 && (
+                            <div className="px-3 pt-2">
+                              <Input
+                                className="h-8 text-[11px] dark:bg-surface-900"
+                                placeholder={t("agent.filterJournal")}
+                                value={journalFilter}
+                                onChange={(e) => setJournalFilter(e.target.value)}
+                              />
+                            </div>
+                          )}
+                          <div className="max-h-[140px] overflow-y-auto">
+                            {journalRecords
+                              .filter((r) => !journalFilter || r.title.includes(journalFilter))
+                              .map((item) => (
+                                <label
+                                  key={item.id}
+                                  className={cn(
+                                    "flex cursor-pointer items-center gap-2 px-4 py-2 text-xs transition-colors hover:bg-surface-100 dark:hover:bg-surface-800",
+                                    selectedJournalIds.includes(item.id) && "bg-brand-50/50 dark:bg-brand-500/5"
+                                  )}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    className="h-3.5 w-3.5 rounded accent-brand-500"
+                                    checked={selectedJournalIds.includes(item.id)}
+                                    onChange={(e) => {
+                                      setSelectedJournalIds((prev) =>
+                                        e.target.checked ? [...prev, item.id] : prev.filter((id) => id !== item.id)
+                                      );
+                                    }}
+                                  />
+                                  <span className="truncate">{item.title}</span>
+                                </label>
+                              ))}
+                          </div>
+                          {journalRecords.length === 0 && (
+                            <div className="px-4 py-3 text-[11px] text-surface-400">
+                              {t("agent.noJournalEntries")}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </section>
 
@@ -472,6 +734,11 @@ export function AgentWritePanel({ open, onOpenChange, onOpenDocument }: AgentWri
                             <Icon className="h-4 w-4" />
                           </div>
                           <span className="min-w-0 flex-1 text-xs font-semibold">{t(meta.label)}</span>
+                          {active && stage === "draft" && events.draft && (events.draft.totalSections ?? 0) > 0 && (
+                            <span className="text-[10px] text-surface-400">
+                              {(events.draft.sectionIndex ?? 0) + 1}/{events.draft.totalSections}
+                            </span>
+                          )}
                           {active ? (
                             <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
                           ) : completed ? (
@@ -504,6 +771,41 @@ export function AgentWritePanel({ open, onOpenChange, onOpenDocument }: AgentWri
                     )}
                   </div>
                 </section>
+
+                {analysis && (
+                  <section className="rounded-2xl border border-brand-200 bg-white p-4 shadow-sm dark:border-brand-500/20 dark:bg-surface-950">
+                    <div className="mb-3 flex items-center gap-2">
+                      <Search className="h-4 w-4 text-brand-500" />
+                      <h3 className="text-xs font-semibold text-surface-700 dark:text-surface-200">{t("agent.step.analyze")}</h3>
+                    </div>
+                    <div className="space-y-2">
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="rounded-lg bg-surface-50 px-3 py-2 dark:bg-surface-900">
+                          <span className="text-[10px] text-surface-400">{t("agent.analysisGenre")}</span>
+                          <p className="text-xs font-semibold text-surface-800 dark:text-surface-100">{analysis.genre}</p>
+                        </div>
+                        <div className="rounded-lg bg-surface-50 px-3 py-2 dark:bg-surface-900">
+                          <span className="text-[10px] text-surface-400">{t("agent.analysisTone")}</span>
+                          <p className="text-xs font-semibold text-surface-800 dark:text-surface-100">{analysis.tone}</p>
+                        </div>
+                      </div>
+                      {analysis.themes.length > 0 && (
+                        <div className="rounded-lg bg-surface-50 px-3 py-2 dark:bg-surface-900">
+                          <span className="text-[10px] text-surface-400">{t("agent.analysisThemes")}</span>
+                          <div className="mt-1 flex flex-wrap gap-1">
+                            {analysis.themes.map((theme) => (
+                              <span key={theme} className="rounded-full bg-brand-100 px-2 py-0.5 text-[10px] font-medium text-brand-700 dark:bg-brand-500/10 dark:text-brand-300">{theme}</span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      <div className="rounded-lg bg-surface-50 px-3 py-2 dark:bg-surface-900">
+                        <span className="text-[10px] text-surface-400">{t("agent.analysisWords")}</span>
+                        <p className="text-xs font-semibold text-surface-800 dark:text-surface-100">{analysis.estimatedWords} {t("documents.wordsUnit")}</p>
+                      </div>
+                    </div>
+                  </section>
+                )}
 
                 <section className="rounded-2xl border border-surface-200 bg-white p-4 shadow-sm dark:border-surface-800 dark:bg-surface-950">
                   <div className="mb-3 flex items-center gap-2">
@@ -549,6 +851,18 @@ export function AgentWritePanel({ open, onOpenChange, onOpenDocument }: AgentWri
                     )}
                   </div>
                 </section>
+
+                {draftContent && (
+                  <section className="rounded-2xl border border-surface-200 bg-white p-4 shadow-sm dark:border-surface-800 dark:bg-surface-950">
+                    <div className="mb-3 flex items-center gap-2">
+                      <FileText className="h-4 w-4 text-brand-500" />
+                      <h3 className="text-xs font-semibold text-surface-700 dark:text-surface-200">{t("agent.draftPreview")}</h3>
+                    </div>
+                    <div className="max-h-[320px] overflow-y-auto rounded-lg border border-surface-200 bg-surface-50 p-3 text-xs leading-relaxed text-surface-600 dark:border-surface-700 dark:bg-surface-900 dark:text-surface-300 prose prose-sm max-w-none dark:prose-invert">
+                      <div dangerouslySetInnerHTML={{ __html: sanitizeHtml(markdownToHtml(draftContent)) }} />
+                    </div>
+                  </section>
+                )}
 
                 <section className="rounded-2xl border border-surface-200 bg-white p-4 shadow-sm dark:border-surface-800 dark:bg-surface-950">
                   <h3 className="text-xs font-semibold text-surface-700 dark:text-surface-200">{t("agent.reviewSuggestions")}</h3>

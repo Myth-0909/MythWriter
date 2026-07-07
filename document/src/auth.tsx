@@ -1,11 +1,13 @@
 import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from "react";
 import { api, isLoggedIn } from "@/api";
+import type { FontFamilyKey } from "@/lib/fontCatalog";
 
 export interface UserInfo {
   id: string;
   name: string;
   email: string;
   avatar: string | null;
+  fontFamilyKey: FontFamilyKey;
 }
 
 interface AuthContextType {
@@ -40,6 +42,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         name: res.user.name,
         email: res.user.email,
         avatar: res.user.avatar,
+        fontFamilyKey: res.user.fontFamilyKey,
       });
     } catch {
       // Token invalid or expired

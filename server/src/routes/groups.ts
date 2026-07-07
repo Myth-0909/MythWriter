@@ -1,8 +1,13 @@
 import { Router, Response } from "express";
 import { AuthRequest, authMiddleware } from "../middleware/auth";
 import prisma from "../lib/prisma";
+import { t } from "../lib/i18n";
 
 const router = Router();
+
+function requestLang(req: AuthRequest) {
+  return String(req.headers["accept-language"] || "").toLowerCase().startsWith("en") ? "en" : "zh";
+}
 
 // All group routes require authentication
 router.use(authMiddleware);
@@ -30,7 +35,7 @@ router.get("/", async (req: AuthRequest, res: Response) => {
     res.json({ groups });
   } catch (error) {
     console.error("List groups error:", error);
-    res.status(500).json({ error: "获取分组列表失败" });
+    res.status(500).json({ error: t(requestLang(req), "获取分组列表失败", "Failed to load groups") });
   }
 });
 
@@ -39,7 +44,7 @@ router.post("/", async (req: AuthRequest, res: Response) => {
   try {
     const { name } = req.body;
     if (!name || typeof name !== "string") {
-      res.status(400).json({ error: "分组名称不能为空" });
+      res.status(400).json({ error: t(requestLang(req), "分组名称不能为空", "Group name cannot be empty") });
       return;
     }
 
@@ -53,7 +58,7 @@ router.post("/", async (req: AuthRequest, res: Response) => {
     res.json({ group });
   } catch (error) {
     console.error("Create group error:", error);
-    res.status(500).json({ error: "创建分组失败" });
+    res.status(500).json({ error: t(requestLang(req), "创建分组失败", "Failed to create group") });
   }
 });
 
@@ -62,7 +67,7 @@ router.put("/:id", async (req: AuthRequest, res: Response) => {
   try {
     const { name } = req.body;
     if (!name || typeof name !== "string") {
-      res.status(400).json({ error: "分组名称不能为空" });
+      res.status(400).json({ error: t(requestLang(req), "分组名称不能为空", "Group name cannot be empty") });
       return;
     }
 
@@ -71,7 +76,7 @@ router.put("/:id", async (req: AuthRequest, res: Response) => {
     });
 
     if (!group) {
-      res.status(404).json({ error: "分组不存在" });
+      res.status(404).json({ error: t(requestLang(req), "分组不存在", "Group not found") });
       return;
     }
 
@@ -83,7 +88,7 @@ router.put("/:id", async (req: AuthRequest, res: Response) => {
     res.json({ group: updated });
   } catch (error) {
     console.error("Rename group error:", error);
-    res.status(500).json({ error: "重命名分组失败" });
+    res.status(500).json({ error: t(requestLang(req), "重命名分组失败", "Failed to rename group") });
   }
 });
 
@@ -95,7 +100,7 @@ router.delete("/:id", async (req: AuthRequest, res: Response) => {
     });
 
     if (!group) {
-      res.status(404).json({ error: "分组不存在" });
+      res.status(404).json({ error: t(requestLang(req), "分组不存在", "Group not found") });
       return;
     }
 
@@ -106,7 +111,7 @@ router.delete("/:id", async (req: AuthRequest, res: Response) => {
     res.json({ success: true });
   } catch (error) {
     console.error("Delete group error:", error);
-    res.status(500).json({ error: "删除分组失败" });
+    res.status(500).json({ error: t(requestLang(req), "删除分组失败", "Failed to delete group") });
   }
 });
 
@@ -115,7 +120,7 @@ router.post("/:id/add", async (req: AuthRequest, res: Response) => {
   try {
     const { documentIds } = req.body;
     if (!Array.isArray(documentIds)) {
-      res.status(400).json({ error: "文档ID列表必须是数组" });
+      res.status(400).json({ error: t(requestLang(req), "文档ID列表必须是数组", "Document ID list must be an array") });
       return;
     }
 
@@ -124,7 +129,7 @@ router.post("/:id/add", async (req: AuthRequest, res: Response) => {
     });
 
     if (!group) {
-      res.status(404).json({ error: "分组不存在" });
+      res.status(404).json({ error: t(requestLang(req), "分组不存在", "Group not found") });
       return;
     }
 
@@ -142,7 +147,7 @@ router.post("/:id/add", async (req: AuthRequest, res: Response) => {
     res.json({ success: true });
   } catch (error) {
     console.error("Add documents to group error:", error);
-    res.status(500).json({ error: "添加文档至分组失败" });
+    res.status(500).json({ error: t(requestLang(req), "添加文档至分组失败", "Failed to add documents to group") });
   }
 });
 
@@ -151,7 +156,7 @@ router.post("/:id/remove", async (req: AuthRequest, res: Response) => {
   try {
     const { documentIds } = req.body;
     if (!Array.isArray(documentIds)) {
-      res.status(400).json({ error: "文档ID列表必须是数组" });
+      res.status(400).json({ error: t(requestLang(req), "文档ID列表必须是数组", "Document ID list must be an array") });
       return;
     }
 
@@ -160,7 +165,7 @@ router.post("/:id/remove", async (req: AuthRequest, res: Response) => {
     });
 
     if (!group) {
-      res.status(404).json({ error: "分组不存在" });
+      res.status(404).json({ error: t(requestLang(req), "分组不存在", "Group not found") });
       return;
     }
 
@@ -179,7 +184,7 @@ router.post("/:id/remove", async (req: AuthRequest, res: Response) => {
     res.json({ success: true });
   } catch (error) {
     console.error("Remove documents from group error:", error);
-    res.status(500).json({ error: "移出分组失败" });
+    res.status(500).json({ error: t(requestLang(req), "移出分组失败", "Failed to remove documents from group") });
   }
 });
 

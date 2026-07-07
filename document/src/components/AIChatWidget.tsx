@@ -1,9 +1,12 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { Bot, X, Send, Sparkles, Smile, ChevronDown, ThumbsUp, ThumbsDown, Star, Trash2, Check, Pencil, Square, FileText, History, RotateCcw, Clock3 } from "lucide-react";
+import { BrainCircuit, Check, CheckCircle2, ChevronDown, Clock3, Copy, CopyCheck, FileText, History, Pencil, RotateCcw, Smile, Sparkles, Star, ThumbsDown, ThumbsUp, Trash2, X, XCircle } from "lucide-react";
+import catAvatar from "@/assets/cat-avatar.png";
+import { Sender } from "@ant-design/x";
 import { ConfirmModal } from "@/components/ConfirmModal";
 import { Scrollbar } from "@/components/ui/scrollbar";
+import { InlineLoading } from "@/components/LoadingSpinner";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { useI18n } from "@/components/I18nProvider";
 import { useToast } from "@/components/Toast";
@@ -42,8 +45,11 @@ const MAX_MEMORY_MESSAGES = 20;
 const AUTO_RAG_SCORE_THRESHOLD = 0.3;
 
 interface Message {
-  role: "user" | "assistant";
+  role: "user" | "assistant" | "tool";
   content: string;
+  thinking?: string;
+  toolCalls?: ToolCallEvent[];
+  tool_call_id?: string;
   sources?: ChatReference[];
   timestamp?: string;
 }
@@ -108,7 +114,7 @@ interface AnchoredPosition {
 
 function anchoredToAbsolute(anchor: AnchoredPosition): Position {
   const MARGIN = 16;
-  const btnSize = 56;
+  const btnSize = 62;
   const x = anchor.side === "left" ? MARGIN : window.innerWidth - btnSize - MARGIN;
   const maxY = window.innerHeight - btnSize - MARGIN;
   const y = Math.max(MARGIN, Math.min(maxY, MARGIN + (maxY - MARGIN) * (anchor.yPercent / 100)));
@@ -117,7 +123,7 @@ function anchoredToAbsolute(anchor: AnchoredPosition): Position {
 
 function absoluteToAnchored(pos: Position): AnchoredPosition {
   const MARGIN = 16;
-  const btnSize = 56;
+  const btnSize = 62;
   const maxX = window.innerWidth - btnSize - MARGIN;
   const side: "left" | "right" = pos.x < maxX / 2 ? "left" : "right";
   const maxY = window.innerHeight - btnSize - MARGIN;
@@ -236,8 +242,14 @@ function formatTimestamp(): string {
 function buildMemoryContext(memory: Message[]): string {
   if (memory.length === 0) return "";
   return memory.map((m) => {
+    if (m.role === "tool") {
+      return `[工具结果: ${m.content.slice(0, 500)}]`;
+    }
     const role = m.role === "user" ? "用户" : "小安";
-    return `${role}: ${m.content.slice(0, 200)}`;
+    const toolNote = m.toolCalls && m.toolCalls.length > 0
+      ? ` [使用了工具: ${m.toolCalls.map(tc => tc.name).join(", ")}]`
+      : "";
+    return `${role}: ${m.content.slice(0, 2000)}${toolNote}`;
   }).join("\n");
 }
 
@@ -263,40 +275,56 @@ function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function findTokenDeletionRange(
-  value: string,
-  cursor: number,
-  key: "Backspace" | "Delete",
-  refs: ChatReference[],
-  prefix: "@" | "#"
-): { start: number; end: number } | null {
-  const orderedRefs = [...refs].sort((a, b) => b.title.length - a.title.length);
-  for (const ref of orderedRefs) {
-    const token = `${prefix}${ref.title}`;
-    let start = value.indexOf(token);
-    while (start !== -1) {
-      const end = start + token.length;
-      const hasValidBefore = start === 0 || /\s/.test(value[start - 1]);
-      const hasValidAfter = end === value.length || /\s/.test(value[end]);
-      if (hasValidBefore && hasValidAfter) {
-        if (key === "Backspace") {
-          if (cursor > start && cursor <= end) return { start, end };
-          if (cursor === end + 1 && /\s/.test(value[end])) return { start, end: cursor };
-        } else if (cursor >= start && cursor < end) {
-          return { start, end };
+
+type ToolCallEvent = { index: number; id?: string; name: string; arguments?: string; status: string; result?: string };
+
+function parseToolArguments(value?: string): Record<string, unknown> {
+  if (!value) return {};
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+// Convert UI Message objects to clean API format, including tool call history
+export function toApiMessages(messages: { role: string; content: string; toolCalls?: ToolCallEvent[]; tool_call_id?: string }[]): { role: string; content: string; tool_calls?: any[]; tool_call_id?: string; name?: string }[] {
+  const result: any[] = [];
+  for (const m of messages) {
+    if (m.role === "tool") {
+      result.push({ role: "tool", tool_call_id: (m as any).tool_call_id || "", content: m.content });
+    } else if (m.role === "assistant" && m.toolCalls && m.toolCalls.length > 0) {
+      // Build assistant message with tool_calls in API format
+      result.push({
+        role: "assistant",
+        content: m.content || "",
+        tool_calls: m.toolCalls.map((tc, i) => ({
+          id: tc.id || `call_${i}`,
+          type: "function",
+          function: { name: tc.name, arguments: tc.arguments || "{}" },
+        })),
+      });
+      // Append tool result messages
+      for (const tc of m.toolCalls) {
+        if (tc.status === "done" && tc.result !== undefined) {
+          result.push({ role: "tool", tool_call_id: tc.id || `call_${tc.index}`, content: String(tc.result) });
         }
       }
-      start = value.indexOf(token, end);
+    } else {
+      result.push({ role: m.role, content: m.content });
     }
   }
-  return null;
+  return result;
 }
 
 async function streamChat(
   data: { messages: Message[]; personality: string; memoryContext: string; references?: ChatReference[] },
   onDelta: (delta: string) => void,
+  onThinking: (delta: string) => void,
+  onToolCall: (tc: ToolCallEvent) => void,
   signal: AbortSignal
-): Promise<{ reply: string; action: any }> {
+): Promise<{ reply: string; action: any; thinking?: string; toolCalls?: ToolCallEvent[] }> {
   const token = localStorage.getItem("token");
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (token) headers["Authorization"] = `Bearer ${token}`;
@@ -304,13 +332,12 @@ async function streamChat(
   const res = await fetch(`${API_BASE}/ai/chat`, {
     method: "POST",
     headers,
-    body: JSON.stringify(data),
+    body: JSON.stringify({ ...data, messages: toApiMessages(data.messages) }),
     signal,
   });
 
   const ct = res.headers.get("content-type") || "";
 
-  // Handle error responses
   if (!res.ok) {
     if (ct.includes("application/json")) {
       const err = await res.json();
@@ -319,22 +346,56 @@ async function streamChat(
     throw new Error(`HTTP ${res.status}`);
   }
 
-  // Handle JSON response (security block, non-streaming)
   if (ct.includes("application/json")) {
     const json = await res.json();
     if (json.error) throw new Error(json.error);
     return { reply: json.reply || "", action: json.action || null };
   }
 
-  // Handle SSE streaming response
   const reader = res.body?.getReader();
   if (!reader) throw new Error("No response body");
 
   const decoder = new TextDecoder();
   let buffer = "";
+  let currentEvent = "";
   let fullContent = "";
   let finalReply = "";
-  let finalAction = null;
+  let finalAction: any = null;
+  let thinking = "";
+  const toolCalls: ToolCallEvent[] = [];
+
+  function dispatchEvent(event: string, data: any) {
+    if (event === "delta" && data.delta) {
+      fullContent += data.delta;
+      onDelta(data.delta);
+    } else if (event === "thinking" && data.delta) {
+      thinking += data.delta;
+      onThinking(data.delta);
+    } else if (event === "tool_call" && data.name) {
+      const existing = toolCalls.findIndex(tc => tc.index === data.index);
+      if (existing >= 0) {
+        toolCalls[existing] = data;
+      } else {
+        toolCalls.push(data);
+      }
+      onToolCall(data);
+    } else if (event === "done") {
+      finalReply = data.reply;
+      finalAction = data.action;
+      if (data.thinking) thinking = data.thinking;
+      if (data.toolCalls) Object.assign(toolCalls, data.toolCalls);
+    } else if (event === "delta" || event === "message") {
+      // Legacy: raw data: without event: prefix
+      if (data.delta) {
+        fullContent += data.delta;
+        onDelta(data.delta);
+      }
+      if (data.done) {
+        finalReply = data.reply;
+        finalAction = data.action;
+      }
+    }
+  }
 
   while (true) {
     const { done, value } = await reader.read();
@@ -345,33 +406,37 @@ async function streamChat(
     buffer = lines.pop() || "";
 
     for (const line of lines) {
-      const trimmed = line.trim();
-      if (!trimmed || !trimmed.startsWith("data: ")) continue;
-      // Skip SSE comments (e.g., ":ok")
-      if (trimmed.startsWith("data: :")) continue;
-      try {
-        const parsed = JSON.parse(trimmed.slice(6));
-        if (parsed.error) throw new Error(parsed.error);
-        if (parsed.delta) {
-          fullContent += parsed.delta;
-          onDelta(parsed.delta);
+      if (!line || line.startsWith(":")) continue;
+      if (line.startsWith("event: ")) {
+        currentEvent = line.slice(7).trim();
+        continue;
+      }
+      if (line.startsWith("data: ")) {
+        const dataStr = line.slice(6);
+        if (currentEvent) {
+          try {
+            const parsed = JSON.parse(dataStr);
+            dispatchEvent(currentEvent, parsed);
+          } catch {
+            // Skip malformed JSON
+          }
+          currentEvent = "";
+        } else {
+          // Legacy format: no event: prefix
+          try {
+            const parsed = JSON.parse(dataStr);
+            if (parsed.error) throw new Error(parsed.error);
+            dispatchEvent("message", parsed);
+          } catch (e: any) {
+            if (!(e instanceof SyntaxError)) throw e;
+          }
         }
-        if (parsed.done) {
-          finalReply = parsed.reply;
-          finalAction = parsed.action;
-        }
-      } catch (e: any) {
-        if (!(e instanceof SyntaxError)) throw e;
       }
     }
   }
 
-  // Fallback: if no done event received, use accumulated content
-  if (!finalReply && fullContent) {
-    finalReply = fullContent;
-  }
-
-  return { reply: finalReply, action: finalAction };
+  if (!finalReply && fullContent) finalReply = fullContent;
+  return { reply: finalReply, action: finalAction, thinking: thinking || undefined, toolCalls: toolCalls.length > 0 ? toolCalls : undefined };
 }
 
 export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
@@ -386,6 +451,7 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
     listDocumentVersions,
     createDocumentVersion,
     restoreDocumentVersion,
+    refreshDocuments,
   } = useDocuments();
   const { user } = useAuth();
   const [open, setOpen] = useState(false);
@@ -401,7 +467,11 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
   const [personalityOpen, setPersonalityOpen] = useState(false);
   const memoryRef = useRef<Message[]>(loadMemory());
   const abortRef = useRef<AbortController | null>(null);
+  const sentHistoryRef = useRef<string[]>([]);
+  const historyIndexRef = useRef<number>(-1);
+  const draftBeforeHistoryRef = useRef<string>("");
   const [feedbackMsgIdx, setFeedbackMsgIdx] = useState<number | null>(null);
+  const [copiedMsgIdx, setCopiedMsgIdx] = useState<number | null>(null);
   const [showRating, setShowRating] = useState(false);
   const [showDislikeOpts, setShowDislikeOpts] = useState(false);
   const [hoverStar, setHoverStar] = useState(0);
@@ -423,10 +493,13 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
   const [brainKnowledges, setBrainKnowledges] = useState<BrainKnowledge[]>([]);
   const [mentionOpen, setMentionOpen] = useState(false);
   const [mentionIndex, setMentionIndex] = useState(0);
+  const mentionIdxRef = useRef(0);
   const [brainOpen, setBrainOpen] = useState(false);
   const [brainIndex, setBrainIndex] = useState(0);
+  const brainIdxRef = useRef(0);
   const [commandOpen, setCommandOpen] = useState(false);
   const [commandIndex, setCommandIndex] = useState(0);
+  const commandIdxRef = useRef(0);
   const [pendingUpdate, setPendingUpdate] = useState<PendingDocumentUpdate | null>(null);
   const [applyingUpdate, setApplyingUpdate] = useState(false);
   const [versionDialogOpen, setVersionDialogOpen] = useState(false);
@@ -494,15 +567,25 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
     return () => window.clearTimeout(timer);
   }, [input, open, autoReferenceEnabled, loading, streaming, brainReferences]);
 
-  // Save conversation to DB
+  // Save conversation to DB (filters out incomplete streaming messages)
   const saveConversation = useCallback(async () => {
     if (messages.length === 0 || saving) return;
+    // If currently streaming, exclude the last incomplete assistant message
+    const msgsToSave = (loading || streaming)
+      ? messages.filter((m, i) => {
+          if (i === messages.length - 1 && m.role === "assistant" && !m.content) return false;
+          return true;
+        })
+      : messages;
+    if (msgsToSave.length === 0) return;
     setSaving(true);
     try {
-      await api.saveConversation({ messages, personality: personalityRef.current });
-    } catch { /* silent */ }
+      await api.saveConversation({ messages: msgsToSave, personality: personalityRef.current });
+    } catch (err) {
+      console.warn("[ai] Failed to save conversation:", err);
+    }
     setSaving(false);
-  }, [messages, saving]);
+  }, [messages, loading, streaming, saving]);
 
   // Drag - restore saved position or default bottom-left
   const [pos, setPos] = useState<Position>(() => {
@@ -531,7 +614,9 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
   const forceLatestOnOpenRef = useRef(false);
   const scrollFrameRef = useRef<number | null>(null);
   const scrollTimersRef = useRef<number[]>([]);
-  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const senderRef = useRef<HTMLDivElement>(null);
+  const posRef = useRef(pos);
+  posRef.current = pos;
 
   // User avatar
   const avatarUrl = getServerAssetUrl(user?.avatar ? `/uploads/${user.avatar}` : null);
@@ -562,18 +647,23 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
     return () => window.removeEventListener("resize", updatePos);
   }, []);
 
-  // On close: abort any ongoing stream and save. On open: check API key.
+  // On close: abort any ongoing stream, save, and clean up state. On open: check API key.
   useEffect(() => {
     if (!open) {
-      if (messages.length > 0) {
-        api.saveConversation({ messages, personality: personalityRef.current }).catch(() => {});
-      }
-      restoredRef.current = false;
-      setKeyOk(false);
-      // Abort any ongoing stream when closing
+      // Abort any ongoing stream first
       if (abortRef.current) {
         abortRef.current.abort();
       }
+      // Save conversation (the helper filters incomplete streaming messages)
+      saveConversation();
+      // Clean up all UI state
+      restoredRef.current = false;
+      setKeyOk(false);
+      setPendingUpdate(null);
+      setTaskStage("idle");
+      setLoading(false);
+      setStreaming(false);
+      setIsActing(false);
       return;
     }
     // Verify API key before proceeding
@@ -596,7 +686,7 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
     // Log open
     api.logActivity({ action: "chat_open", detail: personalityRef.current }).catch(() => {});
 
-    // Try to restore last conversation from DB
+    // Try to restore last conversation from DB (only once per open)
     if (!restoredRef.current) {
       restoredRef.current = true;
       api.getConversations().then((res) => {
@@ -612,16 +702,22 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
         // No saved conversation — greet
         greetUser();
       }).catch(() => greetUser());
-    } else {
-      greetUser();
     }
   }, [open, keyOk]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Re-greet on personality change (only if already open)
+  // When personality changes mid-conversation, add a subtle system note.
+  // Do NOT re-greet — that would clear the current conversation.
   useEffect(() => {
-    if (open && restoredRef.current) {
-      greetUser();
-    }
+    if (!open || !restoredRef.current) return;
+    const pers = personalityRef.current;
+    const option = PERSONALITY_OPTIONS.find((o) => o.key === pers);
+    const note = t("ai.personalityChanged").replace("{emoji}", option?.emoji || "").replace("{label}", option?.label || pers);
+    setMessages((prev) => {
+      // Don't add duplicate notes if the last message is already a personality change note
+      const lastMsg = prev[prev.length - 1];
+      if (lastMsg && lastMsg.role === "assistant" && lastMsg.content === note) return prev;
+      return [...prev, { role: "assistant", content: note, timestamp: formatTimestamp() }];
+    });
   }, [personality]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const greetUser = useCallback(() => {
@@ -718,17 +814,7 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
     if (loading) userScrolledUpRef.current = false;
   }, [loading]);
 
-  // Auto-resize textarea helper
-  const resizeTextarea = useCallback(() => {
-    const el = inputRef.current;
-    if (!el) return;
-    el.style.height = "auto";
-    const minHeight = 42;
-    const maxHeight = 112; // ~5 lines
-    const nextHeight = Math.max(minHeight, Math.min(el.scrollHeight, maxHeight));
-    el.style.height = `${nextHeight}px`;
-    el.style.overflowY = el.scrollHeight > maxHeight ? "auto" : "hidden";
-  }, []);
+  // Sender handles its own auto-resize
 
   useEffect(() => {
     const handler = (event: Event) => {
@@ -736,18 +822,10 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
       if (!detail?.text) return;
       setInput(detail.text);
       setOpen(true);
-      requestAnimationFrame(() => {
-        inputRef.current?.focus();
-        resizeTextarea();
-      });
     };
     window.addEventListener("znwriter-ai-chat-prefill", handler);
     return () => window.removeEventListener("znwriter-ai-chat-prefill", handler);
-  }, [resizeTextarea]);
-
-  useEffect(() => {
-    resizeTextarea();
-  }, [input, resizeTextarea]);
+  }, []);
 
   const changePersonality = useCallback((p: Personality) => {
     personalityRef.current = p;
@@ -761,7 +839,7 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
     setDragging(true);
     hasMoved.current = false;
     dragStart.current = { x: e.clientX, y: e.clientY };
-    posStart.current = { ...pos };
+    posStart.current = { ...posRef.current };
   };
 
   useEffect(() => {
@@ -770,10 +848,11 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
       const dx = e.clientX - dragStart.current.x;
       const dy = e.clientY - dragStart.current.y;
       if (Math.abs(dx) > 3 || Math.abs(dy) > 3) hasMoved.current = true;
-      setPos({
-        x: Math.max(0, Math.min(window.innerWidth - 56, posStart.current.x + dx)),
-        y: Math.max(0, Math.min(window.innerHeight - 56, posStart.current.y + dy)),
-      });
+      const btnSize = 62;
+      const newX = Math.max(0, Math.min(window.innerWidth - btnSize, posStart.current.x + dx));
+      const newY = Math.max(0, Math.min(window.innerHeight - btnSize, posStart.current.y + dy));
+      posRef.current = { x: newX, y: newY };
+      setPos({ x: newX, y: newY });
     };
     const mu = (e: MouseEvent) => {
       setDragging(false);
@@ -782,7 +861,7 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
       } else {
         // Snap to nearest edge
         const MARGIN = 16;
-        const btnSize = 56;
+        const btnSize = 62;
         const maxX = window.innerWidth - btnSize - MARGIN;
         const maxY = window.innerHeight - btnSize - MARGIN;
         const currentX = posStart.current.x + (e.clientX - dragStart.current.x);
@@ -792,6 +871,7 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
         const snapX = distLeft < distRight ? MARGIN : maxX;
         const snapY = Math.max(MARGIN, Math.min(maxY, currentY));
         const snapped = { x: snapX, y: snapY };
+        posRef.current = snapped;
         setPos(snapped);
         // Store as edge-anchored responsive format
         const anchored = absoluteToAnchored(snapped);
@@ -801,14 +881,21 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
     window.addEventListener("mousemove", mm);
     window.addEventListener("mouseup", mu);
     return () => { window.removeEventListener("mousemove", mm); window.removeEventListener("mouseup", mu); };
-  }, [dragging, pos]);
+  }, [dragging]);
 
-  const handleSend = useCallback(async () => {
-    const text = input.trim();
+  // Core send logic — reusable for both normal send and regenerate
+  const doSend = useCallback(async (text: string) => {
     if (!text || loading || streaming) return;
 
+    // Intercept /write command: open agent panel instead of sending to chat
+    const writeMatch = text.match(/^\/write\s+(.+)/);
+    if (writeMatch) {
+      window.dispatchEvent(new CustomEvent("znwriter-agent-write-open", { detail: { goal: writeMatch[1].trim() } }));
+      setInput("");
+      return;
+    }
+
     const currentDocument = currentDocumentId ? getDocument(currentDocumentId) : undefined;
-    // Always pass current document as context for LLM-based intent detection
     const currentReference = currentDocument && !currentDocument.isDeleted
       ? [{ type: "document" as const, id: currentDocument.id, title: currentDocument.title }]
       : [];
@@ -821,9 +908,12 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
     const requestReferences = uniqueReferences([...currentReference, ...references, ...referencedByText, ...brainReferences, ...autoBrainReferences, ...referencedBrainsByText]);
 
     const userMsg: Message = { role: "user", content: text, timestamp: formatTimestamp() };
-    const withUser = [...messages, userMsg];
-    setMessages(withUser);
+    setMessages((prev) => [...prev, userMsg]);
     setInput("");
+    // Track sent message for ArrowUp history navigation
+    sentHistoryRef.current = [text, ...sentHistoryRef.current.filter(h => h !== text)].slice(0, 30);
+    historyIndexRef.current = -1;
+    draftBeforeHistoryRef.current = "";
     setReferences([]);
     setBrainReferences([]);
     setAutoBrainReferences([]);
@@ -843,13 +933,14 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
     try {
       const memoryContext = buildMemoryContext(memory);
       let fullContent = "";
+      let fullThinking = "";
       let firstDelta = true;
+      let latestToolCalls: ToolCallEvent[] = [];
 
-      const { reply, action } = await streamChat(
-        { messages: withUser, personality: personalityRef.current, memoryContext, references: requestReferences },
+      const { reply, action, thinking, toolCalls } = await streamChat(
+        { messages: [...memory], personality: personalityRef.current, memoryContext, references: requestReferences },
         (delta) => {
           fullContent += delta;
-          // Detect action markers in streaming content to switch indicator
           if (/<<ACTION_JSON>>|<<DOC_BEGIN>>|<<UPDATE_DOC:/.test(fullContent)) {
             setIsActing(true);
           }
@@ -868,17 +959,38 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
             });
           }
         },
+        (tDelta) => {
+          fullThinking += tDelta;
+          setMessages((prev) => {
+            const next = [...prev];
+            const last = next[next.length - 1];
+            if (last && last.role === "assistant") {
+              next[next.length - 1] = { ...last, thinking: fullThinking };
+            }
+            return next;
+          });
+        },
+        (tc) => {
+          latestToolCalls = [...latestToolCalls.filter(t => t.index !== tc.index), tc];
+          setIsActing(true);
+          setMessages((prev) => {
+            const next = [...prev];
+            const last = next[next.length - 1];
+            if (last && last.role === "assistant") {
+              next[next.length - 1] = { ...last, toolCalls: latestToolCalls };
+            } else {
+              next.push({ role: "assistant", content: "", toolCalls: latestToolCalls, sources: requestReferences, timestamp: formatTimestamp() });
+            }
+            return next;
+          });
+        },
         abort.signal
       );
 
-      // Determine final acting state from parsed action
       const hasAction = !!(action && (action.type === "create_document" || action.type === "update_document"));
       setIsActing(hasAction);
 
-      // Finalize with parsed reply
-      const finalContent = reply || fullContent;
-
-      // Always show reply in chat (parseAction already strips doc content from reply)
+      const finalContent = fullContent || reply;
       if (!finalContent.trim()) {
         throw new Error(t("ai.emptyReply"));
       }
@@ -886,16 +998,38 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
         const next = [...prev];
         const last = next[next.length - 1];
         if (last && last.role === "assistant") {
-          next[next.length - 1] = { ...last, content: finalContent, sources: requestReferences };
+          next[next.length - 1] = { ...last, content: finalContent, thinking: thinking || fullThinking, toolCalls: toolCalls || latestToolCalls, sources: requestReferences };
         } else if (finalContent) {
-          next.push({ role: "assistant", content: finalContent, sources: requestReferences, timestamp: formatTimestamp() });
+          next.push({ role: "assistant", content: finalContent, thinking: thinking || fullThinking, toolCalls: toolCalls || latestToolCalls, sources: requestReferences, timestamp: formatTimestamp() });
         }
         return next;
       });
-      memoryRef.current = [...memory, { role: "assistant", content: finalContent }];
+
+      const finalToolCalls = toolCalls || latestToolCalls;
+      const assistantMemory: Message[] = [{ role: "assistant", content: finalContent, toolCalls: finalToolCalls.length > 0 ? finalToolCalls : undefined }];
+      for (const tc of finalToolCalls) {
+        if (tc.status === "done" && tc.result !== undefined) {
+          assistantMemory.push({ role: "tool", tool_call_id: tc.id || `call_${tc.index}`, content: String(tc.result) });
+        }
+      }
+      memoryRef.current = [...memory, ...assistantMemory];
       saveMemory(memoryRef.current);
 
-      // Handle create_document action: create doc in background
+      const documentToolCalls = finalToolCalls.filter((tc) =>
+        tc.status === "done" && (tc.name === "create_document" || tc.name === "update_document")
+      );
+      if (documentToolCalls.length > 0) {
+        await refreshDocuments();
+        const updatedDocIds = Array.from(new Set(
+          documentToolCalls
+            .filter((tc) => tc.name === "update_document")
+            .map((tc) => String(parseToolArguments(tc.arguments).docId || "").trim())
+            .filter(Boolean)
+        ));
+        await Promise.all(updatedDocIds.map((docId) => loadDocument(docId)));
+      }
+
+      // Handle create_document action
       if (action?.type === "create_document") {
         try {
           const nextContent = typeof action.content === "string" ? action.content.trim() : "";
@@ -903,10 +1037,8 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
             toast(t("ai.menu.emptyResult"), "error");
             return;
           }
-
           const title = typeof action.title === "string" && action.title.trim() ? action.title.trim() : t("editor.untitled");
           const docId = await createDocument("general", title, markdownToHtml(nextContent));
-          // Append a system note to memory so the model knows what was created in follow-up turns
           const docNote = { role: "assistant" as const, content: `[系统] 已为用户创建文档「${title}」[doc:${docId}]。内容摘要：${nextContent.slice(0, 200)}...` };
           memoryRef.current = [...memoryRef.current, docNote];
           saveMemory(memoryRef.current);
@@ -915,7 +1047,7 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
         }
       }
 
-      // Handle update_document action: update the document specified by the model
+      // Handle update_document action
       if (action?.type === "update_document" && action.content) {
         try {
           const nextContent = typeof action.content === "string" ? action.content.trim() : "";
@@ -923,13 +1055,11 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
             toast(t("ai.docUpdateEmpty"), "error");
             return;
           }
-
           const actionDocId = typeof action.docId === "string" ? action.docId.trim() : "";
           const docReferences = requestReferences.filter((ref): ref is DocumentReference => ref.type === "document");
           const fallbackDocId = docReferences.length === 1 ? docReferences[0].id : "";
           const targetDocId = actionDocId && getDocument(actionDocId) ? actionDocId : fallbackDocId || actionDocId;
           const targetDoc = targetDocId ? getDocument(targetDocId) || await loadDocument(targetDocId) : null;
-
           if (!targetDoc) {
             const message = t("ai.docUpdateTargetMissing");
             setMessages((prev) => {
@@ -945,14 +1075,12 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
             toast(message, "error");
             return;
           }
-
           const nextHtml = markdownToHtml(nextContent);
           const diffLines = buildDiffLines(htmlToPlainText(targetDoc.content), htmlToPlainText(nextHtml));
           const stats = summarizeDiff(diffLines);
           if (stats.added === 0 && stats.removed === 0) {
             toast(t("ai.diffNoChanges"), "info");
           }
-
           setPendingUpdate({
             docId: targetDoc.id,
             title: targetDoc.title,
@@ -970,7 +1098,6 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
       }
     } catch (error: any) {
       if (error.name === "AbortError") return;
-      // Remove thinking indicator and show error
       setMessages((prev) => {
         const next = [...prev];
         const last = next[next.length - 1];
@@ -987,7 +1114,13 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
       setIsActing(false);
       setTaskStage((stage) => (stage === "preview" ? stage : "idle"));
     }
-  }, [input, loading, streaming, messages, currentDocumentId, createDocument, toast, t, documents, references, brainReferences, autoBrainReferences, brainKnowledges, getDocument, loadDocument, updateDocument]);
+  }, [loading, streaming, currentDocumentId, createDocument, toast, t, documents, references, brainReferences, autoBrainReferences, brainKnowledges, getDocument, loadDocument, refreshDocuments, updateDocument]);
+
+  const handleSend = useCallback(async () => {
+    const text = input.trim();
+    if (!text || loading || streaming) return;
+    await doSend(text);
+  }, [input, loading, streaming, doSend]);
 
   const handleStop = useCallback(() => {
     abortRef.current?.abort();
@@ -995,6 +1128,37 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
     setStreaming(false);
     setIsActing(false);
   }, []);
+
+  const handleRegenerate = useCallback(() => {
+    // Abort any in-progress stream
+    if (abortRef.current) {
+      abortRef.current.abort();
+    }
+    setLoading(false);
+    setStreaming(false);
+    setIsActing(false);
+    // Find the last user message, remove it and everything after, then resend
+    setMessages((prev) => {
+      let lastUserIdx = -1;
+      for (let i = prev.length - 1; i >= 0; i--) {
+        if (prev[i].role === "user") {
+          lastUserIdx = i;
+          break;
+        }
+      }
+      if (lastUserIdx < 0) return prev;
+      const lastUserMsg = prev[lastUserIdx];
+      const text = lastUserMsg.content;
+      // Trim memoryRef to before the last user message
+      const memIdx = memoryRef.current.findIndex((m) => m.role === "user" && m.content === text);
+      if (memIdx >= 0) {
+        memoryRef.current = memoryRef.current.slice(0, memIdx);
+      }
+      // Resend via doSend (deferred so state settles first)
+      setTimeout(() => { doSend(text); }, 0);
+      return prev.slice(0, lastUserIdx);
+    });
+  }, [doSend]);
 
   const applyPendingUpdate = useCallback(async () => {
     if (!pendingUpdate || applyingUpdate) return;
@@ -1077,123 +1241,6 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
     }
   }, [currentDocumentId, loadVersions, restoreDocumentVersion, restoringVersionId, t, toast]);
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if ((e.key === "Backspace" || e.key === "Delete") && (references.length > 0 || brainReferences.length > 0)) {
-      const target = e.currentTarget as HTMLTextAreaElement;
-      const selectionStart = target.selectionStart ?? 0;
-      const selectionEnd = target.selectionEnd ?? selectionStart;
-      if (selectionStart === selectionEnd) {
-        const docRange = findTokenDeletionRange(input, selectionStart, e.key, references, "@");
-        const brainRange = findTokenDeletionRange(input, selectionStart, e.key, brainReferences, "#");
-        const range = docRange || brainRange;
-        if (range) {
-          e.preventDefault();
-          const next = `${input.slice(0, range.start)}${input.slice(range.end)}`;
-          setInput(next);
-          setMentionOpen(false);
-          setBrainOpen(false);
-          setMentionIndex(0);
-          setReferences((prev) => prev.filter((ref) => next.includes(`@${ref.title}`)));
-          setBrainReferences((prev) => prev.filter((ref) => next.includes(`#${ref.title}`)));
-          requestAnimationFrame(() => {
-            inputRef.current?.setSelectionRange(range.start, range.start);
-            resizeTextarea();
-          });
-          return;
-        }
-      }
-    }
-
-    if (showCommandMenu) {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        setCommandOpen(false);
-        return;
-      }
-      if (commandMatches.length > 0) {
-        if (e.key === "ArrowDown") {
-          e.preventDefault();
-          setCommandIndex((i) => Math.min(i + 1, commandMatches.length - 1));
-          return;
-        }
-        if (e.key === "ArrowUp") {
-          e.preventDefault();
-          setCommandIndex((i) => Math.max(i - 1, 0));
-          return;
-        }
-        if (e.key === "Enter" && !e.shiftKey) {
-          e.preventDefault();
-          selectCommand(commandMatches[commandIndex]);
-          return;
-        }
-      } else if (e.key === "Enter") {
-        e.preventDefault();
-        return;
-      }
-    }
-
-    if (showBrainMenu) {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        setBrainOpen(false);
-        return;
-      }
-      if (brainMatches.length > 0) {
-        if (e.key === "ArrowDown") {
-          e.preventDefault();
-          setBrainIndex((i) => Math.min(i + 1, brainMatches.length - 1));
-          return;
-        }
-        if (e.key === "ArrowUp") {
-          e.preventDefault();
-          setBrainIndex((i) => Math.max(i - 1, 0));
-          return;
-        }
-        if (e.key === "Enter" && !e.shiftKey) {
-          e.preventDefault();
-          selectBrainReference(brainMatches[brainIndex]);
-          return;
-        }
-      } else if (e.key === "Enter") {
-        e.preventDefault();
-        return;
-      }
-    }
-
-    // When mention menu is open, intercept all navigation keys
-    if (showMentionMenu) {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        setMentionOpen(false);
-        return;
-      }
-      if (mentionMatches.length > 0) {
-        if (e.key === "ArrowDown") {
-          e.preventDefault();
-          setMentionIndex((i) => Math.min(i + 1, mentionMatches.length - 1));
-          return;
-        }
-        if (e.key === "ArrowUp") {
-          e.preventDefault();
-          setMentionIndex((i) => Math.max(i - 1, 0));
-          return;
-        }
-        if (e.key === "Enter" && !e.shiftKey) {
-          e.preventDefault();
-          selectReference(mentionMatches[mentionIndex]);
-          return;
-        }
-      } else if (e.key === "Enter") {
-        // Block Enter when mention menu is open but no matches
-        e.preventDefault();
-        return;
-      }
-    }
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
-  };
 
   const currentPersonality = PERSONALITY_OPTIONS.find((p) => p.key === personality) || PERSONALITY_OPTIONS[0];
   const isGenerating = loading || streaming;
@@ -1305,7 +1352,10 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
   const selectCommand = (command: SlashCommand) => {
     if (!slash) return;
     if (command.id === "write") {
-      window.dispatchEvent(new CustomEvent("znwriter-agent-write-open"));
+      // Extract goal text after "/write " from the input (if user typed it inline)
+      const afterSlash = slash ? input.slice(slash.start) : "";
+      const goalText = afterSlash.replace(/^\/write\s*/, "").trim();
+      window.dispatchEvent(new CustomEvent("znwriter-agent-write-open", { detail: { goal: goalText || undefined } }));
       setInput((prev) => prev.slice(0, slash.start).trimStart());
       setCommandOpen(false);
       setCommandIndex(0);
@@ -1314,10 +1364,7 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
     setInput((prev) => `${prev.slice(0, slash.start)}${command.prompt}`);
     setCommandOpen(false);
     setCommandIndex(0);
-    requestAnimationFrame(() => {
-      inputRef.current?.focus();
-      resizeTextarea();
-    });
+    // Sender handles focus internally
   };
 
   const handleInputChange = (next: string) => {
@@ -1369,6 +1416,95 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
         0.06
       );
   }, [saveConversation]);
+
+  // Keep index refs in sync for keyboard handler (avoids stale closure issues)
+  mentionIdxRef.current = mentionIndex;
+  brainIdxRef.current = brainIndex;
+  commandIdxRef.current = commandIndex;
+
+  // Unified keyboard handler: autocomplete nav + input history + Escape
+  const handleChatKeyDown = useCallback((e: React.KeyboardEvent) => {
+    const activeEl = document.activeElement;
+    if (!activeEl || !(activeEl instanceof HTMLTextAreaElement || activeEl instanceof HTMLInputElement)) return;
+    if (!activeEl.closest("[data-ai-chat-panel]")) return;
+
+    // Escape: dismiss menus, then close panel
+    if (e.key === "Escape") {
+      if (commandOpen) { e.preventDefault(); setCommandOpen(false); return; }
+      if (brainOpen) { e.preventDefault(); setBrainOpen(false); return; }
+      if (mentionOpen) { e.preventDefault(); setMentionOpen(false); return; }
+      e.preventDefault();
+      closeWithAnimation();
+      return;
+    }
+
+    // Enter: select highlighted autocomplete item (without Shift)
+    if (e.key === "Enter" && !e.shiftKey) {
+      if (commandOpen && commandMatches.length > 0) {
+        e.preventDefault();
+        selectCommand(commandMatches[commandIdxRef.current]);
+        return;
+      }
+      if (brainOpen && brainMatches.length > 0) {
+        e.preventDefault();
+        selectBrainReference(brainMatches[brainIdxRef.current]);
+        return;
+      }
+      if (mentionOpen && mentionMatches.length > 0) {
+        e.preventDefault();
+        selectReference(mentionMatches[mentionIdxRef.current]);
+        return;
+      }
+      return; // let Sender handle normal Enter
+    }
+
+    // Arrow keys: autocomplete navigation
+    if (commandOpen && commandMatches.length > 0) {
+      if (e.key === "ArrowDown") { e.preventDefault(); setCommandIndex(p => (p + 1) % commandMatches.length); return; }
+      if (e.key === "ArrowUp") { e.preventDefault(); setCommandIndex(p => (p - 1 + commandMatches.length) % commandMatches.length); return; }
+      return;
+    }
+    if (brainOpen && brainMatches.length > 0) {
+      if (e.key === "ArrowDown") { e.preventDefault(); setBrainIndex(p => (p + 1) % brainMatches.length); return; }
+      if (e.key === "ArrowUp") { e.preventDefault(); setBrainIndex(p => (p - 1 + brainMatches.length) % brainMatches.length); return; }
+      return;
+    }
+    if (mentionOpen && mentionMatches.length > 0) {
+      if (e.key === "ArrowDown") { e.preventDefault(); setMentionIndex(p => (p + 1) % mentionMatches.length); return; }
+      if (e.key === "ArrowUp") { e.preventDefault(); setMentionIndex(p => (p - 1 + mentionMatches.length) % mentionMatches.length); return; }
+      return;
+    }
+
+    // Arrow keys: input history (only when no autocomplete is open)
+    if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+      const history = sentHistoryRef.current;
+      if (history.length === 0) return;
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        if (historyIndexRef.current === -1) {
+          draftBeforeHistoryRef.current = (activeEl as HTMLTextAreaElement).value;
+          historyIndexRef.current = 0;
+        } else if (historyIndexRef.current < history.length - 1) {
+          historyIndexRef.current++;
+        }
+        setInput(history[historyIndexRef.current]);
+      } else {
+        e.preventDefault();
+        if (historyIndexRef.current > 0) {
+          historyIndexRef.current--;
+          setInput(history[historyIndexRef.current]);
+        } else if (historyIndexRef.current === 0) {
+          historyIndexRef.current = -1;
+          setInput(draftBeforeHistoryRef.current);
+        }
+      }
+    }
+  }, [
+    mentionOpen, brainOpen, commandOpen,
+    mentionMatches, brainMatches, commandMatches,
+    selectReference, selectBrainReference, selectCommand,
+    closeWithAnimation,
+  ]);
 
   useEffect(() => {
     const panel = chatPanelRef.current;
@@ -1425,61 +1561,19 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
       >
         <span className="absolute inset-[5px] rounded-full bg-[radial-gradient(circle_at_33%_22%,rgba(255,255,255,0.88),rgba(255,255,255,0)_34%),linear-gradient(145deg,rgba(255,255,255,0.55),rgba(255,255,255,0.08)_58%,rgba(185,149,78,0.14))] shadow-[inset_0_-10px_18px_rgba(92,107,102,0.08)] dark:bg-[radial-gradient(circle_at_35%_22%,rgba(255,255,255,0.22),rgba(255,255,255,0)_32%),linear-gradient(145deg,rgba(255,255,255,0.12),rgba(185,149,78,0.12))]" />
         <span className="absolute -right-4 -top-4 h-11 w-11 rounded-full bg-brand-200/35 blur-xl transition-transform duration-500 group-hover:translate-x-1 group-hover:translate-y-1 dark:bg-brand-500/20" />
-        <svg
-          viewBox="0 0 80 80"
-          aria-hidden="true"
-          className="relative h-12 w-12 drop-shadow-[0_5px_10px_rgba(46,61,57,0.22)]"
-        >
-          <path
-            d="M18.7 45.2c-3.4-12.2 4.2-24.8 17-28.1 11.7-3 23.6 3.9 26.6 15.4 2.9 11.2-3.8 22.8-15.3 26.5-5.2 1.7-10.6 1.3-15.1-.8L20.8 63l3.1-10.2a22.6 22.6 0 0 1-5.2-7.6Z"
-            fill="rgba(255,255,255,0.54)"
-            stroke="rgba(101,118,112,0.64)"
-            strokeLinejoin="round"
-            strokeWidth="2.7"
-          />
-          <path
-            d="M31.6 48.3c7.2-15.7 17.1-25.8 31.6-30.2-3.2 15.1-11.7 26.2-27.4 34.7l-9.4 5.1 5.2-9.6Z"
-            fill="rgba(255,255,255,0.72)"
-            stroke="rgba(82,98,93,0.92)"
-            strokeLinejoin="round"
-            strokeWidth="3.2"
-          />
-          <path
-            d="M37.5 48.4 56.2 25"
-            fill="none"
-            stroke="rgba(82,98,93,0.74)"
-            strokeLinecap="round"
-            strokeWidth="2.4"
-          />
-          <path
-            d="M31.2 47.9 19.4 59.7"
-            fill="none"
-            stroke="rgba(82,98,93,0.88)"
-            strokeLinecap="round"
-            strokeWidth="3.4"
-          />
-          <path
-            d="M28.1 51.2 21 44l-2.6 15.2 15.1-2.7-5.4-5.3Z"
-            fill="rgba(255,255,255,0.86)"
-            stroke="rgba(82,98,93,0.9)"
-            strokeLinejoin="round"
-            strokeWidth="2.8"
-          />
-          <path
-            d="M44.4 36.4h10.5M39.5 43.2h10.8"
-            fill="none"
-            stroke="rgba(185,149,78,0.72)"
-            strokeLinecap="round"
-            strokeWidth="2.4"
-          />
-          <circle cx="61.5" cy="20.2" r="4.1" fill="rgba(255,255,255,0.88)" />
-          <circle cx="61.5" cy="20.2" r="2" fill="rgba(216,189,115,0.9)" />
-        </svg>
+        <img
+          src={catAvatar}
+          alt="AI"
+          draggable={false}
+          className="relative h-12 w-12 rounded-full object-cover pointer-events-none select-none"
+        />
       </button>
 
       {open && keyOk && (
         <div
           ref={chatPanelRef}
+          data-ai-chat-panel
+          onKeyDownCapture={handleChatKeyDown}
           className={cn(
             "fixed bottom-6 z-50 flex h-[min(760px,calc(100vh-48px))] w-[min(560px,calc(100vw-48px))] flex-col rounded-2xl border border-surface-200 bg-white shadow-2xl dark:border-surface-700 dark:bg-surface-900",
             chatPanelSide === "left" ? "left-6" : "right-6"
@@ -1496,8 +1590,8 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
           <div data-ai-chat-enter className="shrink-0 border-b border-surface-200 px-4 py-3 dark:border-surface-700">
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2">
-                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-100 dark:bg-brand-900">
-                  <Bot className="h-4 w-4 text-brand-600 dark:text-brand-400" />
+                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-100 dark:bg-brand-900 overflow-hidden">
+                  <img src={catAvatar} alt="AI" className="h-8 w-8 object-cover" />
                 </div>
                 <div>
                   <h3 className="text-sm font-semibold text-surface-900 dark:text-surface-100">{t("ai.title")}</h3>
@@ -1666,8 +1760,8 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
                           </div>
                         )
                       ) : (
-                        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-100 dark:bg-brand-900 mt-0.5">
-                          <Bot className="h-3.5 w-3.5 text-brand-600 dark:text-brand-400" />
+                        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-100 dark:bg-brand-900 mt-0.5 overflow-hidden">
+                          <img src={catAvatar} alt="AI" className="h-7 w-7 object-cover" />
                         </div>
                       )}
 
@@ -1681,10 +1775,75 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
                         {isUser ? (
                           msg.content
                         ) : (
-                          <div
-                            className="ai-chat-markdown prose prose-sm max-w-none dark:prose-invert"
-                            dangerouslySetInnerHTML={{ __html: sanitizeHtml(markdownToHtml(msg.content)) }}
-                          />
+                          <>
+                            {/* Thinking / Reasoning block */}
+                            {msg.thinking && (
+                              <details className="mt-0 mb-2" open={streaming && isLastAssistant}>
+                                <summary className="flex cursor-pointer items-center gap-1.5 text-[11px] font-medium text-purple-500 hover:text-purple-600 dark:text-purple-400 dark:hover:text-purple-300 select-none">
+                                  <BrainCircuit className="h-3 w-3" />
+                                  <span>{t("ai.reasoning")}</span>
+                                  <ChevronDown className="h-3 w-3 transition-transform duration-200 ml-auto group-open:rotate-180" />
+                                </summary>
+                                <div className="mt-1.5 rounded-lg border border-purple-200/50 bg-purple-50/30 px-3 py-2 text-xs leading-relaxed whitespace-pre-wrap text-surface-600 dark:border-purple-500/15 dark:bg-purple-500/5 dark:text-surface-400">
+                                  {msg.thinking}
+                                </div>
+                              </details>
+                            )}
+
+                            {/* Tool call blocks */}
+                            {msg.toolCalls && msg.toolCalls.length > 0 && (
+                              <div className="mb-2 space-y-1.5">
+                                {msg.toolCalls.map((tc, i) => {
+                                  const isSearch = tc.name === "search_web";
+                                  const isCreate = tc.name === "create_document";
+                                  const isUpdate = tc.name === "update_document";
+                                  const toolLabel = isSearch ? t("ai.searchWeb") : isCreate ? t("ai.createDoc") : isUpdate ? t("ai.updateDoc") : tc.name;
+                                  const toolIcon = isSearch ? "🔍" : isCreate || isUpdate ? "📝" : "🔧";
+                                  const inProgress = tc.status === "calling";
+                                  const done = tc.status === "done";
+                                  const failed = tc.status === "error";
+                                  return (
+                                    <details key={i} className="rounded-lg border border-amber-200/60 bg-amber-50/40 dark:border-amber-500/15 dark:bg-amber-500/5" open={inProgress}>
+                                      <summary className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-[11px] select-none">
+                                        <span className="text-xs">{toolIcon}</span>
+                                        <span className="font-medium text-amber-700 dark:text-amber-300">{toolLabel}</span>
+                                        {tc.result && <span className="text-[10px] text-amber-500 truncate max-w-[120px]">"{tc.result}"</span>}
+                                        <span className="ml-auto flex items-center gap-1 shrink-0">
+                                          {inProgress && (
+                                            <InlineLoading
+                                              variant="dots"
+                                              size="sm"
+                                              label={t("ai.toolRunning")}
+                                              className="text-amber-400"
+                                              labelClassName="text-[10px] text-amber-400"
+                                            />
+                                          )}
+                                          {done && <CheckCircle2 className="h-3 w-3 text-green-500" />}
+                                          {failed && <XCircle className="h-3 w-3 text-red-400" />}
+                                        </span>
+                                      </summary>
+                                      {tc.result && done && (
+                                        <div className="border-t border-amber-200/40 px-3 py-1.5 text-[10px] leading-relaxed text-surface-500 dark:border-amber-500/10 dark:text-surface-400 max-h-32 overflow-y-auto">
+                                          {tc.result}
+                                        </div>
+                                      )}
+                                    </details>
+                                  );
+                                })}
+                              </div>
+                            )}
+                            {/* Placeholder content when tool calls are happening but no text yet */}
+                            {(!msg.content || msg.content === "") && msg.toolCalls && msg.toolCalls.some(tc => tc.status === "calling") && (
+                              <div className="flex items-center gap-2 text-xs text-surface-400">
+                                <InlineLoading variant="ai" size="sm" label={t("ai.toolWorking")} />
+                              </div>
+                            )}
+
+                            <div
+                              className="ai-chat-markdown prose prose-sm max-w-none dark:prose-invert"
+                              dangerouslySetInnerHTML={{ __html: sanitizeHtml(markdownToHtml(msg.content)) }}
+                            />
+                          </>
                         )}
                         {!isUser && msg.sources && msg.sources.length > 0 && (
                           <div className="mt-2 border-t border-surface-200/70 pt-2 dark:border-surface-700/70">
@@ -1720,9 +1879,41 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
                             {msg.timestamp}
                           </div>
                         )}
-                        {/* Feedback buttons: centered vertically, appear on hover */}
-                        {!isUser && !streaming && msg.content && !feedbackDoneRef.current.has(i) && (
+                        {/* Action buttons: regenerate + copy + feedback, appear on hover */}
+                        {!isUser && !streaming && msg.content && (
                           <div className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-full pl-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex flex-col gap-0.5">
+                            {isLastAssistant && (
+                              <Tooltip content={t("ai.regenerate")} delay={150} side="right">
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); handleRegenerate(); }}
+                                  className="p-0.5 rounded text-surface-300 hover:text-amber-500 hover:bg-surface-100 transition-colors"
+                                >
+                                  <RotateCcw className="h-3 w-3" />
+                                </button>
+                              </Tooltip>
+                            )}
+                            <Tooltip content={copiedMsgIdx === i ? t("ai.copied") : t("ai.copy")} delay={150} side="right">
+                              <button
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  try {
+                                    const div = document.createElement("div");
+                                    div.innerHTML = markdownToHtml(msg.content);
+                                    const text = div.textContent || div.innerText || msg.content;
+                                    await navigator.clipboard.writeText(text);
+                                    setCopiedMsgIdx(i);
+                                    toast(t("ai.copied"), "success");
+                                    setTimeout(() => setCopiedMsgIdx(null), 2000);
+                                  } catch {
+                                    toast(t("ai.copyFailed"), "error");
+                                  }
+                                }}
+                                className="p-0.5 rounded text-surface-300 hover:text-brand-500 hover:bg-surface-100 transition-colors"
+                              >
+                                {copiedMsgIdx === i ? <CopyCheck className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
+                              </button>
+                            </Tooltip>
+                            {!feedbackDoneRef.current.has(i) && (<>
                             <Tooltip content={t("ai.like")} delay={150} side="right">
                               <button
                                 onClick={(e) => {
@@ -1755,6 +1946,7 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
                                 <ThumbsDown className="h-3 w-3" />
                               </button>
                             </Tooltip>
+                            </>)}
                             {/* Star rating popover */}
                             {showRating && feedbackMsgIdx === i && (
                               <div className={cn(
@@ -1821,21 +2013,17 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
                 {/* Thinking/Action indicator */}
                 {loading && !streaming && (
                   <div className="mb-4 flex gap-2">
-                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-100 dark:bg-brand-900 mt-0.5">
-                      <Bot className="h-3.5 w-3.5 text-brand-600 dark:text-brand-400" />
+                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-100 dark:bg-brand-900 mt-0.5 overflow-hidden">
+                      <img src={catAvatar} alt="AI" className="h-7 w-7 object-cover" />
                     </div>
                     <div className="flex items-center gap-1.5 rounded-2xl rounded-bl-md bg-surface-100 px-4 py-3 dark:bg-surface-800">
-                      <span className="text-xs text-surface-500">
-                        {(isActing ? t("ai.action") : t("ai.thinking")).split("").map((char, ci) => (
-                          <span
-                            key={ci}
-                            className="inline-block animate-bounce"
-                            style={{ animationDelay: `${ci * 80}ms`, animationDuration: "0.6s" }}
-                          >
-                            {char === " " ? "\u00A0" : char}
-                          </span>
-                        ))}
-                      </span>
+                      <InlineLoading
+                        variant={isActing ? "cursor" : "ai"}
+                        size="sm"
+                        label={isActing ? t("ai.action") : t("ai.thinking")}
+                        className="text-brand-500 dark:text-brand-300"
+                        labelClassName="text-xs text-surface-500 dark:text-surface-400"
+                      />
                     </div>
                   </div>
                 )}
@@ -1921,20 +2109,16 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
                 ))}
               </div>
             )}
-            <div className="rounded-2xl border border-surface-200 bg-white p-2 shadow-sm transition-colors focus-within:border-brand-300 focus-within:ring-1 focus-within:ring-brand-300 dark:border-surface-700 dark:bg-surface-900 dark:focus-within:border-brand-700">
-              <div className="relative flex items-end gap-2">
-                <div className="relative min-w-0 flex-1">
-                  <textarea
-                    ref={inputRef}
-                    value={input}
-                    onChange={(e) => handleInputChange(e.target.value)}
-                    onKeyDown={handleKeyDown}
-                    placeholder={isGenerating ? t("ai.replying") : t("ai.placeholder")}
-                    disabled={isGenerating}
-                    rows={1}
-                    className="block min-h-[42px] w-full resize-none overflow-hidden rounded-xl bg-transparent px-3 py-2.5 text-sm leading-5 text-surface-900 outline-none placeholder:text-surface-400 disabled:cursor-not-allowed disabled:opacity-50 dark:text-surface-100 dark:placeholder:text-surface-500"
-                    style={{ maxHeight: "112px" }}
-                  />
+            <div className="relative px-4 pb-4 pt-2" ref={senderRef}>
+              <Sender
+                value={input}
+                onChange={handleInputChange}
+                onSubmit={handleSend}
+                placeholder={isGenerating ? t("ai.replying") : t("ai.placeholder")}
+                loading={isGenerating}
+                onCancel={handleStop}
+                className="w-full"
+              />
               {showMentionMenu && (
                 <div className="absolute bottom-full left-0 z-30 mb-2 max-h-56 w-full overflow-hidden rounded-xl border border-surface-200 bg-white py-1 shadow-lg dark:border-surface-700 dark:bg-surface-900">
                   {mentionMatches.length > 0 ? (
@@ -2010,41 +2194,26 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
                   ))}
                 </div>
               )}
-                </div>
-                {isGenerating ? (
-                  <Tooltip content={t("ai.stop")} delay={150}>
-                    <Button size="icon" onClick={handleStop} className="mb-0.5 h-9 w-9 shrink-0 rounded-xl bg-red-500 hover:bg-red-600">
-                      <Square className="h-3.5 w-3.5 text-white" fill="white" />
-                    </Button>
-                  </Tooltip>
-                ) : (
-                  <Tooltip content={t("ai.send")} delay={150}>
-                    <Button size="icon" onClick={handleSend} disabled={!input.trim()} className="mb-0.5 h-9 w-9 shrink-0 rounded-xl">
-                      <Send className="h-4 w-4" />
-                    </Button>
-                  </Tooltip>
+            </div>
+            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 px-4 text-[10px] text-surface-400 dark:text-surface-500">
+              <span>{t("ai.mentionHint")}</span>
+              <span>{t("ai.brainHint")}</span>
+              <span>{t("ai.commandHint")}</span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={toggleAutoReference}
+                className={cn(
+                  "h-5 px-1.5 text-[10px]",
+                  autoReferenceEnabled
+                    ? "text-emerald-600 hover:text-emerald-700 dark:text-emerald-400"
+                    : "text-surface-400"
                 )}
-              </div>
-              <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 px-3 pb-1 text-[10px] text-surface-400 dark:text-surface-500">
-                <span>{t("ai.mentionHint")}</span>
-                <span>{t("ai.brainHint")}</span>
-                <span>{t("ai.commandHint")}</span>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={toggleAutoReference}
-                  className={cn(
-                    "h-5 px-1.5 text-[10px]",
-                    autoReferenceEnabled
-                      ? "text-emerald-600 hover:text-emerald-700 dark:text-emerald-400"
-                      : "text-surface-400"
-                  )}
-                >
-                  <Sparkles className="mr-1 h-3 w-3" />
-                  {autoReferenceLoading ? t("rag.searching") : t("rag.autoReferenceToggle")}
-                </Button>
-              </div>
+              >
+                <Sparkles className="mr-1 h-3 w-3" />
+                {autoReferenceLoading ? t("rag.searching") : t("rag.autoReferenceToggle")}
+              </Button>
             </div>
           </div>
         </div>
@@ -2166,7 +2335,7 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
             <div className="space-y-2 p-4">
               {versionLoading ? (
                 <div className="flex h-40 items-center justify-center text-sm text-surface-500">
-                  {t("common.loading")}
+                  <InlineLoading variant="dots" size="md" label={t("loading.versions")} />
                 </div>
               ) : versions.length === 0 ? (
                 <div className="flex h-40 flex-col items-center justify-center rounded-xl border border-dashed border-surface-200 bg-surface-50 text-center dark:border-surface-700 dark:bg-surface-800">
@@ -2243,6 +2412,8 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
           setMessages(newMsgs);
           memoryRef.current = newMsgs;
           saveMemory(newMsgs);
+          // Reset feedback tracking since indices shifted
+          feedbackDoneRef.current = new Set();
           setSelectedMsgs(new Set());
           api.logActivity({ action: "chat_delete", detail: `deleted_${selectedMsgs.size}_msgs` }).catch(() => {});
           toast("消息已删除", "success");

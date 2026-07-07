@@ -59,7 +59,12 @@ export function TrashPage() {
 
   return (
     <Scrollbar className="flex-1 bg-surface-50 dark:bg-surface-950 relative">
-      {(loading || actionLoading) && <LoadingOverlay />}
+      {(loading || actionLoading) && (
+        <LoadingOverlay
+          tone="quiet"
+          message={loading ? t("loading.trash") : t("loading.documentAction")}
+        />
+      )}
       <div className="mx-auto max-w-[960px] px-20 py-20">
         <div className="mb-8 flex items-start justify-between">
           <div>

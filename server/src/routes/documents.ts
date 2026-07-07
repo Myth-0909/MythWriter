@@ -8,6 +8,10 @@ import {
   restoreDocumentVersion,
 } from "../services/documentService";
 import { ragService } from "../services/ragService";
+import {
+  documentVectorActionForMutation,
+  type DocumentVectorMutation,
+} from "../services/documentVectorLifecycle";
 
 const router = Router();
 
@@ -31,6 +35,23 @@ function queueDocumentVectorDelete(documentId: string) {
   });
 }
 
+function queueDocumentVectorMutation(
+  mutation: DocumentVectorMutation,
+  document: { id: string; userId: string; content?: string } | null
+) {
+  if (!document) return;
+  const action = documentVectorActionForMutation(mutation);
+  if (action === "reindex") {
+    queueDocumentReindex({
+      id: document.id,
+      userId: document.userId,
+      content: document.content || "",
+    });
+  } else if (action === "delete") {
+    queueDocumentVectorDelete(document.id);
+  }
+}
+
 // All routes require authentication
 router.use(authMiddleware);
 
@@ -41,7 +62,7 @@ router.get("/", async (req: AuthRequest, res: Response) => {
     res.json({ documents });
   } catch (error) {
     console.error("List documents error:", error);
-    res.status(500).json({ error: "获取文档列表失败" });
+    res.status(500).json({ error: t(requestLang(req), "获取文档列表失败", "Failed to load documents") });
   }
 });
 
@@ -52,7 +73,7 @@ router.get("/favorites", async (req: AuthRequest, res: Response) => {
     res.json({ documents });
   } catch (error) {
     console.error("List favorites error:", error);
-    res.status(500).json({ error: "获取收藏列表失败" });
+    res.status(500).json({ error: t(requestLang(req), "获取收藏列表失败", "Failed to load favorites") });
   }
 });
 
@@ -63,7 +84,7 @@ router.get("/trash", async (req: AuthRequest, res: Response) => {
     res.json({ documents });
   } catch (error) {
     console.error("List trash error:", error);
-    res.status(500).json({ error: "获取回收站列表失败" });
+    res.status(500).json({ error: t(requestLang(req), "获取回收站列表失败", "Failed to load trash") });
   }
 });
 
@@ -105,7 +126,7 @@ router.patch("/:id/versions/:versionId/restore", async (req: AuthRequest, res: R
       res.status(404).json({ error: t(requestLang(req), "版本不存在", "Version not found") });
       return;
     }
-    queueDocumentReindex(document);
+    queueDocumentVectorMutation("versionRestore", document);
     res.json({ document });
   } catch (error) {
     console.error("Restore document version error:", error);
@@ -118,13 +139,13 @@ router.get("/:id", async (req: AuthRequest, res: Response) => {
   try {
     const document = await getDocument(String(req.params.id), req.user!.userId);
     if (!document) {
-      res.status(404).json({ error: "文档不存在" });
+      res.status(404).json({ error: t(requestLang(req), "文档不存在", "Document not found") });
       return;
     }
     res.json({ document });
   } catch (error) {
     console.error("Get document error:", error);
-    res.status(500).json({ error: "获取文档失败" });
+    res.status(500).json({ error: t(requestLang(req), "获取文档失败", "Failed to load document") });
   }
 });
 
@@ -132,11 +153,11 @@ router.get("/:id", async (req: AuthRequest, res: Response) => {
 router.post("/", async (req: AuthRequest, res: Response) => {
   try {
     const document = await createDocument(req.user!.userId, req.body);
-    queueDocumentReindex(document);
+    queueDocumentVectorMutation("create", document);
     res.status(201).json({ document });
   } catch (error) {
     console.error("Create document error:", error);
-    res.status(500).json({ error: "创建文档失败" });
+    res.status(500).json({ error: t(requestLang(req), "创建文档失败", "Failed to create document") });
   }
 });
 
@@ -145,16 +166,16 @@ router.put("/:id", async (req: AuthRequest, res: Response) => {
   try {
     const document = await updateDocument(String(req.params.id), req.user!.userId, req.body);
     if (!document) {
-      res.status(404).json({ error: "文档不存在" });
+      res.status(404).json({ error: t(requestLang(req), "文档不存在", "Document not found") });
       return;
     }
     if (req.body?.content !== undefined) {
-      queueDocumentReindex(document);
+      queueDocumentVectorMutation("contentUpdate", document);
     }
     res.json({ document });
   } catch (error) {
     console.error("Update document error:", error);
-    res.status(500).json({ error: "更新文档失败" });
+    res.status(500).json({ error: t(requestLang(req), "更新文档失败", "Failed to update document") });
   }
 });
 
@@ -163,14 +184,14 @@ router.patch("/:id/favorite", async (req: AuthRequest, res: Response) => {
   try {
     const document = await toggleFavorite(String(req.params.id), req.user!.userId);
     if (!document) {
-      res.status(404).json({ error: "文档不存在" });
+      res.status(404).json({ error: t(requestLang(req), "文档不存在", "Document not found") });
       return;
     }
-    queueDocumentVectorDelete(document.id);
+    queueDocumentVectorMutation("favorite", document);
     res.json({ document });
   } catch (error) {
     console.error("Toggle favorite error:", error);
-    res.status(500).json({ error: "操作失败" });
+    res.status(500).json({ error: t(requestLang(req), "操作失败", "Operation failed") });
   }
 });
 
@@ -179,14 +200,14 @@ router.patch("/:id/trash", async (req: AuthRequest, res: Response) => {
   try {
     const document = await moveToTrash(String(req.params.id), req.user!.userId);
     if (!document) {
-      res.status(404).json({ error: "文档不存在" });
+      res.status(404).json({ error: t(requestLang(req), "文档不存在", "Document not found") });
       return;
     }
-    queueDocumentReindex(document);
+    queueDocumentVectorMutation("trash", document);
     res.json({ document });
   } catch (error) {
     console.error("Move to trash error:", error);
-    res.status(500).json({ error: "操作失败" });
+    res.status(500).json({ error: t(requestLang(req), "操作失败", "Operation failed") });
   }
 });
 
@@ -195,13 +216,14 @@ router.patch("/:id/restore", async (req: AuthRequest, res: Response) => {
   try {
     const document = await restoreFromTrash(String(req.params.id), req.user!.userId);
     if (!document) {
-      res.status(404).json({ error: "文档不存在" });
+      res.status(404).json({ error: t(requestLang(req), "文档不存在", "Document not found") });
       return;
     }
+    queueDocumentVectorMutation("restore", document);
     res.json({ document });
   } catch (error) {
     console.error("Restore error:", error);
-    res.status(500).json({ error: "操作失败" });
+    res.status(500).json({ error: t(requestLang(req), "操作失败", "Operation failed") });
   }
 });
 
@@ -210,11 +232,17 @@ router.delete("/trash/empty", async (req: AuthRequest, res: Response) => {
   try {
     const trashed = await listTrash(req.user!.userId);
     await emptyTrash(req.user!.userId);
-    trashed.forEach((document: { id: string }) => queueDocumentVectorDelete(document.id));
+    trashed.forEach((document: { id: string; userId?: string; content?: string }) =>
+      queueDocumentVectorMutation("emptyTrash", {
+        id: document.id,
+        userId: document.userId || req.user!.userId,
+        content: document.content || "",
+      })
+    );
     res.json({ success: true });
   } catch (error) {
     console.error("Empty trash error:", error);
-    res.status(500).json({ error: "清空回收站失败" });
+    res.status(500).json({ error: t(requestLang(req), "清空回收站失败", "Failed to empty trash") });
   }
 });
 
@@ -223,14 +251,18 @@ router.delete("/:id", async (req: AuthRequest, res: Response) => {
   try {
     const deleted = await permanentlyDelete(String(req.params.id), req.user!.userId);
     if (!deleted) {
-      res.status(404).json({ error: "文档不存在" });
+      res.status(404).json({ error: t(requestLang(req), "文档不存在", "Document not found") });
       return;
     }
-    queueDocumentVectorDelete(String(req.params.id));
+    queueDocumentVectorMutation("delete", {
+      id: String(req.params.id),
+      userId: req.user!.userId,
+      content: "",
+    });
     res.json({ success: true });
   } catch (error) {
     console.error("Delete document error:", error);
-    res.status(500).json({ error: "删除文档失败" });
+    res.status(500).json({ error: t(requestLang(req), "删除文档失败", "Failed to delete document") });
   }
 });
 

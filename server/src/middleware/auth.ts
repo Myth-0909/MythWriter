@@ -2,7 +2,18 @@ import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import { redis } from "../lib/redis";
 
-const JWT_SECRET = process.env.JWT_SECRET || "prowriter-jwt-secret-key-2024";
+export const DEFAULT_JWT_SECRET = "prowriter-jwt-secret-key-2024";
+
+export function resolveJwtSecret(secret = process.env.JWT_SECRET, nodeEnv = process.env.NODE_ENV): string {
+  const trimmed = secret?.trim();
+  if (trimmed) return trimmed;
+  if (nodeEnv === "production") {
+    throw new Error("JWT_SECRET must be configured in production");
+  }
+  return DEFAULT_JWT_SECRET;
+}
+
+const JWT_SECRET = resolveJwtSecret();
 
 export interface AuthPayload {
   userId: string;

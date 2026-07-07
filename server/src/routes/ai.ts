@@ -4,7 +4,7 @@ import { aiChatLimiter } from "../middleware/rateLimiter";
 import { t } from "../lib/i18n";
 import prisma from "../lib/prisma";
 import {
-  buildSystemPrompt, detectDeleteCommand, detectInjection,
+  buildSystemPrompt, buildDateTimeContext, detectDeleteCommand, detectInjection,
   parseAction, safePersonality, getUserApiKey,
   listConversations, saveConversation, deleteConversations,
   logActivity, saveFeedback, getSemanticContext,
@@ -12,13 +12,80 @@ import {
 import type { Personality } from "../services/aiService";
 import { selectReferencedBrainIds, type ChatReference } from "../services/aiReferences";
 import { formatBrainKnowledgeContext, RAG_SCORE_THRESHOLD, ragService } from "../services/ragService";
-import { createAgentWriteService } from "../services/agentService";
-import { createDocument } from "../services/documentService";
+import { createAgentWriteService, markdownToBasicHtml } from "../services/agentService";
+import { createDocument, updateDocument } from "../services/documentService";
 
 const router = Router();
 const MAX_REFERENCE_DOCS = 4;
 const MAX_REFERENCE_CHARS = 6000;
 const MAX_TOTAL_REFERENCE_CHARS = 16000;
+
+async function webSearch(query: string, retries = 2): Promise<string> {
+  // Extract snippets from DuckDuckGo HTML response
+  function extractSnippets(html: string): string[] {
+    const snippets: string[] = [];
+    const snippetRegex = /<a[^>]*class="result__snippet"[^>]*>([\s\S]*?)<\/a>/gi;
+    let match;
+    while ((match = snippetRegex.exec(html)) !== null && snippets.length < 5) {
+      const text = match[1].replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#x27;/g, "'").trim();
+      if (text) snippets.push(text);
+    }
+    // Fallback: try result__body if snippets are empty
+    if (snippets.length === 0) {
+      const bodyRegex = /<div[^>]*class="result__body"[^>]*>([\s\S]*?)<\/div>/gi;
+      while ((match = bodyRegex.exec(html)) !== null && snippets.length < 5) {
+        const text = match[1].replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#x27;/g, "'").trim();
+        if (text && text.length > 20) snippets.push(text.slice(0, 300));
+      }
+    }
+    return snippets;
+  }
+
+  let lastError: string | null = null;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const url = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+      const res = await fetch(url, {
+        headers: {
+          "User-Agent": "Mozilla/5.0 (compatible; ZNWriter/1.0)",
+          "Accept": "text/html",
+        },
+        signal: AbortSignal.timeout(attempt === 0 ? 10000 : 15000),
+      });
+
+      if (!res.ok) {
+        lastError = `HTTP ${res.status}`;
+        if (attempt < retries) {
+          await new Promise(r => setTimeout(r, (attempt + 1) * 800));
+          continue;
+        }
+        return `Search for "${query}" returned no results (${lastError}). Please tell the user you couldn't find current information and suggest they try a different query or check manually.`;
+      }
+
+      const html = await res.text();
+      const snippets = extractSnippets(html);
+
+      if (snippets.length > 0) {
+        return `Web search results for "${query}":\n${snippets.map((s, i) => `${i + 1}. ${s}`).join("\n")}`;
+      }
+
+      // Got HTML but no snippets — DDG may have changed its layout
+      if (attempt < retries) {
+        await new Promise(r => setTimeout(r, (attempt + 1) * 800));
+        continue;
+      }
+      return `No results found for "${query}". Please tell the user the search didn't find relevant information this time.`;
+    } catch (err: any) {
+      lastError = err?.message || String(err);
+      if (attempt < retries) {
+        await new Promise(r => setTimeout(r, (attempt + 1) * 800));
+        continue;
+      }
+    }
+  }
+
+  return `Unable to search the web for "${query}" after ${retries + 1} attempts (last error: ${lastError}). Be honest with the user: explain that you tried to search but the search service is currently unavailable, and suggest they check manually or try again later.`;
+}
 
 type ReferenceDocument = {
   id: string;
@@ -222,16 +289,38 @@ router.post("/greeting", async (req: Request, res: Response) => {
     const { userName, personality } = req.body;
     const name = userName || "用户";
     const pers = safePersonality(personality);
+    const hour = new Date().getHours();
+    const t = hour < 12 ? "morning" : hour < 18 ? "afternoon" : "evening";
 
-    const greetings: Record<Personality, string> = {
-      normal: `${name} 您好！我是小安，很高兴见到您！今天想写点什么？我随时准备帮您~`,
-      cute: `${name} 您好呀~ 我是小安呢 💕 嘿嘿，有什么需要我帮忙的嘛？一起开心地写作吧！🌸✨`,
-      catgirl: `${name} 您好喵~！我是小安喵~ 今天想写点什么呢？我会努力帮您的喵！`,
-      serious: `${name}，您好。我是小安，专注于协助您完成各类写作任务。请说明您的需求。`,
-      silly: `哇哦！${name} 来了！我是小安——您的写作小伙伴！今天咱们是要写点什么惊天动地的大作呢，还是来点轻松愉快的小品？`,
+    const greetings: Record<Personality, Record<string, string>> = {
+      normal: {
+        morning: `${name} 早上好！我是小安，新的一天开始了~ 今天想写点什么？我随时准备帮您 ✨`,
+        afternoon: `${name} 下午好！我是小安，写作的节奏还好吗？需要我帮忙的话随时说~`,
+        evening: `${name} 晚上好！我是小安，夜深人静正是写作好时光，有什么想写的吗？🌙`,
+      },
+      cute: {
+        morning: `${name} 早上好呀~ 我是小安呢 💕 新的一天新的灵感，一起开心地写作吧！🌸✨`,
+        afternoon: `${name} 下午好呢~ 小安在这里哦 💕 需要帮忙嘛？嘿嘿好期待和你一起写东西呀 🎀`,
+        evening: `${name} 晚上好呀~ 小安还在哦 💕 夜色好温柔的，来写点温暖的故事吧？🌙✨`,
+      },
+      catgirl: {
+        morning: `${name} 早上好喵~！我是小安喵~ 今天也要元气满满地写作喵！`,
+        afternoon: `${name} 下午好喵~ 小安等你很久了喵！快开始写作吧喵~`,
+        evening: `${name} 晚上好喵~ 夜晚的小安也精神着呢喵！来写点精彩的东西喵~ 🌙`,
+      },
+      serious: {
+        morning: `${name}，早上好。我是小安，新的一天已开始，请说明您的写作需求。`,
+        afternoon: `${name}，下午好。我是小安，请说明需要我协助的写作任务。`,
+        evening: `${name}，晚上好。我是小安，随时准备处理您的写作任务。`,
+      },
+      silly: {
+        morning: `叮叮叮！${name} 的专属写作闹钟响啦！☀️ 我是小安，今天咱们是要写点什么让世界震惊的大作呢？`,
+        afternoon: `噔噔噔！${name} 来了！我是小安！写作时间到！🎉 有啥疯狂的想法吗？让咱们一起搞点不一样的！`,
+        evening: `夜猫子 ${name} 出现！🌙 我是小安！晚上灵感最疯狂对不对？来，把脑子里的奇思妙想都倒出来！`,
+      },
     };
 
-    res.json({ greeting: greetings[pers] });
+    res.json({ greeting: greetings[pers][t] });
   } catch (error) {
     res.status(500).json({ error: "Internal server error" });
   }
@@ -325,7 +414,7 @@ router.post("/agent/write", async (req: Request, res: Response) => {
     const authReq = req as AuthRequest;
     const userId = authReq.user!.userId;
     const userLangFromRequest = getRequestLang(req);
-    const { goal, style, length, stylePrompt, targetWords, includeBrain, includeDocuments } = req.body || {};
+    const { goal, style, length, stylePrompt, targetWords, includeBrain, includeDocuments, includeJournal, referenceDocIds, referenceBrainIds, referenceJournalIds } = req.body || {};
     const trimmedGoal = typeof goal === "string" ? goal.trim() : "";
     const normalizedTargetWords = normalizeAgentTargetWords(targetWords);
     const normalizedStylePrompt = typeof stylePrompt === "string" ? stylePrompt.trim().slice(0, 120) : "";
@@ -355,28 +444,45 @@ router.post("/agent/write", async (req: Request, res: Response) => {
     streamStarted = true;
     res.write(":ok\n\n");
 
+    const dateContext = buildDateTimeContext();
+
     const service = createAgentWriteService({
       async completeJson(step, prompt) {
-        const content = await requestChatCompletionText({
-          apiBaseUrl,
-          apiKey,
-          model: aiModel,
-          messages: [
-            {
-              role: "system",
-              content: "Return valid compact JSON only. Do not use markdown fences.",
-            },
-            { role: "user", content: prompt },
-          ],
-          temperature: step === "review" ? 0.2 : 0.35,
-          maxTokens: step === "plan" ? 1800 : 1000,
-          signal: requestController.signal,
-        });
-        const parsed = extractJsonObject(content);
-        if (!parsed) {
-          throw new Error(t(userLang, "AI 未返回可解析的 JSON", "AI returned JSON that could not be parsed"));
+        const doJsonCall = async (retry: boolean): Promise<unknown> => {
+          const content = await requestChatCompletionText({
+            apiBaseUrl,
+            apiKey,
+            model: aiModel,
+            messages: [
+              {
+                role: "system",
+                content: `${dateContext}\n\n${retry
+                  ? "CRITICAL: You MUST return ONLY valid JSON. No markdown fences, no comments, no extra text. If you add anything before { or after }, the system will fail."
+                  : "Return valid compact JSON only. Do not use markdown fences."}`,
+              },
+              { role: "user", content: prompt },
+            ],
+            temperature: retry ? 0.1 : (step === "review" ? 0.2 : 0.35),
+            maxTokens: step === "plan" ? 1800 : 1000,
+            signal: requestController.signal,
+          });
+          const parsed = extractJsonObject(content);
+          if (!parsed) {
+            throw new Error("JSON parse failed");
+          }
+          return parsed;
+        };
+
+        try {
+          return await doJsonCall(false);
+        } catch {
+          // One retry with stricter instructions and lower temperature
+          try {
+            return await doJsonCall(true);
+          } catch {
+            throw new Error(t(userLang, "AI 未返回可解析的 JSON，已重试一次", "AI returned unparseable JSON after retry"));
+          }
         }
-        return parsed;
       },
       async completeText(_step, prompt, textInput) {
         return requestChatCompletionText({
@@ -386,11 +492,11 @@ router.post("/agent/write", async (req: Request, res: Response) => {
           messages: [
             {
               role: "system",
-              content: "你是小安，专注于按大纲生成可直接进入文档的正文。不要输出解释、JSON 或元信息。",
+              content: `${dateContext}\n\n你是小安，专注于按大纲生成可直接进入文档的正文。不要输出解释、JSON 或元信息。`,
             },
             { role: "user", content: prompt },
           ],
-          temperature: 0.65,
+          temperature: 0.5,
           maxTokens: maxTokensForTargetWords(normalizeAgentTargetWords(textInput.targetWords)),
           signal: requestController.signal,
         });
@@ -408,6 +514,28 @@ router.post("/agent/write", async (req: Request, res: Response) => {
       },
       searchDocuments(userIdArg, query, topK) {
         return ragService.searchDocuments(userIdArg, query, topK);
+      },
+      async getKnowledgeByIds(ids) {
+        return prisma.aIBrainKnowledge.findMany({
+          where: { id: { in: ids }, userId },
+          select: { id: true, title: true, description: true, category: true },
+        });
+      },
+      async getDocumentsByIds(ids) {
+        return prisma.document.findMany({
+          where: { id: { in: ids }, userId, isDeleted: false },
+          select: { id: true, title: true, content: true },
+        });
+      },
+      async getJournalRecordsByIds(ids) {
+        const records = await prisma.workRecord.findMany({
+          where: { id: { in: ids }, userId },
+          select: { id: true, title: true, content: true },
+        });
+        return records.map((r: { id: string; title: string; content: string | null }) => ({ id: r.id, title: r.title, content: r.content || "" }));
+      },
+      async searchWeb(query) {
+        return webSearch(query);
       },
       async createDocument(data) {
         const doc = await createDocument(userId, {
@@ -432,6 +560,10 @@ router.post("/agent/write", async (req: Request, res: Response) => {
         targetWords: normalizedTargetWords,
         includeBrain: includeBrain !== false,
         includeDocuments: includeDocuments !== false,
+        includeJournal: includeJournal === true,
+        referenceDocIds: Array.isArray(referenceDocIds) ? referenceDocIds : undefined,
+        referenceBrainIds: Array.isArray(referenceBrainIds) ? referenceBrainIds : undefined,
+        referenceJournalIds: Array.isArray(referenceJournalIds) ? referenceJournalIds : undefined,
         lang: userLang === "en" ? "en" : "zh",
       },
       (event) => safeWrite("progress", event)
@@ -440,6 +572,8 @@ router.post("/agent/write", async (req: Request, res: Response) => {
     safeWrite("done", {
       docId: result.docId,
       title: result.title,
+      content: result.content,
+      analysis: result.analysis,
       outline: result.outline,
       review: result.review,
       sources: result.sources,
@@ -524,6 +658,51 @@ router.post("/chat", async (req: Request, res: Response) => {
       }
     }
 
+    // Build user context: name, current document, today's stats
+    const userRecord = await prisma.user.findUnique({
+      where: { id: authReq.user!.userId },
+      select: { name: true },
+    });
+    const todayUTC = new Date(Date.UTC(
+      new Date().getUTCFullYear(), new Date().getUTCMonth(), new Date().getUTCDate()
+    ));
+    const todayStr = todayUTC.toISOString().slice(0, 10);
+    const [todayDocWords, todayJournalWords, currentDoc] = await Promise.all([
+      prisma.document.findMany({
+        where: {
+          userId: authReq.user!.userId,
+          isDeleted: false,
+          updatedAt: { gte: todayUTC },
+        },
+        select: { content: true },
+      }).then((docs: { content: string | null }[]) =>
+        docs.reduce((sum: number, doc: { content: string | null }) => sum + stripHtml(doc.content || "").replace(/\s+/g, "").length, 0)
+      ).catch(() => 0),
+      prisma.workRecord.findMany({
+        where: { userId: authReq.user!.userId, targetDate: todayStr },
+        select: { content: true },
+      }).then((records: { content: string | null }[]) =>
+        records.reduce((sum: number, r: { content: string | null }) => sum + stripHtml(r.content || "").replace(/\s+/g, "").length, 0)
+      ).catch(() => 0),
+      references && references.length > 0
+        ? (() => {
+            const docRef = references.find((r: any) => r?.type === "document" && r?.id);
+            if (!docRef) return null;
+            return prisma.document.findFirst({
+              where: { id: docRef.id, userId: authReq.user!.userId, isDeleted: false },
+              select: { title: true },
+            });
+          })()
+        : null,
+    ]);
+
+    const userContext = {
+      name: userRecord?.name || undefined,
+      currentDocTitle: currentDoc?.title || undefined,
+      todayDocWords,
+      todayJournalWords,
+    };
+
     const systemPrompt = buildSystemPrompt(
       pers,
       [
@@ -533,7 +712,8 @@ router.post("/chat", async (req: Request, res: Response) => {
           : "",
         brainKnowledgeContext || "",
         selectionContext,
-      ].filter(Boolean).join("\n\n")
+      ].filter(Boolean).join("\n\n"),
+      userContext,
     );
 
     // For selection edit, enforce outputting only the processed text
@@ -544,9 +724,96 @@ router.post("/chat", async (req: Request, res: Response) => {
     const apiUrl = buildChatCompletionsUrl(apiBaseUrl);
     console.log("[AI] Sending request to:", apiUrl, "model:", aiModel);
 
+    // Define available tools for the model
+    const chatTools = [
+      {
+        type: "function" as const,
+        function: {
+          name: "search_web",
+          description: "Search the web for current information. Use this when the user asks about recent events, facts, or information beyond your knowledge cutoff.",
+          parameters: {
+            type: "object",
+            properties: {
+              query: { type: "string", description: "The search query" },
+            },
+            required: ["query"],
+          },
+        },
+      },
+      {
+        type: "function" as const,
+        function: {
+          name: "create_document",
+          description: "Create a new document in the user's ZNWriter workspace.",
+          parameters: {
+            type: "object",
+            properties: {
+              title: { type: "string", description: "Document title" },
+              content: { type: "string", description: "Full Markdown content of the document" },
+            },
+            required: ["title", "content"],
+          },
+        },
+      },
+      {
+        type: "function" as const,
+        function: {
+          name: "update_document",
+          description: "Update an existing document. docId must be the UUID from the current document context.",
+          parameters: {
+            type: "object",
+            properties: {
+              docId: { type: "string", description: "UUID of the document to update" },
+              content: { type: "string", description: "Full updated Markdown content" },
+            },
+            required: ["docId", "content"],
+          },
+        },
+      },
+      {
+        type: "function" as const,
+        function: {
+          name: "get_user_stats",
+          description: "Get the current user's workspace statistics: total documents, journal entries, groups, brain knowledge items, and word counts. Use this when the user asks questions like 'how many documents do I have?', 'how many journals?', 'my writing stats', etc.",
+          parameters: { type: "object", properties: {}, required: [] },
+        },
+      },
+      {
+        type: "function" as const,
+        function: {
+          name: "list_recent_documents",
+          description: "List the user's most recently updated documents. Use this when the user asks 'what documents do I have?', 'list my docs', 'show my recent documents', etc.",
+          parameters: {
+            type: "object",
+            properties: {
+              limit: { type: "number", description: "Number of documents to return, default 5, max 10" },
+            },
+            required: [],
+          },
+        },
+      },
+      {
+        type: "function" as const,
+        function: {
+          name: "get_today_writing",
+          description: "Get today's writing activity: how many words written today, how many documents edited, how many journal entries. Use when the user asks 'how much did I write today?', 'today's progress', etc.",
+          parameters: { type: "object", properties: {}, required: [] },
+        },
+      },
+    ];
+
     // Use streaming with 3min timeout (vLLM cold start can be slow)
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 180000);
+
+    // Abort upstream request when client disconnects to avoid wasting tokens
+    const onClientClose = () => {
+      if (!res.writableEnded) {
+        controller.abort();
+        clearTimeout(timeout);
+      }
+    };
+    res.on("close", onClientClose);
 
     let response: Awaited<ReturnType<typeof fetch>>;
     try {
@@ -565,6 +832,8 @@ router.post("/chat", async (req: Request, res: Response) => {
           temperature: 0.7,
           max_tokens: 4096,
           stream: true,
+          tools: chatTools,
+          tool_choice: "auto",
         }),
         signal: controller.signal,
       });
@@ -627,6 +896,61 @@ router.post("/chat", async (req: Request, res: Response) => {
     let fullContent = "";
     let buffer = "";
     let rawTextContent = "";
+    const accumulatedToolCalls: { id: string; name: string; arguments: string }[] = [];
+
+    // Real-time token forwarding with action marker filtering
+    const ACTION_START = "<<ACTION_JSON>>";
+    const ACTION_END = "<<ACTION_JSON_END>>";
+    let actionBuffer = "";
+    let inAction = false;
+    let pendingChars = ""; // small buffer to detect ACTION_START across chunks
+
+    let reasoningContent = "";
+    let emittedToolCalls = new Set<number>();
+
+    function emitSse(event: string, data: unknown) {
+      res.write(`event: ${event}\n`);
+      res.write(`data: ${JSON.stringify(data)}\n\n`);
+    }
+
+    function forwardDelta(chunk: string) {
+      emitSse("delta", { delta: chunk });
+    }
+
+    function emitThinking(delta: string) {
+      reasoningContent += delta;
+      emitSse("thinking", { delta });
+    }
+
+    function emitToolCall(index: number, name: string, status: string, extra?: { id?: string; arguments?: string }) {
+      if (!emittedToolCalls.has(index)) {
+        emittedToolCalls.add(index);
+        emitSse("tool_call", { index, name, status, id: extra?.id, arguments: extra?.arguments });
+      }
+    }
+
+    function feedChar(char: string) {
+      fullContent += char;
+      if (inAction) {
+        actionBuffer += char;
+        if (actionBuffer.endsWith(ACTION_END)) {
+          inAction = false;
+          actionBuffer = "";
+        }
+        return;
+      }
+      pendingChars += char;
+      if (pendingChars.length > ACTION_START.length) {
+        // Forward the oldest char
+        forwardDelta(pendingChars[0]);
+        pendingChars = pendingChars.slice(1);
+      }
+      if (pendingChars === ACTION_START) {
+        inAction = true;
+        actionBuffer = pendingChars;
+        pendingChars = "";
+      }
+    }
 
     try {
       while (true) {
@@ -654,9 +978,47 @@ router.post("/chat", async (req: Request, res: Response) => {
               parsed.choices?.[0]?.delta?.content ??
               parsed.choices?.[0]?.message?.content ??
               parsed.choices?.[0]?.text;
+            // Extract reasoning_content (DeepSeek-R1, Qwen, etc.)
+            const reasoning = parsed.choices?.[0]?.delta?.reasoning_content;
+            if (reasoning) {
+              emitThinking(reasoning);
+            }
+
             if (content) {
-              fullContent += content;
-              // Buffer all content first; will stream clean reply after parsing
+              // Forward tokens to client in real-time, filtering action markers
+              for (const char of content) {
+                feedChar(char);
+              }
+            }
+
+            // Accumulate tool calls if present (for models that support native function calling)
+            // Support both OpenAI format (tool_calls) and legacy format (function_call)
+            let deltaToolCalls = parsed.choices?.[0]?.delta?.tool_calls;
+            const deltaFunctionCall = parsed.choices?.[0]?.delta?.function_call;
+            if (!deltaToolCalls && deltaFunctionCall) {
+              // Convert legacy function_call to tool_calls format
+              deltaToolCalls = [{
+                index: 0,
+                id: parsed.choices?.[0]?.delta?.tool_call_id || "",
+                function: {
+                  name: deltaFunctionCall.name || "",
+                  arguments: deltaFunctionCall.arguments || "",
+                },
+              }];
+            }
+            if (deltaToolCalls) {
+              for (const tc of deltaToolCalls) {
+                const idx = tc.index ?? 0;
+                if (!accumulatedToolCalls[idx]) {
+                  accumulatedToolCalls[idx] = { id: tc.id || "", name: "", arguments: "" };
+                }
+                if (tc.id) accumulatedToolCalls[idx].id = tc.id;
+                if (tc.function?.name) {
+                  accumulatedToolCalls[idx].name += tc.function.name;
+                  emitToolCall(idx, tc.function.name, "calling", { id: accumulatedToolCalls[idx].id || tc.id, arguments: accumulatedToolCalls[idx].arguments });
+                }
+                if (tc.function?.arguments) accumulatedToolCalls[idx].arguments += tc.function.arguments;
+              }
             }
           } catch {
             rawTextContent += `${data}\n`;
@@ -665,6 +1027,16 @@ router.post("/chat", async (req: Request, res: Response) => {
       }
     } catch (err) {
       console.error("[AI] Stream read error:", err);
+    }
+
+    // Flush any remaining pending characters (that weren't part of an action marker)
+    if (pendingChars && !inAction) {
+      forwardDelta(pendingChars);
+    }
+    // If we ended mid-action, the pending chars are part of the action — append to fullContent but don't forward
+    if (inAction) {
+      fullContent += pendingChars;
+      actionBuffer += pendingChars;
     }
 
     // Fallback: if no content captured via SSE, try parsing buffer as JSON
@@ -681,22 +1053,210 @@ router.post("/chat", async (req: Request, res: Response) => {
       }
     }
 
-    // Parse the full buffered response
-    const { reply, action } = parseAction(finalContent);
-    const cleanReply = reply || finalContent || "";
-    console.log("[AI] parseAction result - reply:", cleanReply.slice(0, 100));
-    console.log("[AI] parseAction result - action:", JSON.stringify(action));
-
-    // Stream the clean reply as deltas (typewriter effect), 2 chars per chunk
-    for (let i = 0; i < cleanReply.length; i += 2) {
-      const chunk = cleanReply.slice(i, i + 2);
-      res.write(`data: ${JSON.stringify({ delta: chunk })}\n\n`);
-      // Small delay for natural typewriter feel
-      await new Promise((r) => setTimeout(r, 10));
+    // Execute any accumulated tool calls (native function calling)
+    const toolResults: { role: string; content: string }[] = [];
+    let toolCallResults: { index: number; name: string; status: string; result?: string }[] = [];
+    if (accumulatedToolCalls.length > 0) {
+      console.log("[AI] Tool calls detected:", accumulatedToolCalls.length);
+      for (const tc of accumulatedToolCalls) {
+        let status = "error";
+        let resultMsg = "";
+        try {
+          if (tc.name === "search_web") {
+            const args = JSON.parse(tc.arguments || "{}");
+            const query = args.query || "";
+            if (query) {
+              const searchResult = await webSearch(query);
+              toolResults.push({ role: "tool", content: `Web search results for "${query}":\n${searchResult}` });
+              status = "done";
+              resultMsg = query;
+            }
+          } else if (tc.name === "create_document") {
+            const args = JSON.parse(tc.arguments || "{}");
+            const title = String(args.title || "").trim();
+            const rawContent = String(args.content || "").trim();
+            if (!title) {
+              toolResults.push({ role: "tool", content: `Error: document title is required.` });
+              resultMsg = "missing title";
+            } else if (!rawContent) {
+              toolResults.push({ role: "tool", content: `Error: document content is empty. Please provide the full document content in Markdown format.` });
+              resultMsg = "empty content";
+            } else {
+              const htmlContent = markdownToBasicHtml(rawContent);
+              const doc = await createDocument(authReq.user!.userId, {
+                title,
+                content: htmlContent,
+                category: "general",
+              });
+              ragService.reindexDocument({ userId: authReq.user!.userId, id: doc.id, content: doc.content }).catch(() => {});
+              toolResults.push({ role: "tool", content: `Document created successfully: "${title}" (id: ${doc.id})` });
+              status = "done";
+              resultMsg = title;
+            }
+          } else if (tc.name === "update_document") {
+            const args = JSON.parse(tc.arguments || "{}");
+            const targetDocId = String(args.docId || "").trim();
+            const rawContent = String(args.content || "").trim();
+            if (!targetDocId) {
+              toolResults.push({ role: "tool", content: `Error: docId is required for update_document.` });
+              resultMsg = "missing docId";
+            } else if (!rawContent) {
+              toolResults.push({ role: "tool", content: `Error: document content is empty.` });
+              resultMsg = "empty content";
+            } else {
+              const htmlContent = markdownToBasicHtml(rawContent);
+              await updateDocument(targetDocId, authReq.user!.userId, { content: htmlContent });
+              toolResults.push({ role: "tool", content: `Document ${targetDocId} updated successfully.` });
+              status = "done";
+              resultMsg = targetDocId;
+            }
+          } else if (tc.name === "get_user_stats") {
+            const userId = authReq.user!.userId;
+            const [docCount, journalCount, groupCount, brainCount] = await Promise.all([
+              prisma.document.count({ where: { userId, isDeleted: false } }),
+              prisma.workRecord.count({ where: { userId } }),
+              prisma.documentGroup.count({ where: { userId } }),
+              prisma.aIBrainKnowledge.count({ where: { userId } }),
+            ]);
+            const totalJournalWords = (await prisma.workRecord.findMany({
+              where: { userId }, select: { content: true },
+            })).reduce((s: number, r: { content: string | null }) => s + (r.content || "").length, 0);
+            toolResults.push({
+              role: "tool",
+              content: `用户工作区统计：\n- 文档总数：${docCount} 篇\n- 随记总数：${journalCount} 条\n- 随记总字数：${totalJournalWords} 字\n- 文档分组：${groupCount} 个\n- 脑库条目：${brainCount} 条`,
+            });
+            status = "done";
+            resultMsg = `${docCount} docs, ${journalCount} journals`;
+          } else if (tc.name === "list_recent_documents") {
+            const args = JSON.parse(tc.arguments || "{}");
+            const limit = Math.min(args.limit || 5, 10);
+            const docs = await prisma.document.findMany({
+              where: { userId: authReq.user!.userId, isDeleted: false },
+              orderBy: { updatedAt: "desc" },
+              take: limit,
+              select: { title: true, updatedAt: true, content: true },
+            });
+            const lines = docs.map((d: { title: string; updatedAt: Date; content: string | null }, i: number) => {
+              const wordCount = stripHtml(d.content || "").replace(/\s+/g, "").length;
+              const date = d.updatedAt.toISOString().slice(0, 10);
+              return `${i + 1}. 《${d.title}》— ${wordCount} 字，最后修改 ${date}`;
+            });
+            toolResults.push({
+              role: "tool",
+              content: `用户最近 ${limit} 篇文档：\n${lines.join("\n")}${docs.length === 0 ? "暂无文档" : ""}`,
+            });
+            status = "done";
+            resultMsg = `${docs.length} docs`;
+          } else if (tc.name === "get_today_writing") {
+            const userId = authReq.user!.userId;
+            const todayUTC = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), new Date().getUTCDate()));
+            const todayStr = todayUTC.toISOString().slice(0, 10);
+            const [todayDocs, todayJournals] = await Promise.all([
+              prisma.document.findMany({
+                where: { userId, isDeleted: false, updatedAt: { gte: todayUTC } },
+                select: { content: true },
+              }),
+              prisma.workRecord.findMany({
+                where: { userId, targetDate: todayStr },
+                select: { content: true },
+              }),
+            ]);
+            const docWords = todayDocs.reduce((s: number, d: { content: string | null }) => s + stripHtml(d.content || "").replace(/\s+/g, "").length, 0);
+            const journalWords = todayJournals.reduce((s: number, r: { content: string | null }) => s + (r.content || "").length, 0);
+            toolResults.push({
+              role: "tool",
+              content: `今日写作统计（${todayStr}）：\n- 修改文档 ${todayDocs.length} 篇，新增 ${docWords} 字\n- 随记 ${todayJournals.length} 条，共 ${journalWords} 字\n- 合计 ${docWords + journalWords} 字`,
+            });
+            status = "done";
+            resultMsg = `${docWords + journalWords} words today`;
+          }
+        } catch (err) {
+          console.error("[AI] Tool execution error:", err);
+        }
+        toolCallResults.push({ index: accumulatedToolCalls.indexOf(tc), name: tc.name, status, result: resultMsg });
+        emitSse("tool_call", { index: accumulatedToolCalls.indexOf(tc), id: tc.id, name: tc.name, arguments: tc.arguments, status, result: resultMsg });
+      }
     }
 
-    // Send final message with parsed action
-    res.write(`data: ${JSON.stringify({ done: true, reply: cleanReply, action })}\n\n`);
+    // If tools were executed, make a follow-up call with results
+    let finalAction: any = null;
+    let followUpReply = "";
+    if (toolResults.length > 0) {
+      try {
+        const toolMessages = toolResults.map((tr, i) => ({
+          role: "tool" as const,
+          tool_call_id: accumulatedToolCalls[i]?.id || `call_${i}`,
+          content: tr.content,
+        }));
+        const followUpRes = await fetch(apiUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify({
+            model: aiModel,
+            messages: [
+              { role: "system", content: finalSystemPrompt },
+              ...messages,
+              { role: "assistant", content: null, tool_calls: accumulatedToolCalls.map(tc => ({
+                id: tc.id, type: "function" as const, function: { name: tc.name, arguments: tc.arguments }
+              })) },
+              ...toolMessages,
+            ],
+            temperature: 0.7,
+            max_tokens: 2048,
+            stream: false,
+          }),
+        });
+        if (followUpRes.ok) {
+          const json = await followUpRes.json() as any;
+          const followUpContent = json.choices?.[0]?.message?.content || "";
+          // When native tools were already executed, use the raw follow-up text directly.
+          // Do NOT parseAction again — the tool already handled the action;
+          // re-parsing would duplicate or strip the model's natural confirmation.
+          followUpReply = followUpContent;
+          // Stream the follow-up reply
+          for (const char of followUpReply) {
+            emitSse("delta", { delta: char });
+          }
+          console.log("[AI] Follow-up reply length:", followUpReply.length);
+        } else {
+          console.error("[AI] Follow-up call failed:", followUpRes.status);
+          const errText = await followUpRes.text().catch(() => "");
+          console.error("[AI] Follow-up error body:", errText.slice(0, 300));
+        }
+      } catch (err) {
+        console.error("[AI] Follow-up call error:", err);
+      }
+    }
+
+    // Parse the full buffered response for actions (fallback for models without native tool support)
+    if (toolResults.length === 0) {
+      const { reply, action: textAction } = parseAction(finalContent);
+      finalAction = textAction;
+      console.log("[AI] Real-time stream complete - reply length:", (reply || finalContent || "").length);
+      console.log("[AI] parseAction result - action:", JSON.stringify(finalAction));
+    } else if (!followUpReply) {
+      // Follow-up call failed or returned empty — build a fallback reply from tool results
+      const toolNames = toolCallResults.map(t => t.name).join("、");
+      followUpReply = t(userLang, `已完成操作（${toolNames}），请查看结果。`, `Completed (${toolNames}). Please check the results.`);
+      for (const char of followUpReply) {
+        emitSse("delta", { delta: char });
+      }
+      console.log("[AI] Using fallback reply due to empty follow-up");
+    }
+
+    // Send final message — use follow-up reply if tools were executed
+    const originalCleanReply = finalContent.replace(/<<ACTION_JSON>>[\s\S]*?<<ACTION_JSON_END>>/g, "").trim();
+    const finalReply = followUpReply || originalCleanReply;
+    emitSse("done", {
+      done: true,
+      reply: finalReply,
+      action: finalAction,
+      thinking: reasoningContent || undefined,
+      toolCalls: toolCallResults.length > 0 ? toolCallResults : undefined,
+    });
     res.end();
   } catch (error) {
     console.error("[AI] Route error:", error);

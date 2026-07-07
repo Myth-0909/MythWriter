@@ -152,7 +152,7 @@ export function SideNavBar({
                 shuffleTimes={1}
                 stagger={0.03}
                 triggerOnHover={false}
-                className="text-lg font-bold tracking-[0.14em] text-surface-950 dark:text-surface-50"
+                className="text-lg font-bold tracking-[0.14em] text-surface-950 dark:text-surface-50 font-[var(--font-zn-display)]"
               />
             </button>
           )}
@@ -299,7 +299,7 @@ export function SideNavBar({
               shuffleTimes={1}
               stagger={0.03}
               triggerOnHover={false}
-              className="text-center text-5xl font-bold tracking-[0.14em] text-surface-950 dark:text-surface-50"
+              className="text-center text-5xl font-bold tracking-[0.14em] text-surface-950 dark:text-surface-50 font-[var(--font-zn-display)]"
             />
           </div>
         </DialogContent>

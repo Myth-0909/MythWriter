@@ -18,11 +18,15 @@ export type AgentWriteInput = {
   targetWords?: number;
   includeBrain?: boolean;
   includeDocuments?: boolean;
+  includeJournal?: boolean;
+  referenceDocIds?: string[];
+  referenceBrainIds?: string[];
+  referenceJournalIds?: string[];
   lang?: "zh" | "en";
 };
 
 export type AgentSource = {
-  type: "brain" | "document";
+  type: "brain" | "document" | "web";
   id: string;
   title: string;
   excerpt: string;
@@ -84,6 +88,10 @@ export type AgentWriteDependencies = {
     query: string,
     topK?: number
   ) => Promise<RagSearchResult<{ id: string; documentId: string; chunkIndex: number; content: string; score?: number }>>;
+  getKnowledgeByIds?: (ids: string[]) => Promise<KnowledgeLike[]>;
+  getDocumentsByIds?: (ids: string[]) => Promise<{ id: string; title: string; content: string }[]>;
+  getJournalRecordsByIds?: (ids: string[]) => Promise<{ id: string; title: string; content: string }[]>;
+  searchWeb?: (query: string) => Promise<string>;
   createDocument: (data: { title: string; content: string; category: string }) => Promise<{ id: string; title: string }>;
 };
 
@@ -356,6 +364,17 @@ function sourceFromDocument(
   };
 }
 
+function sourceFromWeb(result: string, query: string): AgentSource {
+  return {
+    type: "web",
+    id: `web-${query.slice(0, 30)}`,
+    title: `网络搜索: ${query}`,
+    excerpt: result.slice(0, 500),
+    score: 0.7,
+    degraded: false,
+  };
+}
+
 function buildSourceContext(sources: AgentSource[]): string {
   if (sources.length === 0) return "无外部资料，请基于用户目标直接写作。";
   return sources
@@ -437,17 +456,41 @@ function buildLengthAdjustPrompt(input: AgentWriteInput, title: string, markdown
 }
 
 function buildReviewPrompt(input: AgentWriteInput, markdown: string): string {
+  const MAX_LENGTH = 12000;
+  let sample = markdown;
+  if (markdown.length > MAX_LENGTH) {
+    const headLen = Math.floor(MAX_LENGTH * 0.65);  // ~7800 for intro+body
+    const tailLen = MAX_LENGTH - headLen;             // ~4200 for conclusion
+    sample = markdown.slice(0, headLen) + `\n\n...（中段省略 ${markdown.length - MAX_LENGTH} 字符）...\n\n` + markdown.slice(-tailLen);
+  }
   return [
     "请审阅以下 AI 生成草稿，只返回 JSON。",
     `原始目标：${input.goal.trim()}`,
     "草稿：",
-    markdown.slice(0, 12000),
+    sample,
     "JSON 字段：score, suggestions。suggestions 每项包含 detail 和 severity(high/medium/low)。",
   ].join("\n");
 }
 
 function agentMessage(input: AgentWriteInput, zh: string, en: string): string {
   return input.lang === "en" ? en : zh;
+}
+
+// Extract concise keywords from a verbose writing goal for better web search results
+function extractSearchQuery(goal: string): string {
+  // Remove common writing request prefixes/suffixes
+  let query = goal
+    .replace(/^(请|帮我|帮我写|写|撰写|写一篇|写一份|写一个|帮我写一篇|帮我写一份|帮我写一个)\s*/g, "")
+    .replace(/(的|这篇文章|的报告|文章|文档)$/g, "")
+    .trim();
+  // Keep only the most meaningful part (first ~50 chars)
+  if (query.length > 50) {
+    // Try to split on sentence boundaries
+    const firstPart = query.split(/[，,。.!！?？;；\n]/)[0].trim();
+    if (firstPart.length > 10) query = firstPart;
+    else query = query.slice(0, 50);
+  }
+  return query || goal.trim().slice(0, 50);
 }
 
 export function createAgentWriteService(deps: AgentWriteDependencies) {
@@ -468,6 +511,7 @@ export function createAgentWriteService(deps: AgentWriteDependencies) {
         targetWords: normalizeTargetWords(input),
         includeBrain: input.includeBrain !== false,
         includeDocuments: input.includeDocuments !== false,
+        includeJournal: input.includeJournal === true,
       };
 
       const analysis = normalizeAnalysis(
@@ -480,17 +524,68 @@ export function createAgentWriteService(deps: AgentWriteDependencies) {
         analysis,
       });
 
-      const [knowledgeResult, documentResult] = await Promise.all([
+      const referenceBrainIds = normalizedInput.referenceBrainIds?.length
+        ? normalizedInput.referenceBrainIds
+        : undefined;
+      const referenceDocIds = normalizedInput.referenceDocIds?.length
+        ? normalizedInput.referenceDocIds
+        : undefined;
+      const referenceJournalIds = normalizedInput.referenceJournalIds?.length
+        ? normalizedInput.referenceJournalIds
+        : undefined;
+
+      const [knowledgeResult, documentResult, journalResult, webResult] = await Promise.all([
         normalizedInput.includeBrain
-          ? deps.searchKnowledge(normalizedInput.userId, goal, 5)
-          : Promise.resolve({ degraded: false, results: [] }),
+          ? referenceBrainIds && deps.getKnowledgeByIds
+            ? deps.getKnowledgeByIds(referenceBrainIds).then((items) => ({
+                degraded: false,
+                results: items.map((item) => ({
+                  id: item.id,
+                  title: item.title,
+                  description: 'description' in item ? (item as any).description || '' : '',
+                  category: 'category' in item ? (item as any).category || '' : '',
+                  score: 1,
+                })),
+              }))
+            : deps.searchKnowledge(normalizedInput.userId, goal, 5)
+          : Promise.resolve({ degraded: false, results: [] as KnowledgeLike[] }),
         normalizedInput.includeDocuments
-          ? deps.searchDocuments(normalizedInput.userId, goal, 4)
-          : Promise.resolve({ degraded: false, results: [] }),
+          ? referenceDocIds && deps.getDocumentsByIds
+            ? deps.getDocumentsByIds(referenceDocIds).then((items) => ({
+                degraded: false,
+                results: items.map((item) => ({
+                  id: item.id,
+                  documentId: item.id,
+                  chunkIndex: 0,
+                  content: item.content || '',
+                  score: 1,
+                })),
+              }))
+            : deps.searchDocuments(normalizedInput.userId, goal, 4)
+          : Promise.resolve({ degraded: false, results: [] as any[] }),
+        normalizedInput.includeJournal
+          ? referenceJournalIds && deps.getJournalRecordsByIds
+            ? deps.getJournalRecordsByIds(referenceJournalIds).then((items) => ({
+                degraded: false,
+                results: items.map((item) => ({
+                  id: item.id,
+                  documentId: item.id,
+                  chunkIndex: 0,
+                  content: item.content || '',
+                  score: 1,
+                })),
+              }))
+            : Promise.resolve({ degraded: false, results: [] as any[] })
+          : Promise.resolve({ degraded: false, results: [] as any[] }),
+        deps.searchWeb
+          ? deps.searchWeb(extractSearchQuery(goal)).then((text) => text).catch(() => "")
+          : Promise.resolve(""),
       ]);
       const sources = [
         ...knowledgeResult.results.map((result) => sourceFromKnowledge(result, knowledgeResult.degraded)),
         ...documentResult.results.map((result) => sourceFromDocument(result, documentResult.degraded)),
+        ...journalResult.results.map((result) => sourceFromDocument(result, journalResult.degraded)),
+        ...(webResult ? [sourceFromWeb(webResult, goal)] : []),
       ];
       const sourceContext = buildSourceContext(sources);
       await emit({
@@ -527,6 +622,18 @@ export function createAgentWriteService(deps: AgentWriteDependencies) {
         const cleanedDraft = sanitizeDraftMarkdown(draft);
         const boundedDraft = trimMarkdownToUnitLimit(cleanedDraft, sectionBudget.max);
         sections.push(`## ${section.heading}\n\n${boundedDraft}`);
+        // Emit per-section progress with accumulated content for live preview
+        const runningMarkdown = `# ${plan.title}\n\n${sections.join("\n\n")}`;
+        await emit({
+          stage: "draft",
+          message: agentMessage(normalizedInput,
+            `正在撰写第 ${index + 1}/${plan.outline.length} 部分：${section.heading}`,
+            `Writing section ${index + 1}/${plan.outline.length}: ${section.heading}`
+          ),
+          sectionIndex: index,
+          totalSections: plan.outline.length,
+          content: runningMarkdown,
+        });
       }
 
       let markdown = enforceMarkdownTarget(`# ${plan.title}\n\n${sections.join("\n\n")}`, normalizedInput.targetWords!);

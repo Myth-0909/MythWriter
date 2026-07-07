@@ -1,4 +1,5 @@
 @import url("https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300..900&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&display=swap");
 @import "tailwindcss";
 
 @custom-variant dark (&:where(.dark, .dark *));
@@ -40,12 +41,11 @@
 }
 
 :root {
-  --font-zn-sans: "Noto Sans SC", "Noto Sans Simplified Chinese",
-    "PingFang SC", "Microsoft YaHei UI", -apple-system, BlinkMacSystemFont,
-    "Segoe UI", sans-serif;
-  --font-zn-display: "Noto Sans SC", "Noto Sans Simplified Chinese",
-    "PingFang SC", "Microsoft YaHei UI", -apple-system, BlinkMacSystemFont,
-    "Segoe UI", sans-serif;
+  --font-zn-sans: "DM Serif Display", "Noto Serif SC", "STIX Two Text",
+    "Times New Roman", serif;
+  --font-zn-writing: var(--font-zn-sans);
+  --font-zn-display: "DM Serif Display", "Noto Serif SC", "STIX Two Text",
+    "Times New Roman", serif;
 }
 
 * {
@@ -274,6 +274,100 @@ body.dark {
   100% { transform: scale(1.2) rotate(0deg); }
 }
 
+/* ZNWriter loading kit */
+@keyframes znLoaderFloat {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-3px);
+  }
+}
+
+@keyframes znManuscriptWrite {
+  0%, 100% {
+    opacity: 0.45;
+    transform: scaleX(0.42);
+  }
+  45% {
+    opacity: 1;
+    transform: scaleX(1);
+  }
+}
+
+@keyframes znManuscriptScan {
+  0% {
+    opacity: 0;
+    transform: translateY(-140%);
+  }
+  18% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(290%);
+  }
+}
+
+@keyframes znAiOrbit {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes znAiTwinkle {
+  0%, 100% {
+    opacity: 0.35;
+    transform: scale(0.75);
+  }
+  45% {
+    opacity: 1;
+    transform: scale(1.2);
+  }
+}
+
+@keyframes znInkDot {
+  0%, 100% {
+    opacity: 0.35;
+    transform: translateY(0) scale(0.86);
+  }
+  45% {
+    opacity: 1;
+    transform: translateY(-3px) scale(1);
+  }
+}
+
+@keyframes znCursorGlow {
+  0%, 100% {
+    opacity: 0.38;
+    transform: scaleY(0.72);
+  }
+  45% {
+    opacity: 1;
+    transform: scaleY(1);
+  }
+}
+
+@keyframes znCursorLine {
+  0%, 100% {
+    opacity: 0.35;
+    transform: scaleX(0.48);
+  }
+  45% {
+    opacity: 0.82;
+    transform: scaleX(1);
+  }
+}
+
+@keyframes znSkeletonSheen {
+  from {
+    transform: translateX(-130%);
+  }
+  to {
+    transform: translateX(130%);
+  }
+}
+
 /* ==================== Animation Utility Classes ==================== */
 
 .toast-enter {
@@ -286,6 +380,95 @@ body.dark {
 
 .fade-in {
   animation: fadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.zn-manuscript-line,
+.zn-cursor-line {
+  transform-origin: left center;
+}
+
+.zn-skeleton-sheen::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(110deg, transparent 0%, rgba(255, 255, 255, 0.62) 42%, transparent 72%);
+  transform: translateX(-130%);
+}
+
+.dark .zn-skeleton-sheen::after {
+  background: linear-gradient(110deg, transparent 0%, rgba(255, 255, 255, 0.09) 42%, transparent 72%);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .zn-loader-float {
+    animation: znLoaderFloat 2.8s cubic-bezier(0.45, 0, 0.2, 1) infinite;
+    will-change: transform;
+  }
+
+  .zn-manuscript-line {
+    animation: znManuscriptWrite 1.85s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+    will-change: transform, opacity;
+  }
+
+  .zn-manuscript-scan {
+    animation: znManuscriptScan 2.25s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+    will-change: transform, opacity;
+  }
+
+  .zn-ai-orbit {
+    animation: znAiOrbit 4s linear infinite;
+    will-change: transform;
+  }
+
+  .zn-ai-orbit-reverse {
+    animation-direction: reverse;
+    animation-duration: 2.8s;
+  }
+
+  .zn-ai-spark {
+    animation: znAiTwinkle 1.55s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+    will-change: transform, opacity;
+  }
+
+  .zn-ink-dot {
+    animation: znInkDot 1.05s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+    will-change: transform, opacity;
+  }
+
+  .zn-writing-cursor {
+    animation: znCursorGlow 1.15s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+    transform-origin: center;
+    will-change: transform, opacity;
+  }
+
+  .zn-cursor-line {
+    animation: znCursorLine 1.35s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+    will-change: transform, opacity;
+  }
+
+  .zn-skeleton-sheen::after {
+    animation: znSkeletonSheen 1.65s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+    will-change: transform;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .zn-loader-float,
+  .zn-manuscript-line,
+  .zn-manuscript-scan,
+  .zn-ai-orbit,
+  .zn-ai-spark,
+  .zn-ink-dot,
+  .zn-writing-cursor,
+  .zn-cursor-line,
+  .zn-skeleton-sheen::after {
+    animation: none !important;
+  }
+
+  .zn-skeleton-sheen::after {
+    display: none;
+  }
 }
 
 /* ==================== Dropdown Animation Utilities ==================== */
@@ -348,6 +531,7 @@ textarea::placeholder {
   min-height: 400px;
   line-height: 1.75;
   font-size: 16px;
+  font-family: var(--font-zn-writing);
   color: inherit;
 }
 
@@ -881,6 +1065,51 @@ textarea::placeholder {
 .ai-chat-markdown th {
   background: rgba(0, 0, 0, 0.04);
   font-weight: 600;
+}
+
+/* ==================== Ant Design X Overrides ==================== */
+
+/* Sender: outer border retained, inner input border removed */
+.ant-sender {
+  border-radius: 1rem !important;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.ant-sender:focus-within {
+  border-radius: 1rem !important;
+  border-color: var(--color-brand-400, #c8a457) !important;
+  box-shadow: 0 0 0 1px var(--color-brand-400, #c8a457), 0 2px 8px rgba(185, 149, 78, 0.12) !important;
+}
+.ant-sender .ant-input {
+  border: none !important;
+  box-shadow: none !important;
+  outline: none !important;
+  border-radius: 1rem !important;
+  background: transparent !important;
+}
+.ant-sender .ant-input:focus,
+.ant-sender .ant-input-focused {
+  border: none !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+/* Bubble: match project design */
+.ant-bubble-list {
+  gap: 0.25rem;
+}
+.ant-bubble-content {
+  font-size: 0.875rem;
+  line-height: 1.625;
+}
+
+/* ThoughtChain: compact */
+.ant-thought-chain-item {
+  border-radius: 0.75rem !important;
+}
+
+/* Welcome: center alignment */
+.ant-welcome {
+  text-align: center;
 }
 
 .dark .ai-chat-markdown th {

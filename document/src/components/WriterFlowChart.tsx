@@ -33,7 +33,16 @@ function getTooltipFormatter(label: string, numberFormatter: Intl.NumberFormat) 
   return (params: unknown) => {
     const items = Array.isArray(params) ? params : [params];
     const first = items[0] as { axisValueLabel?: string; name?: string } | undefined;
+    // Deduplicate: bar+line share same data, only show each unique seriesName once
+    const seen = new Set<string>();
     const rows = items
+      .filter((item) => {
+        const point = item as { seriesName?: string };
+        const key = point.seriesName || label;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
       .map((item) => {
         const point = item as { marker?: string; seriesName?: string; value?: number | string };
         const value = typeof point.value === "number" ? numberFormatter.format(point.value) : point.value;
@@ -64,16 +73,6 @@ export function WriterFlowChart({ dayIndices, words, height = 164, tone = "docum
       backgroundColor: "transparent",
       animationDuration: 700,
       animationEasing: "cubicOut",
-      title: {
-        text: chartLabel,
-        left: 8,
-        top: 2,
-        textStyle: {
-          color: textMuted,
-          fontSize: 11,
-          fontWeight: 500,
-        },
-      },
       tooltip: {
         trigger: "axis",
         confine: true,
@@ -89,9 +88,9 @@ export function WriterFlowChart({ dayIndices, words, height = 164, tone = "docum
         formatter: getTooltipFormatter(chartLabel, numberFormatter),
       },
       grid: {
-        left: 8,
-        right: 10,
-        top: 34,
+        left: 0,
+        right: 4,
+        top: 8,
         bottom: 8,
         containLabel: true,
       },

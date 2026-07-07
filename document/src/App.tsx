@@ -17,12 +17,14 @@ import { NotFoundPage } from "@/pages/NotFoundPage";
 import { ShareModal } from "@/components/ShareModal";
 import { ConfirmModal } from "@/components/ConfirmModal";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { AIChatWidget } from "@/components/AIChatWidget";
 import { AgentWritePanel } from "@/components/AgentWritePanel";
 import { useDocuments } from "@/store";
 import { useToast } from "@/components/Toast";
 import { useI18n } from "@/components/I18nProvider";
-import { useAuth } from "@/auth";
+import { useAuth, type UserInfo } from "@/auth";
 import { isLoggedIn as checkLoggedIn, clearToken, api } from "@/api";
 import { formatFullDateTime } from "@/lib/date";
 import { escapeHtml, sanitizeHtml } from "@/lib/html";
@@ -329,7 +331,7 @@ export default function App() {
     toast(t("toast.logoutSuccess"), "success");
   };
 
-  const handleLogin = (user: { id: string; name: string; email: string; avatar: string | null }) => {
+  const handleLogin = (user: UserInfo) => {
     updateUser(user);
     setIsLoggedIn(true);
     setActiveGroupId(null);
@@ -506,7 +508,7 @@ export default function App() {
       )}
 
       <ShareModal open={shareOpen} onOpenChange={setShareOpen} onExport={handleExport} />
-      <AgentWritePanel open={agentWriteOpen} onOpenChange={setAgentWriteOpen} onOpenDocument={handleOpenDoc} />
+      <AgentWritePanel open={agentWriteOpen} onOpenChange={setAgentWriteOpen} onOpenDocument={handleOpenDoc} currentDocumentId={currentPage === "editor" ? editorDocId ?? undefined : undefined} />
 
       <ConfirmModal
         open={logoutConfirm}
@@ -524,36 +526,38 @@ export default function App() {
         <DialogContent className="max-w-[420px]">
           <DialogTitle>{isEditingFolder ? t("group.renameGroup") : t("group.newGroup")}</DialogTitle>
           <DialogDescription className="sr-only">
-            Add or rename a document group folder
+            {t("group.formDesc")}
           </DialogDescription>
           <form onSubmit={handleSaveFolder} className="flex flex-col gap-4 mt-3">
             <div className="flex flex-col gap-1.5">
               <label className="text-xs font-semibold text-surface-600 dark:text-surface-300">
                 {t("group.groupName")}
               </label>
-              <input
+              <Input
                 type="text"
                 required
                 value={folderFormName}
                 onChange={(e) => setFolderFormName(e.target.value)}
                 placeholder={t("group.groupNamePlaceholder")}
-                className="w-full px-3 py-2 text-xs border border-surface-200 bg-white rounded-lg focus:outline-none focus:ring-1 focus:ring-brand-500 dark:border-surface-850 dark:bg-surface-900 dark:text-surface-100 placeholder-surface-400"
+                className="h-9 text-xs dark:border-surface-850 dark:bg-surface-900 dark:text-surface-100"
               />
             </div>
             <div className="flex items-center justify-end gap-2 mt-4">
-              <button
+              <Button
                 type="button"
                 onClick={() => setFolderModalOpen(false)}
-                className="px-3.5 py-1.5 text-xs font-semibold text-surface-600 hover:bg-surface-100 border border-surface-200 rounded-md cursor-pointer dark:text-surface-300 dark:hover:bg-surface-800 dark:border-surface-800"
+                variant="outline"
+                size="sm"
               >
                 {t("common.cancel")}
-              </button>
-              <button
+              </Button>
+              <Button
                 type="submit"
-                className="px-3.5 py-1.5 text-xs font-semibold text-white bg-brand-500 hover:bg-brand-600 rounded-md cursor-pointer transition-colors"
+                size="sm"
+                className="bg-brand-500 text-white hover:bg-brand-600 dark:bg-brand-500 dark:text-white dark:hover:bg-brand-600"
               >
-                确定
-              </button>
+                {t("common.confirm")}
+              </Button>
             </div>
           </form>
         </DialogContent>

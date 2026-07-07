@@ -1,5 +1,14 @@
 import type { Document, DocumentVersion, WorkRecord, WorkRecordPeriod } from "@/types";
 import { API_BASE } from "@/lib/apiBase";
+import type { FontFamilyKey } from "@/lib/fontCatalog";
+
+export interface ApiUser {
+  id: string;
+  name: string;
+  email: string;
+  avatar: string | null;
+  fontFamilyKey: FontFamilyKey;
+}
 
 export interface ApiKeyHistory {
   id: string;
@@ -44,7 +53,7 @@ export interface RagSearchResponse<T> {
 export type AgentStage = "analyze" | "research" | "plan" | "draft" | "review" | "publish";
 
 export interface AgentSource {
-  type: "brain" | "document";
+  type: "brain" | "document" | "web";
   id: string;
   title: string;
   excerpt: string;
@@ -65,12 +74,7 @@ export interface AgentReview {
 export interface AgentProgressEvent {
   stage: AgentStage;
   message: string;
-  analysis?: {
-    genre: string;
-    tone: string;
-    themes: string[];
-    estimatedWords: number;
-  };
+  analysis?: AgentAnalysis;
   sources?: AgentSource[];
   outline?: AgentOutlineItem[];
   sectionIndex?: number;
@@ -81,9 +85,18 @@ export interface AgentProgressEvent {
   title?: string;
 }
 
+export interface AgentAnalysis {
+  genre: string;
+  tone: string;
+  themes: string[];
+  estimatedWords: number;
+}
+
 export interface AgentDoneEvent {
   docId: string;
   title: string;
+  content: string;
+  analysis: AgentAnalysis;
   outline: AgentOutlineItem[];
   review: AgentReview;
   sources: AgentSource[];
@@ -95,6 +108,10 @@ export interface AgentWriteRequest {
   targetWords?: number;
   includeBrain?: boolean;
   includeDocuments?: boolean;
+  includeJournal?: boolean;
+  referenceDocIds?: string[];
+  referenceBrainIds?: string[];
+  referenceJournalIds?: string[];
 }
 
 function getToken(): string | null {
@@ -214,22 +231,22 @@ export async function streamAgentWrite(
 // Auth API
 export const api = {
   register: (data: { name: string; email: string; password: string }) =>
-    request<{ token: string; user: { id: string; name: string; email: string; avatar: string | null } }>(
+    request<{ token: string; user: ApiUser }>(
       "/auth/register", { method: "POST", body: JSON.stringify(data) }
     ),
 
   login: (data: { email: string; password: string }) =>
-    request<{ token: string; user: { id: string; name: string; email: string; avatar: string | null } }>(
+    request<{ token: string; user: ApiUser }>(
       "/auth/login", { method: "POST", body: JSON.stringify(data) }
     ),
 
   getProfile: () =>
-    request<{ user: { id: string; name: string; email: string; avatar: string | null; createdAt: string; _count: { documents: number } } }>(
+    request<{ user: ApiUser & { createdAt: string; _count: { documents: number } } }>(
       "/users/me"
     ),
 
-  updateProfile: (data: { name?: string; avatar?: string; password?: string; newPassword?: string; lang?: string }) =>
-    request<{ user: { id: string; name: string; email: string; avatar: string | null; createdAt: string } }>(
+  updateProfile: (data: { name?: string; avatar?: string; password?: string; newPassword?: string; lang?: string; fontFamilyKey?: FontFamilyKey }) =>
+    request<{ user: ApiUser & { createdAt: string } }>(
       "/users/me", { method: "PUT", body: JSON.stringify(data) }
     ),
 
@@ -294,6 +311,11 @@ export const api = {
   resetPassword: (data: { email: string; code: string; newPassword: string }) =>
     request<{ message: string }>(
       "/auth/reset-password", { method: "POST", body: JSON.stringify(data) }
+    ),
+
+  checkEmail: (email: string) =>
+    request<{ exists: boolean }>(
+      "/auth/check-email", { method: "POST", body: JSON.stringify({ email }) }
     ),
 
   uploadAvatar: (image: string) =>

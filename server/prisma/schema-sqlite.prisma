@@ -21,6 +21,7 @@ model User {
   embeddingBaseUrl  String?    @map("embedding_base_url")
   embeddingModel    String?    @map("embedding_model")
   lang              String     @default("zh") @map("lang")
+  fontFamilyKey     String     @default("current") @map("font_family_key")
   resetToken        String?    @map("reset_token")
   resetTokenExpires DateTime?  @map("reset_token_expires")
   createdAt         DateTime   @default(now()) @map("created_at")
