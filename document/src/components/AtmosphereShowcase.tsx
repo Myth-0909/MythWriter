@@ -1,16 +1,14 @@
-import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
+import { useMemo, type CSSProperties, type ReactNode } from "react";
 import {
   BookOpen,
   Brain,
   FileText,
   Lightbulb,
   MapPin,
-  MessageCircle,
   PenLine,
   Sparkles,
   UserRound,
 } from "lucide-react";
-import { api } from "@/api";
 import { Button } from "@/components/ui/button";
 import { useI18n } from "@/components/I18nProvider";
 import { cn } from "@/lib/utils";
@@ -39,13 +37,6 @@ interface EmptySceneProps {
   actionLabel?: string;
   onAction?: () => void;
   compact?: boolean;
-  className?: string;
-}
-
-interface XiaoAnPresenceProps {
-  currentPage: string;
-  onOpenAgentWrite?: () => void;
-  onOpenBrain?: () => void;
   className?: string;
 }
 
@@ -312,80 +303,5 @@ export function WorldviewStarMap({ nodes, className, compact = false }: Worldvie
         </div>
       )}
     </section>
-  );
-}
-
-export function XiaoAnPresence({ currentPage, onOpenAgentWrite, onOpenBrain, className }: XiaoAnPresenceProps) {
-  const { t } = useI18n();
-  const [refs, setRefs] = useState<StarMapNode[]>([]);
-
-  useEffect(() => {
-    let active = true;
-    api.listBrainKnowledges()
-      .then((res) => {
-        if (!active) return;
-        setRefs((res.knowledges || []).slice(0, 2));
-      })
-      .catch(() => {
-        if (active) setRefs([]);
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  const cue = useMemo(() => {
-    if (currentPage === "brain") return t("atmosphere.xiaoAn.canOrganize");
-    if (currentPage === "records" || currentPage === "record-history") return t("atmosphere.xiaoAn.canJournal");
-    return t("atmosphere.xiaoAn.canContinue");
-  }, [currentPage, t]);
-
-  if (currentPage === "editor" || currentPage === "notfound") return null;
-
-  return (
-    <aside
-      className={cn(
-        "fixed bottom-5 right-[5.75rem] z-40 hidden w-[310px] rounded-[8px] border border-surface-200 bg-white/92 p-4 shadow-lg shadow-surface-900/8 backdrop-blur-xl lg:block dark:border-surface-700 dark:bg-surface-900/90",
-        className
-      )}
-      data-page-motion
-    >
-      <div className="flex items-start gap-3">
-        <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-[8px] bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300">
-          <MessageCircle className="h-5 w-5" />
-          <span className="absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border-2 border-white bg-emerald-400 dark:border-surface-900" />
-        </div>
-        <div className="min-w-0">
-          <p className="text-sm font-bold text-surface-950 dark:text-white">{t("atmosphere.xiaoAn.ready")}</p>
-          <p className="mt-1 text-xs leading-5 text-surface-500 dark:text-surface-400">{t("atmosphere.xiaoAn.desc")}</p>
-        </div>
-      </div>
-
-      <div className="mt-4 rounded-[8px] bg-surface-50 p-3 dark:bg-surface-800/70">
-        <p className="text-[11px] font-semibold text-surface-400 dark:text-surface-500">{t("atmosphere.xiaoAn.refs")}</p>
-        <div className="mt-2 space-y-2">
-          {refs.length > 0 ? (
-            refs.map((ref) => (
-              <div key={ref.id} className="flex items-start gap-2 text-xs text-surface-700 dark:text-surface-200">
-                <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-brand-500" />
-                <span className="break-words leading-5">{ref.title}</span>
-              </div>
-            ))
-          ) : (
-            <p className="text-xs leading-5 text-surface-400 dark:text-surface-500">{t("atmosphere.xiaoAn.noRefs")}</p>
-          )}
-        </div>
-      </div>
-
-      <div className="mt-4 flex items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-2 text-xs font-medium text-surface-600 dark:text-surface-300">
-          <Brain className="h-4 w-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
-          <span className="break-words">{cue}</span>
-        </div>
-        <Button type="button" size="sm" onClick={onOpenAgentWrite || onOpenBrain}>
-          {t("atmosphere.xiaoAn.openAi")}
-        </Button>
-      </div>
-    </aside>
   );
 }

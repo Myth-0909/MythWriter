@@ -135,8 +135,8 @@ export function FontProvider({ children }: { children: ReactNode }) {
     const selected = getFontOption(fontFamilyKey);
     const root = document.documentElement;
 
-    root.style.removeProperty("--font-zn-sans");
-    root.style.removeProperty("--font-zn-display");
+    root.style.setProperty("--font-zn-sans", selected.cssFamily);
+    root.style.setProperty("--font-zn-display", selected.cssFamily);
     root.style.setProperty("--font-zn-writing", selected.cssFamily);
   }, [fontFamilyKey]);
 
