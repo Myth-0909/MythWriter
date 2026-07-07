@@ -14,6 +14,8 @@ import { selectReferencedBrainIds, type ChatReference } from "../services/aiRefe
 import { formatBrainKnowledgeContext, RAG_SCORE_THRESHOLD, ragService } from "../services/ragService";
 import { createAgentWriteService, markdownToBasicHtml } from "../services/agentService";
 import { createDocument, updateDocument } from "../services/documentService";
+import { createLinkedTimeoutSignal } from "../lib/abortSignal";
+import { formatLocalDateKey, getLocalDayRange } from "../services/writingStats";
 import {
   buildToolFallbackReply,
   buildToolFollowUpMessages,
@@ -669,16 +671,14 @@ router.post("/chat", async (req: Request, res: Response) => {
       where: { id: authReq.user!.userId },
       select: { name: true },
     });
-    const todayUTC = new Date(Date.UTC(
-      new Date().getUTCFullYear(), new Date().getUTCMonth(), new Date().getUTCDate()
-    ));
-    const todayStr = todayUTC.toISOString().slice(0, 10);
+    const todayRange = getLocalDayRange();
+    const todayStr = formatLocalDateKey(todayRange.start);
     const [todayDocWords, todayJournalWords, currentDoc] = await Promise.all([
       prisma.document.findMany({
         where: {
           userId: authReq.user!.userId,
           isDeleted: false,
-          updatedAt: { gte: todayUTC },
+          updatedAt: { gte: todayRange.start, lt: todayRange.end },
         },
         select: { content: true },
       }).then((docs: { content: string | null }[]) =>
@@ -1204,11 +1204,11 @@ router.post("/chat", async (req: Request, res: Response) => {
             resultMsg = `${docs.length} docs`;
           } else if (tc.name === "get_today_writing") {
             const userId = authReq.user!.userId;
-            const todayUTC = new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), new Date().getUTCDate()));
-            const todayStr = todayUTC.toISOString().slice(0, 10);
+            const todayRange = getLocalDayRange();
+            const todayStr = formatLocalDateKey(todayRange.start);
             const [todayDocs, todayJournals] = await Promise.all([
               prisma.document.findMany({
-                where: { userId, isDeleted: false, updatedAt: { gte: todayUTC } },
+                where: { userId, isDeleted: false, updatedAt: { gte: todayRange.start, lt: todayRange.end } },
                 select: { content: true },
               }),
               prisma.workRecord.findMany({
@@ -1222,11 +1222,11 @@ router.post("/chat", async (req: Request, res: Response) => {
               index: toolCallIndex,
               name: tc.name,
               status: "done",
-              result: `${docWords + journalWords} words today`,
-              content: `今日写作统计（${todayStr}）：\n- 修改文档 ${todayDocs.length} 篇，新增 ${docWords} 字\n- 随记 ${todayJournals.length} 条，共 ${journalWords} 字\n- 合计 ${docWords + journalWords} 字`,
+              result: `${docWords + journalWords} words in touched items today`,
+              content: `今日写作统计（${todayStr}）：\n- 今日更新文档 ${todayDocs.length} 篇，当前共 ${docWords} 字\n- 今日随记 ${todayJournals.length} 条，共 ${journalWords} 字\n- 可确认合计 ${docWords + journalWords} 字`,
             });
             status = "done";
-            resultMsg = `${docWords + journalWords} words today`;
+            resultMsg = `${docWords + journalWords} words in touched items today`;
           }
         } catch (err) {
           console.error("[AI] Tool execution error:", err);
@@ -1248,6 +1248,7 @@ router.post("/chat", async (req: Request, res: Response) => {
     let finalAction: any = null;
     let followUpReply = "";
     if (toolResults.length > 0) {
+      const followUpSignal = createLinkedTimeoutSignal(controller.signal, 60000);
       try {
         const followUpSystemPrompt = `${finalSystemPrompt}\n\nTool follow-up instruction: tools have already been executed. Use the tool results below to answer the user's request directly with concrete numbers or outcomes. Do not call tools again. Do not say "please check the results".`;
         const followUpMessages = buildToolFollowUpMessages(accumulatedToolCalls, toolResults);
@@ -1268,6 +1269,7 @@ router.post("/chat", async (req: Request, res: Response) => {
             max_tokens: 2048,
             stream: false,
           }),
+          signal: followUpSignal.signal,
         });
         if (followUpRes.ok) {
           const json = await followUpRes.json() as any;
@@ -1293,6 +1295,8 @@ router.post("/chat", async (req: Request, res: Response) => {
         }
       } catch (err) {
         console.error("[AI] Follow-up call error:", err);
+      } finally {
+        followUpSignal.cleanup();
       }
     }
 

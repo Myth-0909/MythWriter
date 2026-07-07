@@ -8,6 +8,24 @@ export function getTypewriterChunkSize(remainingCharacters: number): number {
   return 2;
 }
 
+export function normalizeChatToolCallId(toolCall: { id?: string; index?: number }, fallbackIndex: number): string {
+  const id = String(toolCall.id || "").trim();
+  if (id) return id;
+  const index = Number.isInteger(toolCall.index) ? toolCall.index : fallbackIndex;
+  return `call_${index}`;
+}
+
+export function resolveStoredAssistantContent({
+  displayContent,
+  finalContent,
+}: {
+  displayContent: string;
+  finalContent?: string;
+}): string {
+  const final = String(finalContent || "").trim();
+  return final ? finalContent || "" : displayContent;
+}
+
 export function resolveChatFinalContent({
   streamedContent,
   finalReply,

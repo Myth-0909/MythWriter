@@ -48,6 +48,29 @@ describe("ai tool conversation helpers", () => {
     assert.doesNotMatch(reply, /请查看结果/);
   });
 
+  it("describes today's edited document words without claiming they are new words", () => {
+    const results: AssistantToolResult[] = [
+      {
+        index: 0,
+        name: "get_today_writing",
+        status: "done",
+        result: "188 words in touched items today",
+        content: [
+          "今日写作统计（2026-07-07）：",
+          "- 今日更新文档 2 篇，当前共 148 字",
+          "- 今日随记 1 条，共 40 字",
+          "- 可确认合计 188 字",
+        ].join("\n"),
+      },
+    ];
+
+    const reply = buildToolFallbackReply(results, "zh");
+
+    assert.match(reply, /今日更新文档 2 篇/);
+    assert.match(reply, /当前共 148 字/);
+    assert.doesNotMatch(reply, /新增/);
+  });
+
   it("treats tool-completion placeholder replies as unusable", () => {
     const results: AssistantToolResult[] = [
       {

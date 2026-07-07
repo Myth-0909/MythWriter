@@ -16,7 +16,13 @@ import { api } from "@/api";
 import { markdownToHtml } from "@/lib/markdown";
 import { sanitizeHtml } from "@/lib/html";
 import { API_BASE, getServerAssetUrl } from "@/lib/apiBase";
-import { AI_CHAT_TYPEWRITER_INTERVAL_MS, getTypewriterChunkSize, resolveChatFinalContent } from "@/lib/aiChatStream";
+import {
+  AI_CHAT_TYPEWRITER_INTERVAL_MS,
+  getTypewriterChunkSize,
+  normalizeChatToolCallId,
+  resolveChatFinalContent,
+  resolveStoredAssistantContent,
+} from "@/lib/aiChatStream";
 import { Tooltip } from "@/components/ui/tooltip";
 import type { DocumentVersion } from "@/types";
 import type { OverlayScrollbarsComponentRef } from "overlayscrollbars-react";
@@ -48,6 +54,8 @@ const AUTO_RAG_SCORE_THRESHOLD = 0.3;
 interface Message {
   role: "user" | "assistant" | "tool";
   content: string;
+  finalContent?: string;
+  isTyping?: boolean;
   thinking?: string;
   toolCalls?: ToolCallEvent[];
   tool_call_id?: string;
@@ -290,18 +298,26 @@ function parseToolArguments(value?: string): Record<string, unknown> {
 }
 
 // Convert UI Message objects to clean API format, including tool call history
-export function toApiMessages(messages: { role: string; content: string; toolCalls?: ToolCallEvent[]; tool_call_id?: string }[]): { role: string; content: string; tool_calls?: any[]; tool_call_id?: string; name?: string }[] {
+export function toApiMessages(messages: { role: string; content: string; finalContent?: string; toolCalls?: ToolCallEvent[]; tool_call_id?: string }[]): { role: string; content: string; tool_calls?: any[]; tool_call_id?: string; name?: string }[] {
   const result: any[] = [];
+  const emittedToolResultIds = new Set<string>();
   for (const m of messages) {
     if (m.role === "tool") {
-      result.push({ role: "tool", tool_call_id: (m as any).tool_call_id || "", content: m.content });
+      const rawToolCallId = String(m.tool_call_id || "").trim();
+      if (!rawToolCallId) continue;
+      const toolCallId = normalizeChatToolCallId({ id: rawToolCallId }, result.length);
+      if (!emittedToolResultIds.has(toolCallId)) {
+        emittedToolResultIds.add(toolCallId);
+        result.push({ role: "tool", tool_call_id: toolCallId, content: m.content });
+      }
     } else if (m.role === "assistant" && m.toolCalls && m.toolCalls.length > 0) {
+      const assistantContent = resolveStoredAssistantContent({ displayContent: m.content, finalContent: m.finalContent });
       // Build assistant message with tool_calls in API format
       result.push({
         role: "assistant",
-        content: m.content || "",
+        content: assistantContent || "",
         tool_calls: m.toolCalls.map((tc, i) => ({
-          id: tc.id || `call_${i}`,
+          id: normalizeChatToolCallId(tc, i),
           type: "function",
           function: { name: tc.name, arguments: tc.arguments || "{}" },
         })),
@@ -309,11 +325,13 @@ export function toApiMessages(messages: { role: string; content: string; toolCal
       // Append tool result messages
       for (const tc of m.toolCalls) {
         if (tc.status === "done" && tc.result !== undefined) {
-          result.push({ role: "tool", tool_call_id: tc.id || `call_${tc.index}`, content: String(tc.result) });
+          const toolCallId = normalizeChatToolCallId(tc, tc.index);
+          emittedToolResultIds.add(toolCallId);
+          result.push({ role: "tool", tool_call_id: toolCallId, content: String(tc.result) });
         }
       }
     } else {
-      result.push({ role: m.role, content: m.content });
+      result.push({ role: m.role, content: resolveStoredAssistantContent({ displayContent: m.content, finalContent: m.finalContent }) });
     }
   }
   return result;
@@ -468,6 +486,7 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
   const [personalityOpen, setPersonalityOpen] = useState(false);
   const memoryRef = useRef<Message[]>(loadMemory());
   const abortRef = useRef<AbortController | null>(null);
+  const typewriterControlRef = useRef<{ skip: () => void } | null>(null);
   const sentHistoryRef = useRef<string[]>([]);
   const historyIndexRef = useRef<number>(-1);
   const draftBeforeHistoryRef = useRef<string>("");
@@ -574,14 +593,26 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
     // If currently streaming, exclude the last incomplete assistant message
     const msgsToSave = (loading || streaming)
       ? messages.filter((m, i) => {
-          if (i === messages.length - 1 && m.role === "assistant" && !m.content) return false;
+          if (i === messages.length - 1 && m.role === "assistant" && m.isTyping && !m.finalContent) return false;
+          if (i === messages.length - 1 && m.role === "assistant" && !m.content && !m.finalContent) return false;
           return true;
         })
       : messages;
     if (msgsToSave.length === 0) return;
+    const normalizedMessages = msgsToSave.map((message) => {
+      if (message.role !== "assistant") return message;
+      const { finalContent, isTyping, ...rest } = message;
+      return {
+        ...rest,
+        content: resolveStoredAssistantContent({
+          displayContent: message.content,
+          finalContent,
+        }),
+      };
+    });
     setSaving(true);
     try {
-      await api.saveConversation({ messages: msgsToSave, personality: personalityRef.current });
+      await api.saveConversation({ messages: normalizedMessages, personality: personalityRef.current });
     } catch (err) {
       console.warn("[ai] Failed to save conversation:", err);
     }
@@ -968,7 +999,7 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
           const remaining = targetContent.length - displayedContent.length;
           const step = getTypewriterChunkSize(remaining);
           displayedContent += targetContent.slice(displayedContent.length, displayedContent.length + step);
-          upsertAssistantMessage({ content: displayedContent });
+          upsertAssistantMessage({ content: displayedContent, isTyping: displayedContent.length < targetContent.length });
           if (displayedContent.length < targetContent.length) {
             scheduleTypewriter();
           }
@@ -979,15 +1010,25 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
         if (!assistantStarted) {
           assistantStarted = true;
           setStreaming(true);
-          upsertAssistantMessage({ content: "" });
+          upsertAssistantMessage({ content: "", isTyping: true });
         }
         if (!nextContent.startsWith(displayedContent)) {
           displayedContent = "";
-          upsertAssistantMessage({ content: "" });
+          upsertAssistantMessage({ content: "", isTyping: true });
         }
         targetContent = nextContent;
         scheduleTypewriter();
       };
+
+      const skipTypewriter = () => {
+        if (typewriterTimer !== null) {
+          window.clearTimeout(typewriterTimer);
+          typewriterTimer = null;
+        }
+        displayedContent = targetContent;
+        upsertAssistantMessage({ content: displayedContent, finalContent: targetContent || undefined, isTyping: false });
+      };
+      typewriterControlRef.current = { skip: skipTypewriter };
 
       const waitForTypewriterIdle = async () => {
         while (displayedContent !== targetContent) {
@@ -1013,7 +1054,7 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
           setIsActing(true);
           assistantStarted = true;
           setStreaming(true);
-          upsertAssistantMessage({ content: displayedContent, toolCalls: latestToolCalls });
+          upsertAssistantMessage({ content: displayedContent, isTyping: true, toolCalls: latestToolCalls });
         },
         abort.signal
       );
@@ -1032,12 +1073,16 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
       }
       queueAssistantContent(finalContent);
       upsertAssistantMessage({
+        finalContent,
+        isTyping: true,
         thinking: thinking || fullThinking,
         toolCalls: finalToolCalls,
       });
       await waitForTypewriterIdle();
       upsertAssistantMessage({
         content: finalContent,
+        finalContent,
+        isTyping: false,
         thinking: thinking || fullThinking,
         toolCalls: finalToolCalls,
       });
@@ -1045,7 +1090,7 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
       const assistantMemory: Message[] = [{ role: "assistant", content: finalContent, toolCalls: finalToolCalls.length > 0 ? finalToolCalls : undefined }];
       for (const tc of finalToolCalls) {
         if (tc.status === "done" && tc.result !== undefined) {
-          assistantMemory.push({ role: "tool", tool_call_id: tc.id || `call_${tc.index}`, content: String(tc.result) });
+          assistantMemory.push({ role: "tool", tool_call_id: normalizeChatToolCallId(tc, tc.index), content: String(tc.result) });
         }
       }
       memoryRef.current = [...memory, ...assistantMemory];
@@ -1148,6 +1193,7 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
       if (typewriterTimer !== null) {
         window.clearTimeout(typewriterTimer);
       }
+      typewriterControlRef.current = null;
       setLoading(false);
       setStreaming(false);
       setIsActing(false);
@@ -1162,6 +1208,7 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
   }, [input, loading, streaming, doSend]);
 
   const handleStop = useCallback(() => {
+    typewriterControlRef.current?.skip();
     abortRef.current?.abort();
     setLoading(false);
     setStreaming(false);
@@ -1847,7 +1894,15 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
                                   const isSearch = tc.name === "search_web";
                                   const isCreate = tc.name === "create_document";
                                   const isUpdate = tc.name === "update_document";
-                                  const toolLabel = isSearch ? t("ai.searchWeb") : isCreate ? t("ai.createDoc") : isUpdate ? t("ai.updateDoc") : tc.name;
+                                  const toolLabels: Record<string, string> = {
+                                    search_web: t("ai.searchWeb"),
+                                    create_document: t("ai.createDoc"),
+                                    update_document: t("ai.updateDoc"),
+                                    get_user_stats: t("ai.tool.getUserStats"),
+                                    get_today_writing: t("ai.tool.getTodayWriting"),
+                                    list_recent_documents: t("ai.tool.listRecentDocuments"),
+                                  };
+                                  const toolLabel = toolLabels[tc.name] || tc.name;
                                   const toolIcon = isSearch ? "🔍" : isCreate || isUpdate ? "📝" : "🔧";
                                   const inProgress = tc.status === "calling";
                                   const done = tc.status === "done";

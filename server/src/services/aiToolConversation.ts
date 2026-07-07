@@ -85,15 +85,19 @@ function parseUserStats(content: string): ParsedUserStats | null {
 
 function parseTodayWriting(content: string): ParsedTodayWriting | null {
   if (!content.includes("今日写作统计")) return null;
-  const docMatch = content.match(/修改文档\s*([\d,]+)\s*篇，新增\s*([\d,]+)\s*字/);
-  const journalMatch = content.match(/随记\s*([\d,]+)\s*条，共\s*([\d,]+)\s*字/);
+  const docMatch =
+    content.match(/今日更新文档\s*([\d,]+)\s*篇，当前共\s*([\d,]+)\s*字/) ||
+    content.match(/修改文档\s*([\d,]+)\s*篇，新增\s*([\d,]+)\s*字/);
+  const journalMatch =
+    content.match(/今日随记\s*([\d,]+)\s*条，共\s*([\d,]+)\s*字/) ||
+    content.match(/随记\s*([\d,]+)\s*条，共\s*([\d,]+)\s*字/);
   return {
     date: content.match(/今日写作统计（([^）]+)）/)?.[1],
     docCount: parseNumber(docMatch?.[1]),
     docWords: parseNumber(docMatch?.[2]),
     journalCount: parseNumber(journalMatch?.[1]),
     journalWords: parseNumber(journalMatch?.[2]),
-    totalWords: matchNumber(content, /合计\s*([\d,]+)\s*字/),
+    totalWords: matchNumber(content, /(?:可确认合计|合计)\s*([\d,]+)\s*字/),
   };
 }
 
@@ -137,8 +141,8 @@ function buildKnownToolLines(results: AssistantToolResult[], lang: string): stri
     const total = today.totalWords ?? (today.docWords ?? 0) + (today.journalWords ?? 0);
     lines.push(t(
       lang,
-      `- 今天（${today.date || "今日"}）：修改 ${formatNumber(today.docCount)} 篇文档，文档新增 ${formatNumber(today.docWords)} 字；随记 ${formatNumber(today.journalCount)} 条，共 ${formatNumber(today.journalWords)} 字；合计 ${formatNumber(total)} 字。`,
-      `- Today (${today.date || "today"}): ${formatNumber(today.docCount)} documents edited, ${formatNumber(today.docWords)} document words; ${formatNumber(today.journalCount)} journal entries, ${formatNumber(today.journalWords)} words; ${formatNumber(total)} words in total.`
+      `- 今天（${today.date || "今日"}）：今日更新文档 ${formatNumber(today.docCount)} 篇，当前共 ${formatNumber(today.docWords)} 字；今日随记 ${formatNumber(today.journalCount)} 条，共 ${formatNumber(today.journalWords)} 字；可确认合计 ${formatNumber(total)} 字。`,
+      `- Today (${today.date || "today"}): ${formatNumber(today.docCount)} documents touched, currently ${formatNumber(today.docWords)} document words; ${formatNumber(today.journalCount)} journal entries, ${formatNumber(today.journalWords)} words; ${formatNumber(total)} confirmed words in touched items.`
     ));
   }
 
