@@ -1544,6 +1544,12 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
   }, [keyOk, open, pos.x, pos.y]);
 
   const chatPanelSide = absoluteToAnchored(pos).side;
+  const chatHeaderButtonClass =
+    "h-8 w-8 rounded-lg border border-transparent text-surface-500 transition-all duration-200 hover:-translate-y-0.5 hover:border-brand-200 hover:bg-brand-50 hover:text-brand-700 hover:shadow-sm focus-visible:ring-brand-300 dark:text-surface-400 dark:hover:border-brand-700/60 dark:hover:bg-brand-950/60 dark:hover:text-brand-200";
+  const chatHeaderDangerButtonClass =
+    "h-8 w-8 rounded-lg border border-transparent text-surface-500 transition-all duration-200 hover:-translate-y-0.5 hover:border-red-200 hover:bg-red-50 hover:text-red-600 hover:shadow-sm focus-visible:ring-red-300 dark:text-surface-400 dark:hover:border-red-800/70 dark:hover:bg-red-950/50 dark:hover:text-red-300";
+  const chatHeaderActiveButtonClass =
+    "border-brand-200 bg-brand-100 text-brand-700 shadow-sm dark:border-brand-700/70 dark:bg-brand-950/70 dark:text-brand-300";
 
   return (
     <>
@@ -1601,23 +1607,28 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
               <div className="flex items-center gap-1">
                 {currentDocumentId && (
                   <Tooltip content={t("ai.versionHistory")} delay={150}>
-                    <Button variant="ghost" size="icon" onClick={() => setVersionDialogOpen(true)} className="h-8 w-8">
+                    <Button variant="ghost" size="icon" onClick={() => setVersionDialogOpen(true)} className={chatHeaderButtonClass}>
                       <History className="h-4 w-4" />
                     </Button>
                   </Tooltip>
                 )}
                 <Tooltip content={t("card.edit")} delay={150}>
-                  <Button variant="ghost" size="icon" onClick={() => { setEditMode(!editMode); setSelectedMsgs(new Set()); }} className={cn("h-8 w-8", editMode && "bg-brand-100 text-brand-600 dark:bg-brand-900 dark:text-brand-400")}>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => { setEditMode(!editMode); setSelectedMsgs(new Set()); }}
+                    className={cn(chatHeaderButtonClass, editMode && chatHeaderActiveButtonClass)}
+                  >
                     <Pencil className="h-4 w-4" />
                   </Button>
                 </Tooltip>
                 <Tooltip content={t("ai.clearHistory")} delay={150}>
-                  <Button variant="ghost" size="icon" onClick={() => setDeleteConfirm(true)} className="h-8 w-8">
+                  <Button variant="ghost" size="icon" onClick={() => setDeleteConfirm(true)} className={chatHeaderDangerButtonClass}>
                     <Trash2 className="h-4 w-4" />
                   </Button>
                 </Tooltip>
                 <Tooltip content={t("common.close")} delay={150}>
-                  <Button variant="ghost" size="icon" onClick={closeWithAnimation} className="h-8 w-8">
+                  <Button variant="ghost" size="icon" onClick={closeWithAnimation} className={chatHeaderDangerButtonClass}>
                     <X className="h-4 w-4" />
                   </Button>
                 </Tooltip>
