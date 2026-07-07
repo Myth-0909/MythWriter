@@ -16,7 +16,7 @@ import { api } from "@/api";
 import { markdownToHtml } from "@/lib/markdown";
 import { sanitizeHtml } from "@/lib/html";
 import { API_BASE, getServerAssetUrl } from "@/lib/apiBase";
-import { resolveChatFinalContent } from "@/lib/aiChatStream";
+import { AI_CHAT_TYPEWRITER_INTERVAL_MS, getTypewriterChunkSize, resolveChatFinalContent } from "@/lib/aiChatStream";
 import { Tooltip } from "@/components/ui/tooltip";
 import type { DocumentVersion } from "@/types";
 import type { OverlayScrollbarsComponentRef } from "overlayscrollbars-react";
@@ -930,13 +930,70 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
 
     const abort = new AbortController();
     abortRef.current = abort;
+    let typewriterTimer: number | null = null;
 
     try {
       const memoryContext = buildMemoryContext(memory);
       let fullContent = "";
       let fullThinking = "";
-      let firstDelta = true;
       let latestToolCalls: ToolCallEvent[] = [];
+      let assistantStarted = false;
+      let displayedContent = "";
+      let targetContent = "";
+
+      const upsertAssistantMessage = (patch: Partial<Message>) => {
+        setMessages((prev) => {
+          const next = [...prev];
+          const last = next[next.length - 1];
+          if (last && last.role === "assistant") {
+            next[next.length - 1] = { ...last, ...patch, sources: requestReferences };
+          } else {
+            next.push({
+              role: "assistant",
+              content: "",
+              sources: requestReferences,
+              timestamp: formatTimestamp(),
+              ...patch,
+            });
+          }
+          return next;
+        });
+      };
+
+      const scheduleTypewriter = () => {
+        if (typewriterTimer !== null) return;
+        typewriterTimer = window.setTimeout(() => {
+          typewriterTimer = null;
+          if (displayedContent === targetContent) return;
+          const remaining = targetContent.length - displayedContent.length;
+          const step = getTypewriterChunkSize(remaining);
+          displayedContent += targetContent.slice(displayedContent.length, displayedContent.length + step);
+          upsertAssistantMessage({ content: displayedContent });
+          if (displayedContent.length < targetContent.length) {
+            scheduleTypewriter();
+          }
+        }, AI_CHAT_TYPEWRITER_INTERVAL_MS);
+      };
+
+      const queueAssistantContent = (nextContent: string) => {
+        if (!assistantStarted) {
+          assistantStarted = true;
+          setStreaming(true);
+          upsertAssistantMessage({ content: "" });
+        }
+        if (!nextContent.startsWith(displayedContent)) {
+          displayedContent = "";
+          upsertAssistantMessage({ content: "" });
+        }
+        targetContent = nextContent;
+        scheduleTypewriter();
+      };
+
+      const waitForTypewriterIdle = async () => {
+        while (displayedContent !== targetContent) {
+          await new Promise((resolve) => window.setTimeout(resolve, AI_CHAT_TYPEWRITER_INTERVAL_MS));
+        }
+      };
 
       const { reply, action, thinking, toolCalls } = await streamChat(
         { messages: [...memory], personality: personalityRef.current, memoryContext, references: requestReferences },
@@ -945,45 +1002,18 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
           if (/<<ACTION_JSON>>|<<DOC_BEGIN>>|<<UPDATE_DOC:/.test(fullContent)) {
             setIsActing(true);
           }
-          if (firstDelta) {
-            firstDelta = false;
-            setStreaming(true);
-            setMessages((prev) => [...prev, { role: "assistant", content: delta, sources: requestReferences, timestamp: formatTimestamp() }]);
-          } else {
-            setMessages((prev) => {
-              const next = [...prev];
-              const last = next[next.length - 1];
-              if (last && last.role === "assistant") {
-                next[next.length - 1] = { ...last, content: fullContent, sources: requestReferences };
-              }
-              return next;
-            });
-          }
+          queueAssistantContent(fullContent);
         },
         (tDelta) => {
           fullThinking += tDelta;
-          setMessages((prev) => {
-            const next = [...prev];
-            const last = next[next.length - 1];
-            if (last && last.role === "assistant") {
-              next[next.length - 1] = { ...last, thinking: fullThinking };
-            }
-            return next;
-          });
+          upsertAssistantMessage({ thinking: fullThinking });
         },
         (tc) => {
           latestToolCalls = [...latestToolCalls.filter(t => t.index !== tc.index), tc];
           setIsActing(true);
-          setMessages((prev) => {
-            const next = [...prev];
-            const last = next[next.length - 1];
-            if (last && last.role === "assistant") {
-              next[next.length - 1] = { ...last, toolCalls: latestToolCalls };
-            } else {
-              next.push({ role: "assistant", content: "", toolCalls: latestToolCalls, sources: requestReferences, timestamp: formatTimestamp() });
-            }
-            return next;
-          });
+          assistantStarted = true;
+          setStreaming(true);
+          upsertAssistantMessage({ content: displayedContent, toolCalls: latestToolCalls });
         },
         abort.signal
       );
@@ -1000,15 +1030,16 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
       if (!finalContent.trim()) {
         throw new Error(t("ai.emptyReply"));
       }
-      setMessages((prev) => {
-        const next = [...prev];
-        const last = next[next.length - 1];
-        if (last && last.role === "assistant") {
-          next[next.length - 1] = { ...last, content: finalContent, thinking: thinking || fullThinking, toolCalls: toolCalls || latestToolCalls, sources: requestReferences };
-        } else if (finalContent) {
-          next.push({ role: "assistant", content: finalContent, thinking: thinking || fullThinking, toolCalls: toolCalls || latestToolCalls, sources: requestReferences, timestamp: formatTimestamp() });
-        }
-        return next;
+      queueAssistantContent(finalContent);
+      upsertAssistantMessage({
+        thinking: thinking || fullThinking,
+        toolCalls: finalToolCalls,
+      });
+      await waitForTypewriterIdle();
+      upsertAssistantMessage({
+        content: finalContent,
+        thinking: thinking || fullThinking,
+        toolCalls: finalToolCalls,
       });
 
       const assistantMemory: Message[] = [{ role: "assistant", content: finalContent, toolCalls: finalToolCalls.length > 0 ? finalToolCalls : undefined }];
@@ -1114,6 +1145,9 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
         return next;
       });
     } finally {
+      if (typewriterTimer !== null) {
+        window.clearTimeout(typewriterTimer);
+      }
       setLoading(false);
       setStreaming(false);
       setIsActing(false);
