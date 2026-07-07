@@ -98,7 +98,7 @@ export function DocumentCard({
         className={cn(
           "group relative flex items-center gap-4 overflow-hidden rounded-xl border border-surface-200 bg-white px-4 py-3 transition-all duration-200",
           "dark:border-surface-800 dark:bg-surface-900",
-          onClick && "cursor-pointer hover:border-surface-300 hover:bg-surface-50 active:scale-[0.99] dark:hover:border-surface-700 dark:hover:bg-surface-850"
+          onClick && "cursor-pointer hover:border-surface-300 hover:bg-surface-50 active:scale-[0.99] dark:hover:border-surface-700 dark:hover:bg-surface-900"
         )}
       >
         <div className={cn("absolute bottom-0 left-0 top-0 w-1 bg-gradient-to-b", accentByCategory[categoryKey])} />

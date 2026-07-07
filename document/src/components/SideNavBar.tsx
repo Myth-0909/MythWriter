@@ -226,11 +226,19 @@ export function SideNavBar({
                                   "group/item relative flex items-center justify-between px-2 py-1 rounded-md text-[12px] font-medium cursor-pointer transition-all min-w-0",
                                   isGroupActive
                                     ? "bg-surface-200 text-surface-900 dark:bg-surface-800 dark:text-surface-100"
-                                    : "text-surface-600 hover:bg-surface-100 hover:text-surface-900 dark:text-surface-400 dark:hover:bg-surface-850 dark:hover:text-surface-200"
+                                    : "text-surface-600 hover:bg-surface-100 hover:text-surface-900 dark:text-surface-400 dark:hover:bg-surface-900 dark:hover:text-surface-100"
                                 )}
                               >
                                 <div className="flex items-center gap-2 min-w-0 flex-1">
-                                  <Folder className={cn("h-3.5 w-3.5 shrink-0", isGroupActive ? "text-brand-500" : "text-surface-400")} fill={isGroupActive ? "currentColor" : "none"} />
+                                  <Folder
+                                    className={cn(
+                                      "h-3.5 w-3.5 shrink-0 transition-colors",
+                                      isGroupActive
+                                        ? "text-brand-500"
+                                        : "text-surface-400 group-hover/item:text-brand-500 dark:group-hover/item:text-brand-300"
+                                    )}
+                                    fill={isGroupActive ? "currentColor" : "none"}
+                                  />
                                   <span className="truncate pr-4">{group.name}</span>
                                 </div>
                                 
@@ -240,7 +248,7 @@ export function SideNavBar({
                                     <DropdownMenuTrigger asChild>
                                       <button
                                         onClick={(e) => e.stopPropagation()}
-                                        className="p-0.5 rounded text-surface-400 hover:text-surface-600 hover:bg-surface-200 dark:hover:bg-surface-700 transition-colors cursor-pointer"
+                                        className="rounded p-0.5 text-surface-400 transition-colors hover:bg-surface-200 hover:text-surface-600 dark:hover:bg-surface-800 dark:hover:text-surface-100 cursor-pointer"
                                       >
                                         <Settings className="h-3 w-3" />
                                       </button>

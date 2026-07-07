@@ -539,7 +539,7 @@ export default function App() {
                 value={folderFormName}
                 onChange={(e) => setFolderFormName(e.target.value)}
                 placeholder={t("group.groupNamePlaceholder")}
-                className="h-9 text-xs dark:border-surface-850 dark:bg-surface-900 dark:text-surface-100"
+                className="h-9 text-xs dark:border-surface-800 dark:bg-surface-900 dark:text-surface-100"
               />
             </div>
             <div className="flex items-center justify-end gap-2 mt-4">
