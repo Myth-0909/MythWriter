@@ -1346,35 +1346,30 @@
             <p class="body-sm" style="color:rgba(255,255,255,.72)">生成内容、修改文档、沉淀反馈，回到工作现场。</p>
           </div>
         </div>
-        <div style="position:relative;min-height:43vh;display:grid;place-items:center">
-          <svg viewBox="0 0 620 360" width="100%" height="100%" aria-hidden="true" style="position:absolute;inset:0">
-            <line x1="164" y1="84" x2="304" y2="154" stroke="rgba(255,255,255,.34)" stroke-width="1"/>
-            <line x1="164" y1="180" x2="296" y2="180" stroke="rgba(255,255,255,.34)" stroke-width="1"/>
-            <line x1="164" y1="276" x2="304" y2="206" stroke="rgba(255,255,255,.34)" stroke-width="1"/>
-            <line x1="394" y1="180" x2="500" y2="180" stroke="var(--accent)" stroke-width="2"/>
-            <rect x="40" y="54" width="150" height="60" fill="none" stroke="rgba(255,255,255,.26)" stroke-width="1"/>
-            <rect x="40" y="150" width="150" height="60" fill="none" stroke="rgba(255,255,255,.26)" stroke-width="1"/>
-            <rect x="40" y="246" width="150" height="60" fill="none" stroke="rgba(255,255,255,.26)" stroke-width="1"/>
-          </svg>
-          <div style="position:absolute;z-index:1;left:5%;top:12%;width:24%;padding:1.2vh 1vw;border-top:2px solid rgba(255,255,255,.34)">
+        <div style="min-height:43vh;display:grid;grid-template-columns:minmax(0,1.16fr) 56px 124px 64px minmax(0,.9fr);grid-template-rows:repeat(3,minmax(72px,1fr));gap:1.8vh 1.2vw;align-items:center">
+          <div style="grid-column:1;grid-row:1;align-self:stretch;padding:1.35vh 1vw;border-top:2px solid rgba(255,255,255,.34);background:rgba(255,255,255,.035);display:flex;flex-direction:column;justify-content:center">
             <div class="t-meta" style="color:rgba(255,255,255,.66)">01 / DOC</div>
             <div style="margin-top:.7vh;font-family:var(--sans),var(--sans-zh);font-size:max(16px,1vw);font-weight:500;color:#fff">当前文档</div>
           </div>
-          <div style="position:absolute;z-index:1;left:5%;top:39%;width:24%;padding:1.2vh 1vw;border-top:2px solid rgba(255,255,255,.34)">
+          <div style="grid-column:2;grid-row:1;width:100%;height:1px;background:rgba(255,255,255,.34)"></div>
+          <div style="grid-column:1;grid-row:2;align-self:stretch;padding:1.35vh 1vw;border-top:2px solid rgba(255,255,255,.34);background:rgba(255,255,255,.035);display:flex;flex-direction:column;justify-content:center">
             <div class="t-meta" style="color:rgba(255,255,255,.66)">02 / MEMORY</div>
             <div style="margin-top:.7vh;font-family:var(--sans),var(--sans-zh);font-size:max(16px,1vw);font-weight:500;color:#fff">脑记忆</div>
           </div>
-          <div style="position:absolute;z-index:1;left:5%;bottom:9%;width:24%;padding:1.2vh 1vw;border-top:2px solid rgba(255,255,255,.34)">
+          <div style="grid-column:2;grid-row:2;width:100%;height:2px;background:rgba(255,255,255,.42)"></div>
+          <div style="grid-column:1;grid-row:3;align-self:stretch;padding:1.35vh 1vw;border-top:2px solid rgba(255,255,255,.34);background:rgba(255,255,255,.035);display:flex;flex-direction:column;justify-content:center">
             <div class="t-meta" style="color:rgba(255,255,255,.66)">03 / LOG</div>
             <div style="margin-top:.7vh;font-family:var(--sans),var(--sans-zh);font-size:max(16px,1vw);font-weight:500;color:#fff">工作记录</div>
           </div>
-          <div style="position:absolute;z-index:1;left:50%;top:50%;transform:translate(-50%,-50%);width:8.8vw;height:8.8vw;min-width:118px;min-height:118px;background:var(--accent-bright);display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff">
-            <div style="font-family:var(--sans);font-size:min(3.4vw,6vh);font-weight:200;line-height:.9;letter-spacing:-.035em">AI</div>
+          <div style="grid-column:2;grid-row:3;width:100%;height:1px;background:rgba(255,255,255,.34)"></div>
+          <div style="grid-column:3;grid-row:1 / 4;align-self:center;justify-self:center;width:124px;height:124px;background:var(--accent-bright);display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff">
+            <div style="font-family:var(--sans);font-size:52px;font-weight:200;line-height:.9">AI</div>
             <div class="t-meta" style="margin-top:1vh;color:rgba(255,255,255,.72);letter-spacing:.16em">CONTEXT</div>
           </div>
-          <div style="position:absolute;z-index:1;right:0;top:50%;transform:translateY(-50%);width:17%;padding:1.8vh 1vw;background:var(--paper);color:var(--ink);border-top:3px solid var(--accent-bright)">
+          <div style="grid-column:4;grid-row:2;width:100%;height:2px;background:var(--accent-bright)"></div>
+          <div style="grid-column:5;grid-row:1 / 4;align-self:center;padding:2vh 1.2vw;background:var(--paper);color:var(--ink);border-top:3px solid var(--accent-bright)">
             <div class="t-meta" style="color:var(--accent)">OUTPUT</div>
-            <div style="margin-top:.8vh;font-family:var(--sans),var(--sans-zh);font-size:max(16px,1vw);font-weight:500;color:var(--text-primary);line-height:1.35">生成<br/>修改<br/>沉淀</div>
+            <div style="margin-top:1vh;font-family:var(--sans),var(--sans-zh);font-size:max(17px,1.08vw);font-weight:500;color:var(--text-primary);line-height:1.42">生成内容<br/>修改文档<br/>沉淀反馈</div>
           </div>
         </div>
       </div>
@@ -1412,39 +1407,28 @@
             <div><h3 class="h-md" style="font-size:max(22px,1.8vw)">人来定稿</h3><p class="body-sm">保留人的判断，反馈再进入下一轮迭代。</p></div>
           </div>
         </div>
-        <div style="position:relative;min-height:44vh;display:grid;place-items:center">
-          <svg viewBox="0 0 560 360" width="100%" height="100%" aria-hidden="true" style="position:absolute;inset:0">
-            <defs>
-              <marker id="arrow-ai-loop" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
-                <path d="M0,0 L6,3 L0,6" fill="var(--accent)"></path>
-              </marker>
-            </defs>
-            <path d="M180 78 H380 V160" fill="none" stroke="var(--accent)" stroke-width="2" marker-end="url(#arrow-ai-loop)"/>
-            <path d="M426 180 V282 H304" fill="none" stroke="var(--accent)" stroke-width="2" marker-end="url(#arrow-ai-loop)"/>
-            <path d="M280 282 H112 V202" fill="none" stroke="var(--accent)" stroke-width="2" marker-end="url(#arrow-ai-loop)"/>
-            <path d="M112 180 V78 H156" fill="none" stroke="var(--accent)" stroke-width="2" marker-end="url(#arrow-ai-loop)"/>
-            <circle cx="168" cy="78" r="7" fill="var(--ink)"/>
-            <circle cx="426" cy="180" r="7" fill="var(--ink)"/>
-            <circle cx="292" cy="282" r="7" fill="var(--ink)"/>
-            <circle cx="112" cy="190" r="7" fill="var(--ink)"/>
-          </svg>
-          <div class="card-fill" style="position:absolute;left:8%;top:3%;width:27%;padding:1.8vh 1.3vw;border-top:3px solid var(--accent)">
+        <div style="min-height:42vh;display:grid;grid-template-columns:minmax(0,1fr) 108px minmax(0,1fr);grid-template-rows:minmax(92px,auto) 78px minmax(92px,auto);gap:2.1vh 1.5vw;align-items:center">
+          <div class="card-fill" style="grid-column:1;grid-row:1;align-self:stretch;padding:1.8vh 1.3vw;border-top:3px solid var(--accent);display:flex;flex-direction:column;justify-content:center">
             <div class="t-meta" style="color:var(--accent)">01 / GOAL</div>
             <div style="margin-top:.8vh;font-family:var(--sans),var(--sans-zh);font-size:max(17px,1.15vw);font-weight:500;color:var(--text-primary)">明确目标</div>
           </div>
-          <div class="card-fill" style="position:absolute;right:4%;top:35%;width:28%;padding:1.8vh 1.3vw;border-top:3px solid var(--accent)">
+          <div style="grid-column:2;grid-row:1;width:100%;height:3px;background:var(--accent);align-self:center"></div>
+          <div class="card-fill" style="grid-column:3;grid-row:1;align-self:stretch;padding:1.8vh 1.3vw;border-top:3px solid var(--accent);display:flex;flex-direction:column;justify-content:center">
             <div class="t-meta" style="color:var(--accent)">02 / CONTEXT</div>
             <div style="margin-top:.8vh;font-family:var(--sans),var(--sans-zh);font-size:max(17px,1.15vw);font-weight:500;color:var(--text-primary)">选择素材</div>
           </div>
-          <div class="card-fill" style="position:absolute;left:35%;bottom:2%;width:28%;padding:1.8vh 1.3vw;border-top:3px solid var(--accent)">
-            <div class="t-meta" style="color:var(--accent)">03 / DRAFT</div>
-            <div style="margin-top:.8vh;font-family:var(--sans),var(--sans-zh);font-size:max(17px,1.15vw);font-weight:500;color:var(--text-primary)">生成草稿</div>
-          </div>
-          <div class="card-fill" style="position:absolute;left:0;top:43%;width:27%;padding:1.8vh 1.3vw;border-top:3px solid var(--ink)">
+          <div style="grid-column:1;grid-row:2;justify-self:end;width:3px;height:100%;background:var(--ink)"></div>
+          <div style="grid-column:2;grid-row:2;background:var(--ink);color:var(--paper);width:108px;height:108px;display:flex;align-items:center;justify-content:center;font-family:var(--sans);font-weight:200;font-size:34px;line-height:1">LOOP</div>
+          <div style="grid-column:3;grid-row:2;justify-self:start;width:3px;height:100%;background:var(--accent)"></div>
+          <div class="card-fill" style="grid-column:1;grid-row:3;align-self:stretch;padding:1.8vh 1.3vw;border-top:3px solid var(--ink);display:flex;flex-direction:column;justify-content:center">
             <div class="t-meta">04 / REVIEW</div>
             <div style="margin-top:.8vh;font-family:var(--sans),var(--sans-zh);font-size:max(17px,1.15vw);font-weight:500;color:var(--text-primary)">人来定稿</div>
           </div>
-          <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);background:var(--ink);color:var(--paper);width:8.2vw;height:8.2vw;min-width:108px;min-height:108px;display:flex;align-items:center;justify-content:center;font-family:var(--sans);font-weight:200;font-size:min(3.2vw,5.6vh);letter-spacing:-.035em">LOOP</div>
+          <div style="grid-column:2;grid-row:3;width:100%;height:3px;background:var(--accent);align-self:center"></div>
+          <div class="card-fill" style="grid-column:3;grid-row:3;align-self:stretch;padding:1.8vh 1.3vw;border-top:3px solid var(--accent);display:flex;flex-direction:column;justify-content:center">
+            <div class="t-meta" style="color:var(--accent)">03 / DRAFT</div>
+            <div style="margin-top:.8vh;font-family:var(--sans),var(--sans-zh);font-size:max(17px,1.15vw);font-weight:500;color:var(--text-primary)">生成草稿</div>
+          </div>
         </div>
       </div>
     </div>
@@ -2307,12 +2291,7 @@ if(motion){
       });
     });
 
-    /* 下方注释列 */
-    const cols = [...stage.querySelectorAll(':scope > div:last-child > div')];
-    cols.forEach((col, i)=>{
-      animate(col, {opacity:[0,1], y:[12, 0]},
-        {duration:.45, delay:1.3 + i*.1, easing:EASE_ENTRY_EXP});
-    });
+    /* 右侧图形是关键信息块,只让整体入场,避免内部模块在截图或低性能投屏时保持隐藏状态。 */
   }
 
   /* ---------- recipe: why-now · P18 三列 + 巨大底数 ----------
