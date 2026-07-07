@@ -47,6 +47,12 @@ type ParsedTodayWriting = {
   totalWords?: number;
 };
 
+type ParsedRecentDocument = {
+  title: string;
+  words?: number;
+  date?: string;
+};
+
 function normalizeToolCallId(toolCall: AssistantToolCall | undefined, index: number): string {
   const id = String(toolCall?.id || "").trim();
   return id || `call_${index}`;
@@ -91,6 +97,17 @@ function parseTodayWriting(content: string): ParsedTodayWriting | null {
   };
 }
 
+function parseRecentDocuments(content: string): ParsedRecentDocument[] {
+  if (!content.includes("用户最近")) return [];
+  return Array.from(content.matchAll(/\d+\.\s*《([^》]+)》—\s*([\d,]+)\s*字，最后修改\s*([0-9-]+)/g))
+    .slice(0, 3)
+    .map((match) => ({
+      title: match[1],
+      words: parseNumber(match[2]),
+      date: match[3],
+    }));
+}
+
 function writingStateLine(today: ParsedTodayWriting | null, lang: string): string {
   if (!today) return "";
   const total = today.totalWords ?? (today.docWords ?? 0) + (today.journalWords ?? 0);
@@ -113,6 +130,7 @@ function buildKnownToolLines(results: AssistantToolResult[], lang: string): stri
   const today = results
     .map((result) => parseTodayWriting(result.content))
     .find((parsed): parsed is ParsedTodayWriting => Boolean(parsed));
+  const recentDocs = results.flatMap((result) => parseRecentDocuments(result.content));
 
   const lines: string[] = [];
   if (today) {
@@ -132,6 +150,17 @@ function buildKnownToolLines(results: AssistantToolResult[], lang: string): stri
     ));
   }
 
+  if (recentDocs.length > 0) {
+    const recentSummary = recentDocs
+      .map((doc) => t(
+        lang,
+        `《${doc.title}》${doc.words !== undefined ? ` ${formatNumber(doc.words)} 字` : ""}${doc.date ? `（${doc.date}）` : ""}`,
+        `"${doc.title}"${doc.words !== undefined ? ` ${formatNumber(doc.words)} words` : ""}${doc.date ? ` (${doc.date})` : ""}`
+      ))
+      .join("、");
+    lines.push(t(lang, `- 最近文档：${recentSummary}。`, `- Recent documents: ${recentSummary}.`));
+  }
+
   if (today) {
     lines.push(t(lang, `- 状态判断：${writingStateLine(today, lang)}`, `- Read: ${writingStateLine(today, lang)}`));
   }
@@ -148,6 +177,35 @@ function buildGenericToolLines(results: AssistantToolResult[], lang: string): st
       const label = result.name || t(lang, "工具", "Tool");
       return `- ${label}: ${content.slice(0, 700)}`;
     });
+}
+
+function collectEvidenceTokens(results: AssistantToolResult[]): string[] {
+  return results.flatMap((result) => {
+    const numericTokens = result.content.match(/\d[\d,]*/g) || [];
+    const titleTokens = Array.from(result.content.matchAll(/《([^》]+)》/g)).map((match) => match[1]);
+    const resultTokens = result.result ? [result.result] : [];
+    return [...numericTokens, ...titleTokens, ...resultTokens]
+      .map((token) => token.trim().toLowerCase())
+      .filter((token) => token.length >= 2);
+  });
+}
+
+export function shouldUseToolFallbackReply(reply: string, results: AssistantToolResult[]): boolean {
+  const normalized = reply.trim().replace(/\s+/g, " ").toLowerCase();
+  if (!normalized) return true;
+  if (results.length === 0) return false;
+
+  const hasConcreteEvidence = collectEvidenceTokens(results).some((token) => normalized.includes(token));
+  if (hasConcreteEvidence) return false;
+
+  return [
+    /请查看结果/,
+    /查看结果/,
+    /已完成操作\s*[（(]/,
+    /completed\s*[（(]/i,
+    /please\s+(check|see|view)\s+(the\s+)?results?/i,
+    /operation[s]?\s+completed/i,
+  ].some((pattern) => pattern.test(reply));
 }
 
 export function buildToolFallbackReply(results: AssistantToolResult[], lang: string): string {

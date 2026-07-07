@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import {
   buildToolFallbackReply,
   buildToolFollowUpMessages,
+  shouldUseToolFallbackReply,
   type AssistantToolCall,
   type AssistantToolResult,
 } from "./aiToolConversation";
@@ -45,6 +46,54 @@ describe("ai tool conversation helpers", () => {
     assert.match(reply, /今天（2026-07-07）/);
     assert.match(reply, /合计 188 字/);
     assert.doesNotMatch(reply, /请查看结果/);
+  });
+
+  it("treats tool-completion placeholder replies as unusable", () => {
+    const results: AssistantToolResult[] = [
+      {
+        index: 0,
+        name: "get_user_stats",
+        status: "done",
+        result: "9 docs, 4 journals",
+        content: "用户工作区统计：\n- 文档总数：9 篇\n- 随记总数：4 条\n- 随记总字数：223 字\n- 文档分组：2 个\n- 脑库条目：5 条",
+      },
+      {
+        index: 1,
+        name: "list_recent_documents",
+        status: "done",
+        result: "5 docs",
+        content: "用户最近 5 篇文档：\n1. 《第一章》— 1200 字，最后修改 2026-07-07",
+      },
+    ];
+
+    const placeholder = "让我查查你的写作数据，给你做个分析～已完成操作（get_user_stats、get_today_writing、list_recent_documents），请查看结果。";
+
+    assert.equal(shouldUseToolFallbackReply(placeholder, results), true);
+  });
+
+  it("includes recent document clues in fallback writing-state answers", () => {
+    const results: AssistantToolResult[] = [
+      {
+        index: 0,
+        name: "get_user_stats",
+        status: "done",
+        result: "9 docs, 4 journals",
+        content: "用户工作区统计：\n- 文档总数：9 篇\n- 随记总数：4 条\n- 随记总字数：223 字\n- 文档分组：2 个\n- 脑库条目：5 条",
+      },
+      {
+        index: 1,
+        name: "list_recent_documents",
+        status: "done",
+        result: "5 docs",
+        content: "用户最近 5 篇文档：\n1. 《第一章》— 1200 字，最后修改 2026-07-07\n2. 《第二章》— 900 字，最后修改 2026-07-06",
+      },
+    ];
+
+    const reply = buildToolFallbackReply(results, "zh");
+
+    assert.match(reply, /最近文档/);
+    assert.match(reply, /第一章/);
+    assert.match(reply, /第二章/);
   });
 
   it("builds valid follow-up messages even when streamed tool call ids are missing", () => {

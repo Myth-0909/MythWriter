@@ -17,6 +17,7 @@ import { createDocument, updateDocument } from "../services/documentService";
 import {
   buildToolFallbackReply,
   buildToolFollowUpMessages,
+  shouldUseToolFallbackReply,
   type AssistantToolResult,
 } from "../services/aiToolConversation";
 
@@ -1274,10 +1275,15 @@ router.post("/chat", async (req: Request, res: Response) => {
           // When native tools were already executed, use the raw follow-up text directly.
           // Do NOT parseAction again — the tool already handled the action;
           // re-parsing would duplicate or strip the model's natural confirmation.
-          followUpReply = followUpContent;
-          // Stream the follow-up reply
-          for (const char of followUpReply) {
-            emitSse("delta", { delta: char });
+          if (shouldUseToolFallbackReply(followUpContent, toolResults)) {
+            console.warn("[AI] Follow-up reply was a tool placeholder; using tool-result fallback");
+            followUpReply = "";
+          } else {
+            followUpReply = followUpContent;
+            // Stream the follow-up reply after it passes the quality gate.
+            for (const char of followUpReply) {
+              emitSse("delta", { delta: char });
+            }
           }
           console.log("[AI] Follow-up reply length:", followUpReply.length);
         } else {

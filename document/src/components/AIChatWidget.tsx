@@ -16,6 +16,7 @@ import { api } from "@/api";
 import { markdownToHtml } from "@/lib/markdown";
 import { sanitizeHtml } from "@/lib/html";
 import { API_BASE, getServerAssetUrl } from "@/lib/apiBase";
+import { resolveChatFinalContent } from "@/lib/aiChatStream";
 import { Tooltip } from "@/components/ui/tooltip";
 import type { DocumentVersion } from "@/types";
 import type { OverlayScrollbarsComponentRef } from "overlayscrollbars-react";
@@ -990,7 +991,12 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
       const hasAction = !!(action && (action.type === "create_document" || action.type === "update_document"));
       setIsActing(hasAction);
 
-      const finalContent = fullContent || reply;
+      const finalToolCalls = toolCalls || latestToolCalls;
+      const finalContent = resolveChatFinalContent({
+        streamedContent: fullContent,
+        finalReply: reply,
+        hasToolCalls: finalToolCalls.length > 0,
+      });
       if (!finalContent.trim()) {
         throw new Error(t("ai.emptyReply"));
       }
@@ -1005,7 +1011,6 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
         return next;
       });
 
-      const finalToolCalls = toolCalls || latestToolCalls;
       const assistantMemory: Message[] = [{ role: "assistant", content: finalContent, toolCalls: finalToolCalls.length > 0 ? finalToolCalls : undefined }];
       for (const tc of finalToolCalls) {
         if (tc.status === "done" && tc.result !== undefined) {
