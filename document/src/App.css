@@ -219,11 +219,13 @@ body.dark {
 @keyframes pageEnter {
   from {
     opacity: 0;
-    transform: translateY(8px) scale(0.995);
+    transform: translateY(10px) scale(0.992);
+    filter: blur(2px);
   }
   to {
     opacity: 1;
     transform: translateY(0) scale(1);
+    filter: blur(0);
   }
 }
 
@@ -368,6 +370,46 @@ body.dark {
   }
 }
 
+@keyframes znAtmosphereFloat {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-4px);
+  }
+}
+
+@keyframes znAtmospherePulse {
+  0%, 100% {
+    opacity: 0.34;
+    transform: scale(0.82);
+  }
+  48% {
+    opacity: 1;
+    transform: scale(1.16);
+  }
+}
+
+@keyframes znStarNode {
+  0%, 100% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--node-color) 22%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 8px color-mix(in srgb, var(--node-color) 0%, transparent);
+  }
+}
+
+@keyframes znPageMotionItem {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 /* ==================== Animation Utility Classes ==================== */
 
 .toast-enter {
@@ -451,6 +493,37 @@ body.dark {
     animation: znSkeletonSheen 1.65s cubic-bezier(0.16, 1, 0.3, 1) infinite;
     will-change: transform;
   }
+
+  .zn-atmosphere-float {
+    animation: znAtmosphereFloat 3.4s cubic-bezier(0.45, 0, 0.2, 1) infinite;
+    will-change: transform;
+  }
+
+  .zn-atmosphere-pulse {
+    animation: znAtmospherePulse 2.1s cubic-bezier(0.16, 1, 0.3, 1) infinite;
+    will-change: transform, opacity;
+  }
+
+  .zn-atmosphere-pulse-delayed {
+    animation: znAtmospherePulse 2.35s cubic-bezier(0.16, 1, 0.3, 1) 0.55s infinite;
+    will-change: transform, opacity;
+  }
+
+  .zn-star-node {
+    animation: znStarNode 3.2s ease-in-out infinite;
+  }
+
+  .page-transition-shell [data-page-motion] {
+    animation: znPageMotionItem 0.42s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  .page-transition-shell [data-page-motion]:nth-child(2) {
+    animation-delay: 55ms;
+  }
+
+  .page-transition-shell [data-page-motion]:nth-child(3) {
+    animation-delay: 95ms;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -462,7 +535,12 @@ body.dark {
   .zn-ink-dot,
   .zn-writing-cursor,
   .zn-cursor-line,
-  .zn-skeleton-sheen::after {
+  .zn-skeleton-sheen::after,
+  .zn-atmosphere-float,
+  .zn-atmosphere-pulse,
+  .zn-atmosphere-pulse-delayed,
+  .zn-star-node,
+  .page-transition-shell [data-page-motion] {
     animation: none !important;
   }
 

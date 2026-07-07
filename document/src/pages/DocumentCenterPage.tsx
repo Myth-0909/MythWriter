@@ -13,6 +13,7 @@ import {
   type CreationWeatherTone,
   type DocumentLifelineStage,
 } from "@/components/WorkbenchAtmosphere";
+import { EmptyScene } from "@/components/AtmosphereShowcase";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import {
   DropdownMenu,
@@ -1560,16 +1561,14 @@ export function DocumentCenterPage({
               ))}
             </div>
           ) : (
-            <div className="flex min-h-[260px] flex-col items-center justify-center rounded-2xl border border-dashed border-surface-200 bg-white px-6 py-12 text-center dark:border-surface-800 dark:bg-surface-900">
-              <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-surface-100 text-surface-400 dark:bg-surface-850 dark:text-surface-500">
-                <FileText className="h-6 w-6" />
-              </div>
-              <h3 className="text-sm font-semibold text-surface-800 dark:text-surface-100">
-                {emptyIsSearch ? t("documents.emptySearchTitle") : t("documents.emptyTitle")}
-              </h3>
-              <p className="mt-2 max-w-[420px] text-sm leading-6 text-surface-500 dark:text-surface-400">
-                {emptyIsSearch ? t("documents.emptySearchDesc") : t("documents.emptyDesc")}
-              </p>
+            <div className="flex min-h-[300px] flex-col items-center justify-center rounded-[8px] border border-dashed border-surface-200 bg-white px-6 py-8 text-center dark:border-surface-800 dark:bg-surface-900">
+              <EmptyScene
+                variant="paper"
+                title={emptyIsSearch ? t("documents.emptySearchTitle") : t("documents.emptyTitle")}
+                description={emptyIsSearch ? t("documents.emptySearchDesc") : t("documents.emptyDesc")}
+                compact
+                className="min-h-[180px] border-0 bg-transparent p-0 dark:bg-transparent"
+              />
               <div className="mt-5 flex items-center gap-2">
                 {renderCreateMenu()}
                 <Button variant="outline" size="lg" className="h-11 gap-1.5" onClick={() => fileInputRef.current?.click()}>

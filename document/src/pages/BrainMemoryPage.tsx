@@ -19,6 +19,7 @@ import { Scrollbar } from "@/components/ui/scrollbar";
 import { CountUp } from "@/components/CountUp";
 import { ConfirmModal } from "@/components/ConfirmModal";
 import { CreativeLoader } from "@/components/LoadingSpinner";
+import { EmptyScene, WorldviewStarMap, type StarMapNode } from "@/components/AtmosphereShowcase";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { TabGroup } from "@/components/ui/tab-group";
 import { Button } from "@/components/ui/button";
@@ -28,7 +29,7 @@ import { useToast } from "@/components/Toast";
 import { api } from "@/api";
 import { cn } from "@/lib/utils";
 import {
-  Brain, Sparkles, Plus, Search, Edit2, Trash2, X, GripVertical,
+  Brain, Plus, Search, Edit2, Trash2, X, GripVertical,
   Layers, Loader2, Check, RefreshCw, AlertCircle,
 } from "lucide-react";
 import { Tooltip } from "@/components/ui/tooltip";
@@ -119,7 +120,7 @@ function CategoryListItem({ category, index, onEdit, onDelete, t }: CategoryList
       </div>
 
       <div className="min-w-0 flex-1">
-        <div className="truncate text-sm font-semibold text-surface-800 dark:text-surface-100">
+        <div className="break-words text-sm font-semibold leading-5 text-surface-800 dark:text-surface-100">
           {category.name}
         </div>
         <div className="mt-0.5 flex items-center gap-1.5 text-[10px] text-surface-400">
@@ -450,6 +451,17 @@ export function BrainMemoryPage() {
     const matchesCategory = selectedCategory === "all" || card.category === selectedCategory;
     return matchesSearch && matchesCategory;
   });
+  const starMapNodes: StarMapNode[] = cards.map((card) => {
+    const category = categories.find((cat) => cat.name === card.category || cat.id === card.categoryId);
+    return {
+      id: card.id,
+      title: card.title,
+      category: card.category,
+      categoryId: card.categoryId,
+      color: category?.color,
+      updatedAt: card.updatedAt,
+    };
+  });
 
   return (
     <Scrollbar className="flex-1 bg-surface-50 dark:bg-surface-950">
@@ -483,20 +495,25 @@ export function BrainMemoryPage() {
               )}
               <span>{reindexAllLoading ? t("rag.reindexing") : t("rag.reindexAll")}</span>
             </Button>
-            <button
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
               onClick={() => setManageDialogOpen(true)}
-              className="flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold text-surface-700 border border-surface-200 hover:bg-surface-50 rounded-lg cursor-pointer transition-colors dark:text-surface-300 dark:border-surface-700 dark:hover:bg-surface-800"
+              className="h-9 gap-1.5 text-xs"
             >
               <Layers className="h-4 w-4" />
               <span>{t("brain.manageCategories")}</span>
-            </button>
-            <button
+            </Button>
+            <Button
+              type="button"
+              size="sm"
               onClick={handleOpenAdd}
-              className="flex items-center justify-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-brand-500 hover:bg-brand-600 rounded-lg cursor-pointer transition-colors shadow-sm"
+              className="h-9 gap-1.5 bg-brand-500 text-xs text-white shadow-sm hover:bg-brand-600"
             >
               <Plus className="h-4 w-4" />
               <span>{t("brain.addCard")}</span>
-            </button>
+            </Button>
           </div>
         </div>
 
@@ -517,23 +534,28 @@ export function BrainMemoryPage() {
           {/* Search Box */}
           <div className="relative w-full sm:max-w-[280px]">
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-surface-400" />
-            <input
+            <Input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder={t("brain.searchPlaceholder")}
-              className="w-full pl-9 pr-4 py-2 text-xs border border-surface-200 bg-white rounded-lg focus:outline-none focus:ring-1 focus:ring-brand-500 dark:border-surface-800 dark:bg-surface-900 dark:text-surface-100 placeholder-surface-400"
+              className="h-9 w-full pl-9 pr-9 text-xs dark:border-surface-800 dark:bg-surface-900 dark:text-surface-100"
             />
             {searchQuery && (
-              <button
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
                 onClick={() => setSearchQuery("")}
-                className="absolute right-3 top-2.5 text-surface-400 hover:text-surface-600"
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-surface-400 hover:text-surface-600"
               >
                 <X className="h-4 w-4" />
-              </button>
+              </Button>
             )}
           </div>
         </div>
+
+        {!loading && <WorldviewStarMap nodes={starMapNodes} className="mb-8" />}
 
         {/* Cards Grid */}
         {loading ? (
@@ -569,11 +591,11 @@ export function BrainMemoryPage() {
                       )}
                     </div>
 
-                    <h3 className="text-sm font-bold text-surface-900 dark:text-surface-100 mb-2 truncate group-hover:text-brand-500 transition-colors">
+                    <h3 className="mb-2 break-words text-sm font-bold leading-5 text-surface-900 transition-colors group-hover:text-brand-500 dark:text-surface-100">
                       {card.title}
                     </h3>
 
-                    <p className="text-xs text-surface-500 leading-relaxed line-clamp-3 mb-6 whitespace-pre-wrap">
+                    <p className="mb-6 whitespace-pre-wrap break-words text-xs leading-relaxed text-surface-500">
                       {card.description}
                     </p>
                   </div>
@@ -592,7 +614,7 @@ export function BrainMemoryPage() {
                       ) : (
                         <AlertCircle className="h-3 w-3 shrink-0" />
                       )}
-                      <span className="truncate">
+                      <span className="break-words">
                         {ragAvailable ? t("rag.serviceAvailable") : t("rag.serviceUnavailable")}
                       </span>
                     </span>
@@ -636,20 +658,13 @@ export function BrainMemoryPage() {
             })}
           </div>
         ) : (
-          <div className="flex flex-col items-center justify-center py-32 text-center border border-dashed border-surface-200 rounded-2xl bg-white dark:border-surface-800 dark:bg-surface-900">
-            <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-surface-50 dark:bg-surface-850">
-              <Sparkles className="h-6 w-6 text-surface-300 dark:text-surface-600" />
-            </div>
-            <h3 className="text-sm font-semibold text-surface-700 dark:text-surface-300">
-              {t("brain.noCards")}
-            </h3>
-            <button
-              onClick={handleOpenAdd}
-              className="mt-4 px-3.5 py-1.5 text-xs font-medium text-white bg-brand-500 hover:bg-brand-600 rounded-md transition-colors cursor-pointer"
-            >
-              {t("brain.createNow")}
-            </button>
-          </div>
+          <EmptyScene
+            variant="stars"
+            title={t("brain.noCards")}
+            description={t("atmosphere.starMap.emptyDesc")}
+            actionLabel={t("brain.createNow")}
+            onAction={handleOpenAdd}
+          />
         )}
       </div>
 
@@ -657,9 +672,7 @@ export function BrainMemoryPage() {
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-[480px]">
           <DialogTitle>{isEditing ? t("brain.editCard") : t("brain.addCard")}</DialogTitle>
-          <DialogDescription className="sr-only">
-            Add or update an AI setting card
-          </DialogDescription>
+          <DialogDescription className="sr-only">{t("brain.formDesc")}</DialogDescription>
           <form onSubmit={handleSave} className="flex flex-col gap-4 mt-3">
             <div className="flex flex-col gap-1.5">
               <label className="text-xs font-semibold text-surface-600 dark:text-surface-300">

@@ -22,6 +22,7 @@ import { marked } from "marked";
 import { api } from "@/api";
 import { ConfirmModal } from "@/components/ConfirmModal";
 import { CountUp } from "@/components/CountUp";
+import { EmptyScene } from "@/components/AtmosphereShowcase";
 import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -808,9 +809,13 @@ export function WorkRecordPanel({ className, view = "editor" }: { className?: st
 
             <div className="mt-3 grid gap-2">
               {recentPreviewRecords.length === 0 ? (
-                <p className="rounded-xl border border-dashed border-surface-200 px-3 py-4 text-xs leading-5 text-surface-400 dark:border-surface-800">
-                  {t("workbench.noRecentRecords")}
-                </p>
+                <EmptyScene
+                  variant="desk"
+                  title={t("workbench.noRecentRecords")}
+                  description={t("atmosphere.empty.desk.desc")}
+                  compact
+                  className="min-h-[136px] border-surface-200/80 bg-surface-50/70 p-3 dark:border-surface-800 dark:bg-surface-900/30"
+                />
               ) : (
                 recentPreviewRecords.map((item) => {
                   const selected = record?.id === item.id;
@@ -829,8 +834,8 @@ export function WorkRecordPanel({ className, view = "editor" }: { className?: st
                           : "border-surface-200 bg-surface-50/70 text-surface-700 hover:bg-surface-100 dark:border-surface-800 dark:bg-surface-950/30 dark:text-surface-200 dark:hover:bg-surface-900"
                       )}
                     >
-                      <span className="flex w-full items-center justify-between gap-2">
-                        <span className="min-w-0 truncate text-xs font-semibold">{item.title}</span>
+                      <span className="flex w-full items-start justify-between gap-2">
+                        <span className="min-w-0 break-words text-xs font-semibold leading-4">{item.title}</span>
                         {selected ? (
                           <span className="shrink-0 rounded-full bg-brand-500/10 px-2 py-0.5 text-[10px] font-semibold text-brand-700 dark:text-brand-200">
                             {t("workbench.selectedRecord")}
@@ -953,7 +958,7 @@ export function WorkRecordPanel({ className, view = "editor" }: { className?: st
                 {periodLabel}
               </span>
             </div>
-            <h3 className="mt-3 line-clamp-1 text-lg font-semibold text-surface-950 dark:text-surface-50">
+            <h3 className="mt-3 break-words text-lg font-semibold leading-7 text-surface-950 dark:text-surface-50">
               {title.trim() || t("workbench.recordTitlePlaceholder")}
             </h3>
             {content.trim() ? (
@@ -962,9 +967,13 @@ export function WorkRecordPanel({ className, view = "editor" }: { className?: st
                 dangerouslySetInnerHTML={{ __html: renderedPreviewHtml }}
               />
             ) : (
-              <p className="mt-2 min-h-[4.5rem] text-sm leading-6 text-surface-600 dark:text-surface-300">
-                {t("workbench.emptySnapshot")}
-              </p>
+              <EmptyScene
+                variant="desk"
+                title={t("workbench.emptySnapshot")}
+                description={t("atmosphere.empty.desk.desc")}
+                compact
+                className="mt-3 min-h-[148px] border-0 bg-surface-50/70 p-3 dark:bg-surface-900/30"
+              />
             )}
           </div>
         </div>
@@ -1048,9 +1057,13 @@ export function WorkRecordPanel({ className, view = "editor" }: { className?: st
 
           <div className="overflow-hidden rounded-2xl border border-surface-200 dark:border-surface-800">
             {filteredRecords.length === 0 && !loading ? (
-              <div className="px-4 py-8 text-center text-xs leading-5 text-surface-400">
-                {t("workbench.noRecentRecords")}
-              </div>
+              <EmptyScene
+                variant="desk"
+                title={t("workbench.noRecentRecords")}
+                description={t("atmosphere.empty.desk.desc")}
+                compact
+                className="min-h-[220px] border-0 bg-surface-50/60 dark:bg-surface-900/30"
+              />
             ) : (
               <div className="overflow-x-auto">
               <table className="min-w-[980px] w-full table-fixed border-collapse text-left text-xs">
@@ -1084,7 +1097,7 @@ export function WorkRecordPanel({ className, view = "editor" }: { className?: st
                           </div>
                         </td>
                         <td className="px-4 py-3 font-semibold text-surface-950 dark:text-surface-50">
-                          <div className="truncate">{item.title}</div>
+                          <div className="break-words leading-5">{item.title}</div>
                         </td>
                         <td className="px-4 py-3 text-surface-600 dark:text-surface-300">
                           <div className="line-clamp-2 leading-5">{itemPreview}</div>

@@ -21,6 +21,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { AIChatWidget } from "@/components/AIChatWidget";
 import { AgentWritePanel } from "@/components/AgentWritePanel";
+import { XiaoAnPresence } from "@/components/AtmosphereShowcase";
 import { useDocuments } from "@/store";
 import { useToast } from "@/components/Toast";
 import { useI18n } from "@/components/I18nProvider";
@@ -505,6 +506,13 @@ export default function App() {
 
       {currentPage !== "notfound" && (
         <AIChatWidget currentDocumentId={currentPage === "editor" ? editorDocId ?? undefined : undefined} />
+      )}
+      {currentPage !== "notfound" && (
+        <XiaoAnPresence
+          currentPage={currentPage}
+          onOpenAgentWrite={() => setAgentWriteOpen(true)}
+          onOpenBrain={() => handleNavChange("brain")}
+        />
       )}
 
       <ShareModal open={shareOpen} onOpenChange={setShareOpen} onExport={handleExport} />

@@ -19,6 +19,7 @@ export function PageTransition({ children, pageKey }: PageTransitionProps) {
   return (
     <div
       key={animKey}
+      className="page-transition-shell"
       style={{
         flex: 1,
         display: "flex",
