@@ -322,7 +322,7 @@ export function DocumentCenterPage({
   const { t, lang } = useI18n();
   const { user } = useAuth();
   const { toast } = useToast();
-  const { documents, favorites, loading, createDocument, moveToTrash, updateDocument } = useDocuments();
+  const { documents, favorites, loading, createDocument, moveToTrash, updateDocument, toggleFavorite } = useDocuments();
   const isWorkbench = mode === "workbench";
 
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
@@ -430,6 +430,15 @@ export function DocumentCenterPage({
       toast(error.message || t("toast.deleteFailed"), "error");
     } finally {
       setActionLoading(false);
+    }
+  };
+
+  const handleToggleFavorite = async (doc: Document) => {
+    try {
+      await toggleFavorite(doc.id);
+      toast(doc.isFavorite ? t("toast.favRemoved") : t("toast.favAdded"), "success");
+    } catch (error: any) {
+      toast(error.message || t("toast.saveFailed"), "error");
     }
   };
 
@@ -1574,7 +1583,9 @@ export function DocumentCenterPage({
                   icon={iconByCategory[doc.category]}
                   iconBg={colorByCategory[doc.category]}
                   viewMode={viewMode}
+                  isFavorite={doc.isFavorite}
                   onClick={() => onOpenDoc?.(doc.id)}
+                  onToggleFavorite={() => handleToggleFavorite(doc)}
                   onDelete={() => setDeleteTarget(doc.id)}
                   onMoveToGroup={() => openMoveDialog(doc.id)}
                 />
@@ -1607,7 +1618,9 @@ export function DocumentCenterPage({
                   icon={iconByCategory[doc.category]}
                   iconBg={colorByCategory[doc.category]}
                   viewMode={viewMode}
+                  isFavorite={doc.isFavorite}
                   onClick={() => onOpenDoc?.(doc.id)}
+                  onToggleFavorite={() => handleToggleFavorite(doc)}
                   onDelete={() => setDeleteTarget(doc.id)}
                   onMoveToGroup={() => openMoveDialog(doc.id)}
                 />

@@ -62,3 +62,7 @@ export function buildDraftKey(period: string, targetDate: string): string {
 export function buildIndexProgressLabel(template: string, done: number, total: number): string {
   return template.replace("{done}", String(done)).replace("{total}", String(total));
 }
+
+export function getFavoriteToggleKey(isFavorite: boolean): "editor.favorite" | "editor.unfavorite" {
+  return isFavorite ? "editor.unfavorite" : "editor.favorite";
+}

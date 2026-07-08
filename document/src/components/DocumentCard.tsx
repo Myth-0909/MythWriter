@@ -1,9 +1,10 @@
 import type { KeyboardEvent } from "react";
 import { cn } from "@/lib/utils";
-import { ArrowUpRight, FolderInput, Trash2, type LucideIcon } from "lucide-react";
+import { ArrowUpRight, FolderInput, Star, Trash2, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useI18n } from "@/components/I18nProvider";
 import { Tooltip } from "@/components/ui/tooltip";
+import { getFavoriteToggleKey } from "@/lib/interactionState";
 
 type CategoryKey = "card.design" | "card.journal" | "card.planning" | "card.research" | "card.general";
 
@@ -16,7 +17,9 @@ interface DocumentCardProps {
   icon: LucideIcon;
   iconBg?: string;
   viewMode?: "grid" | "list";
+  isFavorite?: boolean;
   onClick?: () => void;
+  onToggleFavorite?: () => void;
   onDelete?: () => void;
   onMoveToGroup?: () => void;
 }
@@ -38,12 +41,15 @@ export function DocumentCard({
   icon: Icon,
   iconBg = "bg-brand-100 text-brand-600",
   viewMode = "grid",
+  isFavorite = false,
   onClick,
+  onToggleFavorite,
   onDelete,
   onMoveToGroup,
 }: DocumentCardProps) {
   const { t } = useI18n();
   const displayPreview = preview?.trim() || t("card.noPreview");
+  const favoriteLabel = t(getFavoriteToggleKey(isFavorite));
 
   const keyboardOpen = (event: KeyboardEvent<HTMLDivElement>) => {
     if (!onClick) return;
@@ -54,7 +60,34 @@ export function DocumentCard({
   };
 
   const actions = (
-    <div className="flex items-center gap-1 opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-within:opacity-100">
+    <div
+      className={cn(
+        "flex items-center gap-1 transition-opacity duration-200 group-focus-within:opacity-100 group-hover:opacity-100",
+        isFavorite ? "opacity-100" : "opacity-0"
+      )}
+    >
+      {onToggleFavorite && (
+        <Tooltip content={favoriteLabel} delay={150}>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className={cn(
+              "h-7 w-7",
+              isFavorite
+                ? "text-amber-500 hover:text-amber-600 dark:text-amber-400 dark:hover:text-amber-300"
+                : "text-surface-500 hover:text-amber-500"
+            )}
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleFavorite();
+            }}
+            aria-label={favoriteLabel}
+            aria-pressed={isFavorite}
+          >
+            <Star className="h-3.5 w-3.5" fill={isFavorite ? "currentColor" : "none"} />
+          </Button>
+        </Tooltip>
+      )}
       {onMoveToGroup && (
         <Tooltip content={t("group.moveTo")} delay={150}>
           <Button

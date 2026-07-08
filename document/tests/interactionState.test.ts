@@ -5,6 +5,7 @@ import {
   buildImportPreview,
   buildIndexProgressLabel,
   buildSearchStatus,
+  getFavoriteToggleKey,
   hasProfileChanges,
 } from "../src/lib/interactionState";
 
@@ -47,5 +48,10 @@ describe("interaction state helpers", () => {
       buildIndexProgressLabel("索引进度 {done}/{total}", 4, 9),
       "索引进度 4/9"
     );
+  });
+
+  it("uses the right favorite action label for document cards", () => {
+    assert.equal(getFavoriteToggleKey(false), "editor.favorite");
+    assert.equal(getFavoriteToggleKey(true), "editor.unfavorite");
   });
 });
