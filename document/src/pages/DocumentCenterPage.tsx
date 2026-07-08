@@ -553,9 +553,8 @@ export function DocumentCenterPage({
   }, [activeGroupId, categoryFilter, debouncedQuery, documents, isWorkbench, lang, sortMode]);
 
   const mainDocs = filteredDocs.filter((doc) => !doc.isFavorite);
-  const favDocs = filteredDocs.filter((doc) => doc.isFavorite);
   const documentCountSummary = buildDocumentCountSummary(documents);
-  const visibleDocsCount = favDocs.length + mainDocs.length;
+  const visibleDocsCount = mainDocs.length;
   const searchStatus = buildSearchStatus(visibleDocsCount, debouncedQuery, {
     results: t("documents.searchResultCount"),
     empty: t("documents.searchNoResults"),
@@ -1221,9 +1220,10 @@ export function DocumentCenterPage({
                     </div>
                   </div>
 
-                  <div className="mt-8 grid grid-cols-3 gap-3">
+                  <div className="mt-8 grid grid-cols-4 gap-3">
                     {[
                       { icon: FileStack, label: t("documents.totalDocs"), value: documentCountSummary.total },
+                      { icon: Star, label: t("documents.favoriteDocs"), value: documentCountSummary.favorites },
                       { icon: FolderOpen, label: t("documents.groupCount"), value: groups.length },
                       { icon: BarChart3, label: t("documents.weeklyWords"), value: weeklyTotal },
                     ].map((metric) => (
@@ -1559,40 +1559,6 @@ export function DocumentCenterPage({
             </div>
           )}
         </section>
-
-        {favDocs.length > 0 && (
-          <section className="mt-8">
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="flex items-center gap-2 text-sm font-semibold text-surface-950 dark:text-surface-50">
-                <Star className="h-4 w-4 text-brand-500" />
-                <span>{t("documents.favoritesSection")}</span>
-              </h2>
-              <span className="text-xs font-medium text-surface-400">
-                <CountUp value={favDocs.length} formatValue={(v) => numberFormatter.format(Math.round(v))} /> {t("documents.items")}
-              </span>
-            </div>
-            <div className={gridClass}>
-              {favDocs.map((doc) => (
-                <DocumentCard
-                  key={doc.id}
-                  title={doc.title}
-                  preview={doc.preview}
-                  date={formatRelativeModified(doc.updatedAt, t)}
-                  fullDate={formatFullDateTime(doc.updatedAt, lang)}
-                  categoryKey={categoryKeyByCategory[doc.category]}
-                  icon={iconByCategory[doc.category]}
-                  iconBg={colorByCategory[doc.category]}
-                  viewMode={viewMode}
-                  isFavorite={doc.isFavorite}
-                  onClick={() => onOpenDoc?.(doc.id)}
-                  onToggleFavorite={() => handleToggleFavorite(doc)}
-                  onDelete={() => setDeleteTarget(doc.id)}
-                  onMoveToGroup={() => openMoveDialog(doc.id)}
-                />
-              ))}
-            </div>
-          </section>
-        )}
 
         <section className="mt-8">
           <div className="mb-4 flex items-center justify-between">
