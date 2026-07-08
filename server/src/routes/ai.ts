@@ -21,6 +21,7 @@ import {
   buildToolFallbackReply,
   buildToolFollowUpMessages,
   buildToolResultSummary,
+  extractDsmlToolCalls,
   shouldUseToolFallbackReply,
   type AssistantToolResult,
 } from "../services/aiToolConversation";
@@ -833,8 +834,12 @@ router.post("/chat", async (req: Request, res: Response) => {
     // Real-time token forwarding with action marker filtering
     const ACTION_START = "<<ACTION_JSON>>";
     const ACTION_END = "<<ACTION_JSON_END>>";
+    const DSML_TOOL_START = "<|DSML|tool_calls>";
+    const DSML_TOOL_END = "</|DSML|tool_calls>";
     let actionBuffer = "";
     let inAction = false;
+    let dsmlBuffer = "";
+    let inDsmlToolCalls = false;
     let pendingChars = ""; // small buffer to detect ACTION_START across chunks
 
     let reasoningContent = "";
@@ -871,16 +876,36 @@ router.post("/chat", async (req: Request, res: Response) => {
         }
         return;
       }
-      pendingChars += char;
-      if (pendingChars.length > ACTION_START.length) {
-        // Forward the oldest char
-        forwardDelta(pendingChars[0]);
-        pendingChars = pendingChars.slice(1);
+      if (inDsmlToolCalls) {
+        dsmlBuffer += char;
+        if (dsmlBuffer.endsWith(DSML_TOOL_END)) {
+          inDsmlToolCalls = false;
+          dsmlBuffer = "";
+        }
+        return;
       }
+      pendingChars += char;
+
       if (pendingChars === ACTION_START) {
         inAction = true;
         actionBuffer = pendingChars;
         pendingChars = "";
+        return;
+      }
+      if (pendingChars === DSML_TOOL_START) {
+        inDsmlToolCalls = true;
+        dsmlBuffer = pendingChars;
+        pendingChars = "";
+        return;
+      }
+
+      while (
+        pendingChars &&
+        !ACTION_START.startsWith(pendingChars) &&
+        !DSML_TOOL_START.startsWith(pendingChars)
+      ) {
+        forwardDelta(pendingChars[0]);
+        pendingChars = pendingChars.slice(1);
       }
     }
 
@@ -962,7 +987,7 @@ router.post("/chat", async (req: Request, res: Response) => {
     }
 
     // Flush any remaining pending characters (that weren't part of an action marker)
-    if (pendingChars && !inAction) {
+    if (pendingChars && !inAction && !inDsmlToolCalls) {
       forwardDelta(pendingChars);
     }
     // If we ended mid-action, the pending chars are part of the action — append to fullContent but don't forward
@@ -1004,6 +1029,23 @@ router.post("/chat", async (req: Request, res: Response) => {
         finalContent = rawFallback;
         console.log("[AI] Fallback raw text response, content length:", finalContent.length);
       }
+    }
+    const dsmlToolCallParse = extractDsmlToolCalls(finalContent);
+    finalContent = dsmlToolCallParse.cleanContent;
+    if (dsmlToolCallParse.toolCalls.length > 0) {
+      const offset = accumulatedToolCalls.length;
+      for (const [index, toolCall] of dsmlToolCallParse.toolCalls.entries()) {
+        accumulatedToolCalls.push({
+          id: toolCall.id,
+          name: toolCall.name,
+          arguments: toolCall.arguments,
+        });
+        emitToolCall(offset + index, toolCall.name, "calling", {
+          id: toolCall.id,
+          arguments: toolCall.arguments,
+        });
+      }
+      console.log("[AI] DSML tool calls detected:", dsmlToolCallParse.toolCalls.length);
     }
 
     // Execute any accumulated tool calls (native function calling)

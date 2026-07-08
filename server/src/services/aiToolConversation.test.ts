@@ -4,12 +4,22 @@ import {
   buildToolFallbackReply,
   buildToolFollowUpMessages,
   buildToolResultSummary,
+  extractDsmlToolCalls,
   shouldUseToolFallbackReply,
   type AssistantToolCall,
   type AssistantToolResult,
 } from "./aiToolConversation";
 
 describe("ai tool conversation helpers", () => {
+  it("extracts DSML tool calls from text responses", () => {
+    const parsed = extractDsmlToolCalls('<|DSML|tool_calls><|DSML|invoke name="get_today_writing"></|DSML|invoke></|DSML|tool_calls>');
+
+    assert.equal(parsed.cleanContent, "");
+    assert.deepEqual(parsed.toolCalls, [
+      { id: "", name: "get_today_writing", arguments: "{}" },
+    ]);
+  });
+
   it("turns writing-stat tool results into a concrete fallback answer", () => {
     const results: AssistantToolResult[] = [
       {

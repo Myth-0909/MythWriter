@@ -58,6 +58,44 @@ function normalizeToolCallId(toolCall: AssistantToolCall | undefined, index: num
   return id || `call_${index}`;
 }
 
+function parseAttributes(value: string): Record<string, string> {
+  const attrs: Record<string, string> = {};
+  for (const match of value.matchAll(/([A-Za-z_][\w-]*)\s*=\s*(?:"([^"]*)"|'([^']*)')/g)) {
+    attrs[match[1]] = match[2] ?? match[3] ?? "";
+  }
+  return attrs;
+}
+
+function normalizeToolArguments(value: string | undefined): string {
+  const raw = String(value || "").trim();
+  if (!raw) return "{}";
+  try {
+    JSON.parse(raw);
+    return raw;
+  } catch {
+    return "{}";
+  }
+}
+
+export function extractDsmlToolCalls(content: string): { cleanContent: string; toolCalls: AssistantToolCall[] } {
+  const toolCalls: AssistantToolCall[] = [];
+  const cleanContent = content.replace(/<\|DSML\|tool_calls>([\s\S]*?)<\/\|DSML\|tool_calls>/g, (_block, body: string) => {
+    for (const invoke of String(body || "").matchAll(/<\|DSML\|invoke\b([^>]*)>([\s\S]*?)<\/\|DSML\|invoke>/g)) {
+      const attrs = parseAttributes(invoke[1] || "");
+      const name = String(attrs.name || "").trim();
+      if (!name) continue;
+      const argumentValue = attrs.arguments || attrs.args || invoke[2];
+      toolCalls.push({
+        id: attrs.id || "",
+        name,
+        arguments: normalizeToolArguments(argumentValue),
+      });
+    }
+    return "";
+  }).trim();
+  return { cleanContent, toolCalls };
+}
+
 function parseNumber(value: string | undefined): number | undefined {
   if (!value) return undefined;
   const numeric = Number(value.replace(/,/g, ""));
