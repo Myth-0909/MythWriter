@@ -11,12 +11,59 @@ REDIS_PORT=6379
 REDIS_DATA_DIR="$ROOT_DIR/.redis-data"
 REDIS_PID=""
 REDIS_STARTED_BY_US=false
+BACKEND_PID=""
+FRONTEND_PID=""
+CLEANUP_DONE=false
+
+kill_tree() {
+  local root_pid=$1
+  if [ -z "$root_pid" ] || ! kill -0 "$root_pid" 2>/dev/null; then
+    return
+  fi
+
+  local child_pids
+  child_pids=$(pgrep -P "$root_pid" 2>/dev/null || true)
+  for child_pid in $child_pids; do
+    kill_tree "$child_pid"
+  done
+
+  kill "$root_pid" 2>/dev/null || true
+}
+
+kill_processes_by_pattern() {
+  local label=$1
+  local pattern=$2
+  local pids
+  pids=$(ps -Ao pid=,command= | awk -v pat="$pattern" -v current="$$" '
+    index($0, pat) && $1 != current { print $1 }
+  ')
+
+  if [ -n "$pids" ]; then
+    echo "[$label] 清理遗留进程 (PID: $(echo "$pids" | tr '\n' ' '))..."
+    kill $pids 2>/dev/null || true
+    sleep 0.5
+    kill -9 $pids 2>/dev/null || true
+  fi
+}
+
+cleanup_project_dev_processes() {
+  kill_processes_by_pattern "后端" "$BACKEND_DIR/node_modules/.bin/tsx watch src/index.ts"
+  kill_processes_by_pattern "前端" "$FRONTEND_DIR/node_modules/.bin/vite"
+}
 
 cleanup() {
+  if [ "$CLEANUP_DONE" = true ]; then
+    exit 0
+  fi
+  CLEANUP_DONE=true
+  trap - EXIT SIGINT SIGTERM
+
   echo ""
   echo "正在停止所有服务..."
-  kill $BACKEND_PID $FRONTEND_PID 2>/dev/null
+  kill_tree "$BACKEND_PID"
+  kill_tree "$FRONTEND_PID"
   wait $BACKEND_PID $FRONTEND_PID 2>/dev/null
+  cleanup_project_dev_processes
 
   if [ "$REDIS_STARTED_BY_US" = true ] && [ -n "$REDIS_PID" ]; then
     echo "[Redis] 停止本地 Redis (PID: $REDIS_PID)..."
@@ -28,7 +75,7 @@ cleanup() {
   exit 0
 }
 
-trap cleanup SIGINT SIGTERM
+trap cleanup EXIT SIGINT SIGTERM
 
 # 检查目录是否存在
 if [ ! -d "$FRONTEND_DIR" ]; then
@@ -100,6 +147,7 @@ else
 fi
 
 # 释放端口
+cleanup_project_dev_processes
 kill_port $BACKEND_PORT
 kill_port $FRONTEND_PORT
 LAN_IP="$(get_lan_ip)"
