@@ -5,6 +5,7 @@
 - **Karpathy Guidelines for coding**: When writing, reviewing, or refactoring code, follow `/Users/lijialong/.codex/skills/karpathy-guidelines/SKILL.md`: state assumptions when needed, prefer the simplest working change, keep edits surgical, and verify with clear success criteria.
 - **i18n FIRST (non-negotiable)**: Before writing any feature code, add i18n keys to `document/src/components/I18nProvider.tsx`. Every user-facing string — frontend AND backend — must be bilingual (zh/en). Never hardcode Chinese or English strings anywhere.
 - **UI Library Components First (non-negotiable)**: All input, interactive, and selection controls (such as dropdowns, confirm popups, buttons, select menus) must utilize custom Radix UI library components located in `document/src/components/ui/` (e.g. `<Select>`, `<Dialog>`, `<Tooltip>`), never browser native inputs.
+- **Windows compatibility FIRST (non-negotiable)**: Always consider and verify Windows desktop behavior, especially Tauri WebView2 differences, filesystem paths, keyboard shortcuts, scrolling, animation/reduced-motion behavior, and CSS/browser compatibility. Do not optimize only for macOS.
 - **Full-stack verification**: Every feature must verify the complete chain end-to-end:
   1. Prisma schema → `npx prisma db push`
   2. Backend route → compile check with `npx tsc --noEmit`
