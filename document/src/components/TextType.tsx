@@ -10,6 +10,7 @@ import {
 } from "react";
 import { gsap } from "gsap";
 import { cn } from "@/lib/utils";
+import { shouldReduceMotion } from "@/lib/motionPreference";
 import "./TextType.css";
 
 interface TextTypeProps extends HTMLAttributes<HTMLElement> {
@@ -34,6 +35,7 @@ interface TextTypeProps extends HTMLAttributes<HTMLElement> {
   onSentenceComplete?: (text: string, index: number) => void;
   startOnVisible?: boolean;
   reverseMode?: boolean;
+  respectReducedMotion?: boolean;
 }
 
 export function TextType({
@@ -56,6 +58,7 @@ export function TextType({
   onSentenceComplete,
   startOnVisible = false,
   reverseMode = false,
+  respectReducedMotion = true,
   style,
   ...props
 }: TextTypeProps) {
@@ -115,8 +118,7 @@ export function TextType({
   useEffect(() => {
     if (!showCursor || !cursorRef.current) return;
 
-    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
-    if (reduceMotion.matches) return;
+    if (shouldReduceMotion({ respectReducedMotion })) return;
 
     gsap.set(cursorRef.current, { opacity: 1 });
     const tween = gsap.to(cursorRef.current, {
@@ -130,13 +132,12 @@ export function TextType({
     return () => {
       tween.kill();
     };
-  }, [cursorBlinkDuration, showCursor]);
+  }, [cursorBlinkDuration, respectReducedMotion, showCursor]);
 
   useEffect(() => {
     if (!isVisible || isComplete) return;
 
-    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
-    if (reduceMotion.matches) {
+    if (shouldReduceMotion({ respectReducedMotion })) {
       setDisplayedText(processedText);
       setCurrentCharIndex(Array.from(processedText).length);
       setHasStarted(true);
@@ -207,6 +208,7 @@ export function TextType({
     onSentenceComplete,
     pauseDuration,
     processedText,
+    respectReducedMotion,
     textArray.length,
     typingSpeed,
     variableSpeed,

@@ -250,7 +250,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
         stageSide={registering ? "right" : "left"}
         className="z-0"
       />
-      <TargetCursor theme={theme} />
+      <TargetCursor theme={theme} respectReducedMotion={false} />
 
       <div className={cn("pointer-events-none absolute inset-0 z-[1]", isLight ? "bg-[linear-gradient(90deg,rgba(238,244,251,0.9)_0%,rgba(238,244,251,0.42)_44%,rgba(238,244,251,0.05)_100%)]" : "bg-[linear-gradient(90deg,rgba(3,7,18,0.92)_0%,rgba(15,23,42,0.48)_48%,rgba(3,7,18,0.12)_100%)]")} />
       <div
@@ -352,6 +352,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
               showCursor
               cursorClassName={titleCursorClass}
               cursorBlinkDuration={0.58}
+              respectReducedMotion={false}
               className="block"
               aria-label={heroTitles[0]}
             />
@@ -368,6 +369,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
               showCursor
               cursorClassName={subtitleCursorClass}
               cursorBlinkDuration={0.7}
+              respectReducedMotion={false}
               className="block"
               aria-label={heroSubtitles[0]}
             />

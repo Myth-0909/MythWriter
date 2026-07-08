@@ -1,16 +1,19 @@
 import { useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
+import { shouldReduceMotion } from "@/lib/motionPreference";
 
 interface TargetCursorProps {
   className?: string;
   targetSelector?: string;
   theme?: "light" | "dark";
+  respectReducedMotion?: boolean;
 }
 
 export function TargetCursor({
   className,
   targetSelector = "button, input, textarea, a, [role='button'], [data-target-cursor]",
   theme = "dark",
+  respectReducedMotion = true,
 }: TargetCursorProps) {
   const cursorRef = useRef<HTMLDivElement>(null);
   const centerDotRef = useRef<HTMLSpanElement>(null);
@@ -20,8 +23,7 @@ export function TargetCursor({
     const centerDot = centerDotRef.current;
     if (!cursor) return;
 
-    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
-    if (reduceMotion.matches) return;
+    if (shouldReduceMotion({ respectReducedMotion })) return;
 
     let frame = 0;
     const current = { x: window.innerWidth / 2, y: window.innerHeight / 2, width: 30, height: 30, opacity: 0, dotOpacity: 0 };
@@ -91,13 +93,13 @@ export function TargetCursor({
       window.removeEventListener("pointerleave", onPointerLeave);
       window.cancelAnimationFrame(frame);
     };
-  }, [targetSelector]);
+  }, [respectReducedMotion, targetSelector]);
 
   return (
     <div
       ref={cursorRef}
       className={cn(
-        "pointer-events-none fixed left-0 top-0 z-[70] hidden will-change-transform md:block",
+        "pointer-events-none fixed left-0 top-0 z-[70] hidden will-change-transform [@media(pointer:fine)]:block",
         theme === "dark" ? "mix-blend-screen" : "mix-blend-normal",
         className
       )}
