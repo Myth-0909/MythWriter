@@ -469,7 +469,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
               mode === "register" ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
             )}
           >
-            <div className="overflow-hidden">
+            <div className={cn(mode === "register" ? "overflow-visible" : "overflow-hidden")}>
               <div className="uiverse-auth-field group">
                 <User className={iconClass} />
                 <Input
