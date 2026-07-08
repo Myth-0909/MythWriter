@@ -16,6 +16,11 @@ type ImportPreview = {
   wordCount: number;
 };
 
+type CountableDocument = {
+  isFavorite?: boolean;
+  isDeleted?: boolean;
+};
+
 function stripHtml(value: string): string {
   return value
     .replace(/<script[\s\S]*?<\/script>/gi, "")
@@ -65,4 +70,14 @@ export function buildIndexProgressLabel(template: string, done: number, total: n
 
 export function getFavoriteToggleKey(isFavorite: boolean): "editor.favorite" | "editor.unfavorite" {
   return isFavorite ? "editor.unfavorite" : "editor.favorite";
+}
+
+export function buildDocumentCountSummary(documents: CountableDocument[]) {
+  const active = documents.filter((doc) => !doc.isDeleted);
+  const favorites = active.filter((doc) => doc.isFavorite).length;
+  return {
+    total: active.length,
+    library: active.length - favorites,
+    favorites,
+  };
 }

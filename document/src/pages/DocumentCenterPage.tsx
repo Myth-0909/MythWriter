@@ -71,7 +71,7 @@ import { useDocuments } from "@/store";
 import { useToast } from "@/components/Toast";
 import { api } from "@/api";
 import { escapeHtml, sanitizeHtml } from "@/lib/html";
-import { buildImportPreview, buildSearchStatus } from "@/lib/interactionState";
+import { buildDocumentCountSummary, buildImportPreview, buildSearchStatus } from "@/lib/interactionState";
 import { cn } from "@/lib/utils";
 import { categoryLabels, type Document, type DocumentCategory, type WorkRecord } from "@/types";
 import { formatFullDateTime, formatRelativeModified } from "@/lib/date";
@@ -322,7 +322,7 @@ export function DocumentCenterPage({
   const { t, lang } = useI18n();
   const { user } = useAuth();
   const { toast } = useToast();
-  const { documents, favorites, loading, createDocument, moveToTrash, updateDocument, toggleFavorite } = useDocuments();
+  const { documents, loading, createDocument, moveToTrash, updateDocument, toggleFavorite } = useDocuments();
   const isWorkbench = mode === "workbench";
 
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
@@ -554,6 +554,7 @@ export function DocumentCenterPage({
 
   const mainDocs = filteredDocs.filter((doc) => !doc.isFavorite);
   const favDocs = filteredDocs.filter((doc) => doc.isFavorite);
+  const documentCountSummary = buildDocumentCountSummary(documents);
   const visibleDocsCount = favDocs.length + mainDocs.length;
   const searchStatus = buildSearchStatus(visibleDocsCount, debouncedQuery, {
     results: t("documents.searchResultCount"),
@@ -1220,10 +1221,9 @@ export function DocumentCenterPage({
                     </div>
                   </div>
 
-                  <div className="mt-8 grid grid-cols-4 gap-3">
+                  <div className="mt-8 grid grid-cols-3 gap-3">
                     {[
-                      { icon: FileStack, label: t("documents.totalDocs"), value: documents.length },
-                      { icon: Star, label: t("documents.favoriteDocs"), value: favorites.length },
+                      { icon: FileStack, label: t("documents.totalDocs"), value: documentCountSummary.total },
                       { icon: FolderOpen, label: t("documents.groupCount"), value: groups.length },
                       { icon: BarChart3, label: t("documents.weeklyWords"), value: weeklyTotal },
                     ].map((metric) => (

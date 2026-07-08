@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   buildDraftKey,
+  buildDocumentCountSummary,
   buildImportPreview,
   buildIndexProgressLabel,
   buildSearchStatus,
@@ -53,5 +54,21 @@ describe("interaction state helpers", () => {
   it("uses the right favorite action label for document cards", () => {
     assert.equal(getFavoriteToggleKey(false), "editor.favorite");
     assert.equal(getFavoriteToggleKey(true), "editor.unfavorite");
+  });
+
+  it("counts active documents with favorites included exactly once", () => {
+    const summary = buildDocumentCountSummary([
+      { isFavorite: false },
+      { isFavorite: false },
+      { isFavorite: true },
+      { isFavorite: true },
+      { isFavorite: false, isDeleted: true },
+    ]);
+
+    assert.deepEqual(summary, {
+      total: 4,
+      library: 2,
+      favorites: 2,
+    });
   });
 });
