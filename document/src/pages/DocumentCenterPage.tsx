@@ -7,10 +7,8 @@ import { LoadingOverlay } from "@/components/LoadingSpinner";
 import { Scrollbar } from "@/components/ui/scrollbar";
 import { WriterFlowChart } from "@/components/WriterFlowChart";
 import { RotatingText } from "@/components/RotatingText";
-import Shuffle from "@/components/Shuffle";
 import { CountUp } from "@/components/CountUp";
 import {
-  CreationWeather,
   DocumentLifeline,
   type CreationWeatherTone,
   type DocumentLifelineStage,
@@ -626,6 +624,7 @@ export function DocumentCenterPage({
     wordEstimate: latestWordEstimate,
     isUngrouped: !!latestDoc && !latestDoc.groupId,
   });
+  const clampedWeatherIntensity = Math.max(0, Math.min(100, creationWeatherProfile.intensity));
   const weeklyCreativeWords = weeklyTotal + journalWeeklyTotal;
   const todayShareOfWeek = weeklyCreativeWords > 0
     ? Math.max(6, Math.min(100, Math.round((todayCreativeWords / weeklyCreativeWords) * 100)))
@@ -933,23 +932,16 @@ export function DocumentCenterPage({
                           texts={greetingLines}
                           interval={2800}
                           className="min-h-[1.24em]"
+                          respectReducedMotion={false}
                         />
                       </h1>
                       <div className="mt-3 flex flex-wrap items-baseline gap-x-3 gap-y-2 text-[22px] font-semibold leading-tight text-surface-800 dark:text-surface-100 xl:text-[28px]">
-                        <Shuffle
-                          text={t("documents.workbenchHeroPrefix")}
-                          shuffleDirection="up"
-                          duration={0.9}
-                          loop
-                          loopDelay={2.4}
-                          shuffleTimes={1}
-                          stagger={0.025}
-                          triggerOnHover={false}
-                        />
+                        <span>{t("documents.workbenchHeroPrefix")}</span>
                         <RotatingText
                           texts={greetingRotations}
                           interval={2400}
                           className="rounded-2xl border border-brand-200/70 bg-brand-50 px-3 py-1 text-brand-700 shadow-sm dark:border-brand-500/25 dark:bg-brand-500/10 dark:text-brand-200"
+                          respectReducedMotion={false}
                         />
                       </div>
                       <p className="mt-4 max-w-[720px] text-sm leading-6 text-surface-500 dark:text-surface-400">
@@ -1031,23 +1023,59 @@ export function DocumentCenterPage({
                               {t("documents.signalReady")}
                             </span>
                           </div>
-                          <CreationWeather
-                            label={t("workbench.weather.label")}
-                            tone={creationWeatherProfile.tone}
-                            title={t(creationWeatherProfile.titleKey)}
-                            description={t(creationWeatherProfile.descKey)}
-                            intensity={creationWeatherProfile.intensity}
-                            signals={creativeSignals}
-                            className="mt-4"
-                            formatValue={(value) => numberFormatter.format(value)}
-                          />
+                          <div className="mt-4 rounded-xl border border-brand-200/70 bg-brand-50/70 p-3 dark:border-brand-500/20 dark:bg-brand-500/10">
+                            <div className="flex items-start gap-2.5">
+                              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-brand-700 shadow-sm ring-1 ring-brand-200/70 dark:bg-surface-950/45 dark:text-brand-300 dark:ring-brand-500/20">
+                                <Sparkles className="h-4 w-4" />
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-[11px] font-semibold text-surface-500 dark:text-surface-400">
+                                  {t("workbench.weather.label")}
+                                </p>
+                                <h3 className="mt-0.5 break-words text-sm font-semibold leading-snug text-surface-950 dark:text-surface-50">
+                                  {t(creationWeatherProfile.titleKey)}
+                                </h3>
+                                <p className="mt-1 text-xs leading-5 text-surface-500 dark:text-surface-400">
+                                  {t(creationWeatherProfile.descKey)}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-surface-100 dark:bg-surface-900">
+                              <div
+                                className="h-full rounded-full bg-brand-400 dark:bg-brand-300"
+                                style={{ width: `${clampedWeatherIntensity}%` }}
+                              />
+                            </div>
+                          </div>
+                          <div className="mt-3 grid grid-cols-2 gap-2">
+                            {creativeSignals.map((signal) => (
+                              <div
+                                key={signal.label}
+                                className="min-w-0 rounded-xl border border-surface-200 bg-surface-50/75 p-3 dark:border-surface-800 dark:bg-surface-900/45"
+                              >
+                                <div className="flex items-start justify-between gap-2">
+                                  <span className="min-w-0 text-[11px] font-medium leading-4 text-surface-500 dark:text-surface-400">{signal.label}</span>
+                                  <signal.icon className="h-3.5 w-3.5 shrink-0 text-brand-500" />
+                                </div>
+                                <div className="mt-2 flex items-baseline gap-1.5">
+                                  <CountUp
+                                    value={signal.value}
+                                    formatValue={(value) => numberFormatter.format(Math.round(value))}
+                                    className="text-xl font-semibold tabular-nums text-surface-950 dark:text-surface-50"
+                                    respectReducedMotion={false}
+                                  />
+                                  <span className="text-[11px] font-medium text-surface-400">{signal.unit}</span>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
                           <div className="mt-3 rounded-xl border border-surface-200 bg-white/70 p-3 dark:border-surface-800 dark:bg-surface-900/45">
                             <div className="flex items-center justify-between gap-3">
                               <span className="text-[11px] font-medium text-surface-500 dark:text-surface-400">
                                 {t("documents.contextTodayProgress")}
                               </span>
                               <span className="text-sm font-semibold tabular-nums text-surface-950 dark:text-surface-50">
-                                <CountUp value={todayCreativeWords} formatValue={(value) => numberFormatter.format(Math.round(value))} /> {t("documents.wordsUnit")}
+                                <CountUp value={todayCreativeWords} formatValue={(value) => numberFormatter.format(Math.round(value))} respectReducedMotion={false} /> {t("documents.wordsUnit")}
                               </span>
                             </div>
                             <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface-100 dark:bg-surface-800">
@@ -1088,7 +1116,7 @@ export function DocumentCenterPage({
                                 <item.icon className="h-3.5 w-3.5 text-brand-500" />
                               </div>
                               <div className="mt-1 flex items-baseline gap-1.5">
-                                <CountUp value={item.value} formatValue={(value) => numberFormatter.format(Math.round(value))} className="text-xl font-semibold text-surface-950 dark:text-surface-50" />
+                                <CountUp value={item.value} formatValue={(value) => numberFormatter.format(Math.round(value))} className="text-xl font-semibold text-surface-950 dark:text-surface-50" respectReducedMotion={false} />
                                 <span className="text-[11px] text-surface-400">{item.unit}</span>
                               </div>
                             </div>
@@ -1132,7 +1160,7 @@ export function DocumentCenterPage({
                                   </div>
                                 </div>
                                 <div className="shrink-0 text-right">
-                                  <CountUp value={item.value} formatValue={(value) => numberFormatter.format(Math.round(value))} className="text-lg font-semibold text-surface-950 dark:text-surface-50" />
+                                  <CountUp value={item.value} formatValue={(value) => numberFormatter.format(Math.round(value))} className="text-lg font-semibold text-surface-950 dark:text-surface-50" respectReducedMotion={false} />
                                   <div className="text-[10px] text-surface-400">{item.unit}</div>
                                 </div>
                               </div>
@@ -1260,7 +1288,7 @@ export function DocumentCenterPage({
                           <div>
                             <div className="text-sm font-semibold text-surface-950 dark:text-surface-50">{flow.title}</div>
                             <div className="mt-0.5 text-[11px] text-surface-400">
-                              {t("documents.flowTotal")} · <CountUp value={flow.total} formatValue={(v) => numberFormatter.format(Math.round(v))} /> {t("documents.wordsUnit")}
+                              {t("documents.flowTotal")} · <CountUp value={flow.total} formatValue={(v) => numberFormatter.format(Math.round(v))} respectReducedMotion={false} /> {t("documents.wordsUnit")}
                             </div>
                           </div>
                         </div>
@@ -1284,7 +1312,7 @@ export function DocumentCenterPage({
                           >
                             <div className="whitespace-nowrap text-[11px] font-medium text-surface-500 dark:text-surface-400">{item.label}</div>
                             <div className="mt-1 whitespace-nowrap text-lg font-semibold tabular-nums text-surface-950 dark:text-surface-50">
-                              <CountUp value={item.value} formatValue={(v) => numberFormatter.format(Math.round(v))} />
+                              <CountUp value={item.value} formatValue={(v) => numberFormatter.format(Math.round(v))} respectReducedMotion={false} />
                               {item.suffix}
                             </div>
                           </div>
@@ -1294,7 +1322,7 @@ export function DocumentCenterPage({
                         <div className="flex items-center justify-between gap-3">
                           <span className="text-xs font-semibold text-surface-700 dark:text-surface-200">{t("documents.weeklyTrack")}</span>
                           <span className="text-[11px] text-surface-400">
-                            <CountUp value={flow.total} formatValue={(v) => numberFormatter.format(Math.round(v))} /> {t("documents.wordsUnit")}
+                            <CountUp value={flow.total} formatValue={(v) => numberFormatter.format(Math.round(v))} respectReducedMotion={false} /> {t("documents.wordsUnit")}
                           </span>
                         </div>
                         <div className="mt-3 grid grid-cols-7 gap-1.5">
@@ -1325,7 +1353,7 @@ export function DocumentCenterPage({
                                   />
                                 </div>
                                 <div className="mt-1.5 truncate text-[11px] font-semibold tabular-nums text-surface-800 dark:text-surface-100">
-                                  <CountUp value={dayWords} formatValue={(v) => numberFormatter.format(Math.round(v))} />
+                                  <CountUp value={dayWords} formatValue={(v) => numberFormatter.format(Math.round(v))} respectReducedMotion={false} />
                                 </div>
                               </div>
                             );
@@ -1350,7 +1378,7 @@ export function DocumentCenterPage({
                             >
                               <div className="text-[11px] font-medium text-surface-500 dark:text-surface-400">{item.label}</div>
                               <div className="mt-1 text-base font-semibold tabular-nums text-surface-950 dark:text-surface-50">
-                                <CountUp value={item.value} formatValue={(v) => numberFormatter.format(Math.round(v))} />
+                                <CountUp value={item.value} formatValue={(v) => numberFormatter.format(Math.round(v))} respectReducedMotion={false} />
                                 {item.suffix}
                               </div>
                             </div>

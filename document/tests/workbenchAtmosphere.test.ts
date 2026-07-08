@@ -3,20 +3,22 @@ import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 
 describe("workbench atmosphere wiring", () => {
-  it("renders the animated creation weather component on the workbench", () => {
+  it("keeps the workbench on the existing rotating text effect", () => {
     const source = readFileSync(new URL("../src/pages/DocumentCenterPage.tsx", import.meta.url), "utf8");
 
-    assert.match(
-      source,
-      /import\s*{[^}]*CreationWeather[^}]*}\s*from\s*"@\/components\/WorkbenchAtmosphere"/s
-    );
-    assert.match(source, /<CreationWeather\b/);
+    assert.doesNotMatch(source, /import\s+Shuffle\s+from\s+"@\/components\/Shuffle"/);
+    assert.doesNotMatch(source, /<Shuffle\b/);
+    assert.match(source, /<RotatingText\s+texts={greetingLines}[\s\S]*?respectReducedMotion={false}/);
+    assert.match(source, /<RotatingText\s+texts={greetingRotations}[\s\S]*?respectReducedMotion={false}/);
   });
 
-  it("renders the animated text effect on the workbench hero", () => {
+  it("lets workbench count-up metrics animate even when Windows reports reduced motion", () => {
     const source = readFileSync(new URL("../src/pages/DocumentCenterPage.tsx", import.meta.url), "utf8");
+    const countUpSource = readFileSync(new URL("../src/components/CountUp.tsx", import.meta.url), "utf8");
 
-    assert.match(source, /import\s+Shuffle\s+from\s+"@\/components\/Shuffle"/);
-    assert.match(source, /<Shuffle\b/);
+    assert.match(countUpSource, /respectReducedMotion\?: boolean/);
+    assert.match(countUpSource, /shouldReduceMotion\({ respectReducedMotion }\)/);
+    assert.match(source, /<CountUp value={todayCreativeWords}[\s\S]*?respectReducedMotion={false}/);
+    assert.match(source, /<CountUp value={flow\.total}[\s\S]*?respectReducedMotion={false}/);
   });
 });

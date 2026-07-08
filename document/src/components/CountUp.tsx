@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState, type HTMLAttributes } from "react";
+import { shouldReduceMotion } from "@/lib/motionPreference";
 
 interface CountUpProps extends HTMLAttributes<HTMLSpanElement> {
   value: number;
   duration?: number;
   formatValue?: (value: number) => string;
+  respectReducedMotion?: boolean;
 }
 
 const easeOutCubic = (progress: number) => 1 - Math.pow(1 - progress, 3);
@@ -12,14 +14,14 @@ export function CountUp({
   value,
   duration = 1200,
   formatValue = (nextValue) => Math.round(nextValue).toLocaleString(),
+  respectReducedMotion = true,
   ...props
 }: CountUpProps) {
   const [displayValue, setDisplayValue] = useState(value);
   const previousValueRef = useRef(value);
 
   useEffect(() => {
-    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
-    if (reduceMotion.matches || duration <= 0) {
+    if (shouldReduceMotion({ respectReducedMotion }) || duration <= 0) {
       previousValueRef.current = value;
       setDisplayValue(value);
       return;
@@ -44,7 +46,7 @@ export function CountUp({
 
     frame = window.requestAnimationFrame(tick);
     return () => window.cancelAnimationFrame(frame);
-  }, [duration, value]);
+  }, [duration, respectReducedMotion, value]);
 
   return <span {...props}>{formatValue(displayValue)}</span>;
 }

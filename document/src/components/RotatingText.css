@@ -26,7 +26,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .rotating-text__item {
+  .rotating-text:not([data-respect-reduced-motion="false"]) .rotating-text__item {
     animation: none;
   }
 }

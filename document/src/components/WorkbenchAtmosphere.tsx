@@ -173,7 +173,7 @@ export function CreationWeather({
         </div>
       </div>
 
-      <div className="relative mt-3 grid gap-1.5 sm:grid-cols-2" data-atmosphere-item>
+      <div className="relative mt-3 grid gap-1.5 sm:grid-cols-3" data-atmosphere-item>
         {signals.map((signal) => (
           <div
             key={signal.label}
