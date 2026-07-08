@@ -19,6 +19,7 @@ import { API_BASE, getServerAssetUrl } from "@/lib/apiBase";
 import {
   AI_CHAT_TYPEWRITER_INTERVAL_MS,
   canSendAssistantFeedback,
+  filterApiHistoryToolCalls,
   getTypewriterChunkSize,
   normalizeChatToolCallId,
   resolveAssistantActionContent,
@@ -335,25 +336,27 @@ export function toApiMessages(messages: { role: string; content: string; finalCo
       continue;
     } else if (m.role === "assistant" && m.toolCalls && m.toolCalls.length > 0) {
       const assistantContent = resolveStoredAssistantContent({ displayContent: m.content, finalContent: m.finalContent });
+      const apiToolCalls = filterApiHistoryToolCalls(m.toolCalls);
+      if (apiToolCalls.length === 0) {
+        result.push({ role: "assistant", content: assistantContent || "" });
+        continue;
+      }
       // Build assistant message with tool_calls in API format
       result.push({
         role: "assistant",
         content: assistantContent || "",
-        tool_calls: m.toolCalls.map((tc, i) => ({
+        tool_calls: apiToolCalls.map((tc, i) => ({
           id: normalizeChatToolCallId(tc, i),
           type: "function",
           function: { name: tc.name, arguments: tc.arguments || "{}" },
         })),
       });
       // Append tool result messages
-      for (const tc of m.toolCalls) {
-        if (tc.status === "done") {
-          const toolContent = buildToolMemoryContent(tc);
-          if (!toolContent) continue;
-          const toolCallId = normalizeChatToolCallId(tc, tc.index);
-          emittedToolResultIds.add(toolCallId);
-          result.push({ role: "tool", tool_call_id: toolCallId, content: toolContent });
-        }
+      for (const tc of apiToolCalls) {
+        const toolContent = buildToolMemoryContent(tc);
+        const toolCallId = normalizeChatToolCallId(tc, tc.index);
+        emittedToolResultIds.add(toolCallId);
+        result.push({ role: "tool", tool_call_id: toolCallId, content: toolContent });
       }
     } else {
       result.push({ role: m.role, content: resolveStoredAssistantContent({ displayContent: m.content, finalContent: m.finalContent }) });

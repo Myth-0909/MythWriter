@@ -15,6 +15,21 @@ export function normalizeChatToolCallId(toolCall: { id?: string; index?: number 
   return `call_${index}`;
 }
 
+type ApiHistoryToolCall = {
+  status?: string;
+  content?: string;
+  result?: string;
+  summary?: string;
+};
+
+export function filterApiHistoryToolCalls<T extends ApiHistoryToolCall>(toolCalls: T[]): T[] {
+  return toolCalls.filter((toolCall) => {
+    if (toolCall.status !== "done") return false;
+    return [toolCall.content, toolCall.summary, toolCall.result]
+      .some((value) => String(value || "").trim().length > 0);
+  });
+}
+
 export function resolveStoredAssistantContent({
   displayContent,
   finalContent,
