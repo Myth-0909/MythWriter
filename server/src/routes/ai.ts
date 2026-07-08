@@ -18,6 +18,10 @@ import { createDocument } from "../services/documentService";
 import { createLinkedTimeoutSignal } from "../lib/abortSignal";
 import { formatLocalDateKey, getLocalDayRange } from "../services/writingStats";
 import {
+  executeReadonlyChatTool,
+  inferReadonlyToolCalls,
+} from "../services/aiReadonlyTools";
+import {
   buildToolFallbackReply,
   buildToolFollowUpMessages,
   buildToolResultSummary,
@@ -25,7 +29,6 @@ import {
   extractDsmlToolCalls,
   isDsmlToolCallStart,
   isDsmlToolCallStartPrefix,
-  shouldPreferTodayWritingTool,
   shouldUseToolFallbackReply,
   type AssistantToolCall,
   type AssistantToolResult,
@@ -336,84 +339,18 @@ async function executeChatToolCalls(params: {
           status = "done";
           resultMsg = query;
         }
-      } else if (toolCall.name === "create_document" || toolCall.name === "update_document") {
-        resultMsg = "document writes are handled by client action confirmation";
-        toolResults.push({
-          index: toolCallIndex,
-          name: toolCall.name,
-          status: "error",
-          result: resultMsg,
-          content: `Error: ${toolCall.name} is not available as a direct server tool in chat. Return ACTION_JSON so the client can execute and verify the document action.`,
-        });
-      } else if (toolCall.name === "get_user_stats") {
-        const [docCount, journalCount, groupCount, brainCount] = await Promise.all([
-          prisma.document.count({ where: { userId: params.userId, isDeleted: false } }),
-          prisma.workRecord.count({ where: { userId: params.userId } }),
-          prisma.documentGroup.count({ where: { userId: params.userId } }),
-          prisma.aIBrainKnowledge.count({ where: { userId: params.userId } }),
-        ]);
-        const totalJournalWords = (await prisma.workRecord.findMany({
-          where: { userId: params.userId }, select: { content: true },
-        })).reduce((sum: number, record: { content: string | null }) => sum + (record.content || "").length, 0);
-        toolResults.push({
-          index: toolCallIndex,
-          name: toolCall.name,
-          status: "done",
-          result: `${docCount} docs, ${journalCount} journals`,
-          content: `用户工作区统计：\n- 文档总数：${docCount} 篇\n- 随记总数：${journalCount} 条\n- 随记总字数：${totalJournalWords} 字\n- 文档分组：${groupCount} 个\n- 脑库条目：${brainCount} 条`,
-        });
-        status = "done";
-        resultMsg = `${docCount} docs, ${journalCount} journals`;
-      } else if (toolCall.name === "list_recent_documents") {
-        const args = JSON.parse(toolCall.arguments || "{}");
-        const limit = Math.min(args.limit || 5, 10);
-        const docs = await prisma.document.findMany({
-          where: { userId: params.userId, isDeleted: false },
-          orderBy: { updatedAt: "desc" },
-          take: limit,
-          select: { title: true, updatedAt: true, content: true },
-        });
-        const lines = docs.map((doc: { title: string; updatedAt: Date; content: string | null }, index: number) => {
-          const wordCount = stripHtml(doc.content || "").replace(/\s+/g, "").length;
-          const date = doc.updatedAt.toISOString().slice(0, 10);
-          return `${index + 1}. 《${doc.title}》— ${wordCount} 字，最后修改 ${date}`;
+      } else {
+        const readonlyResult = await executeReadonlyChatTool(toolCall, {
+          userId: params.userId,
+          userLang: params.userLang,
         });
         toolResults.push({
+          ...readonlyResult,
           index: toolCallIndex,
           name: toolCall.name,
-          status: "done",
-          result: `${docs.length} docs`,
-          content: `用户最近 ${limit} 篇文档：\n${lines.join("\n")}${docs.length === 0 ? "暂无文档" : ""}`,
         });
-        status = "done";
-        resultMsg = `${docs.length} docs`;
-      } else if (toolCall.name === "get_today_writing") {
-        const todayRange = getLocalDayRange();
-        const todayStr = formatLocalDateKey(todayRange.start);
-        const [todayDocs, todayCreatedDocCount, todayJournals] = await Promise.all([
-          prisma.document.findMany({
-            where: { userId: params.userId, isDeleted: false, updatedAt: { gte: todayRange.start, lt: todayRange.end } },
-            select: { content: true },
-          }),
-          prisma.document.count({
-            where: { userId: params.userId, isDeleted: false, createdAt: { gte: todayRange.start, lt: todayRange.end } },
-          }),
-          prisma.workRecord.findMany({
-            where: { userId: params.userId, targetDate: todayStr },
-            select: { content: true },
-          }),
-        ]);
-        const docWords = todayDocs.reduce((sum: number, doc: { content: string | null }) => sum + stripHtml(doc.content || "").replace(/\s+/g, "").length, 0);
-        const journalWords = todayJournals.reduce((sum: number, record: { content: string | null }) => sum + (record.content || "").length, 0);
-        toolResults.push({
-          index: toolCallIndex,
-          name: toolCall.name,
-          status: "done",
-          result: `${todayCreatedDocCount} docs created, ${todayDocs.length} docs touched, ${todayJournals.length} journals, ${docWords + journalWords} words in touched items today`,
-          content: `今日写作统计（${todayStr}）：\n- 今日新建文档 ${todayCreatedDocCount} 篇\n- 今日更新文档 ${todayDocs.length} 篇，当前共 ${docWords} 字\n- 今日随记 ${todayJournals.length} 条，共 ${journalWords} 字\n- 可确认合计 ${docWords + journalWords} 字`,
-        });
-        status = "done";
-        resultMsg = `${todayCreatedDocCount} docs created, ${todayDocs.length} docs touched, ${todayJournals.length} journals, ${docWords + journalWords} words in touched items today`;
+        status = readonlyResult.status;
+        resultMsg = readonlyResult.result || readonlyResult.content;
       }
     } catch (err) {
       console.error("[AI] Tool execution error:", err);
@@ -1238,23 +1175,26 @@ router.post("/chat", async (req: Request, res: Response) => {
       console.log("[AI] DSML tool calls detected:", dsmlToolCallParse.toolCalls.length);
     }
 
-    if (shouldPreferTodayWritingTool(lastUserMsg.content)) {
-      const hasTodayWritingTool = accumulatedToolCalls.some((toolCall) => toolCall?.name === "get_today_writing");
-      if (!hasTodayWritingTool) {
-        const statsToolIndex = accumulatedToolCalls.findIndex((toolCall) => toolCall?.name === "get_user_stats");
-        const forcedToolCall = {
-          id: statsToolIndex >= 0 ? accumulatedToolCalls[statsToolIndex].id : "",
-          name: "get_today_writing",
-          arguments: "{}",
-        };
-        const forcedIndex = statsToolIndex >= 0 ? statsToolIndex : accumulatedToolCalls.length;
-        accumulatedToolCalls[forcedIndex] = forcedToolCall;
-        emitToolCall(forcedIndex, forcedToolCall.name, "calling", {
-          id: forcedToolCall.id,
-          arguments: forcedToolCall.arguments,
-        });
-        console.log("[AI] Forced get_today_writing for today's article count question");
-      }
+    const inferredToolCalls = inferReadonlyToolCalls(lastUserMsg.content);
+    for (const inferredToolCall of inferredToolCalls) {
+      const hasSpecificTool = accumulatedToolCalls.some((toolCall) => toolCall?.name === inferredToolCall.name);
+      if (hasSpecificTool) continue;
+      const genericIndex = accumulatedToolCalls.findIndex((toolCall) => (
+        toolCall?.name === "get_user_stats" ||
+        toolCall?.name === "list_recent_documents"
+      ));
+      const forcedIndex = genericIndex >= 0 ? genericIndex : accumulatedToolCalls.length;
+      const forcedToolCall = {
+        id: genericIndex >= 0 ? accumulatedToolCalls[genericIndex].id : inferredToolCall.id,
+        name: inferredToolCall.name,
+        arguments: inferredToolCall.arguments,
+      };
+      accumulatedToolCalls[forcedIndex] = forcedToolCall;
+      emitToolCall(forcedIndex, forcedToolCall.name, "calling", {
+        id: forcedToolCall.id,
+        arguments: forcedToolCall.arguments,
+      });
+      console.log("[AI] Forced read-only tool for user intent:", forcedToolCall.name);
     }
 
     // Execute any accumulated tool calls (native function calling)
