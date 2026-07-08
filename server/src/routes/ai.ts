@@ -5,7 +5,7 @@ import { t } from "../lib/i18n";
 import prisma from "../lib/prisma";
 import {
   buildSystemPrompt, buildDateTimeContext, detectDeleteCommand, detectInjection,
-  parseAction, safePersonality, getUserApiKey,
+  parseAction, resolveAssistantActionReply, safePersonality, getUserApiKey,
   listConversations, saveConversation, deleteConversations,
   logActivity, saveFeedback, getSemanticContext,
 } from "../services/aiService";
@@ -1278,15 +1278,13 @@ router.post("/chat", async (req: Request, res: Response) => {
         if (followUpRes.ok) {
           const json = await followUpRes.json() as any;
           const followUpContent = json.choices?.[0]?.message?.content || "";
-          // When native tools were already executed, use the raw follow-up text directly.
-          // Do NOT parseAction again — the tool already handled the action;
-          // re-parsing would duplicate or strip the model's natural confirmation.
           if (shouldUseToolFallbackReply(followUpContent, toolResults)) {
             console.warn("[AI] Follow-up reply was a tool placeholder; using tool-result fallback");
             followUpReply = "";
           } else {
-            followUpReply = followUpContent;
-            // Stream the follow-up reply after it passes the quality gate.
+            const parsedFollowUp = resolveAssistantActionReply(followUpContent);
+            followUpReply = parsedFollowUp.reply;
+            finalAction = parsedFollowUp.action;
             for (const char of followUpReply) {
               emitSse("delta", { delta: char });
             }
@@ -1306,7 +1304,7 @@ router.post("/chat", async (req: Request, res: Response) => {
 
     // Parse the full buffered response for actions (fallback for models without native tool support)
     if (toolResults.length === 0) {
-      const { reply, action: textAction } = parseAction(finalContent);
+      const { reply, action: textAction } = resolveAssistantActionReply(finalContent);
       finalAction = textAction;
       console.log("[AI] Real-time stream complete - reply length:", (reply || finalContent || "").length);
       console.log("[AI] parseAction result - action:", JSON.stringify(finalAction));

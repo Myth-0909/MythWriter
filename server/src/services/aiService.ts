@@ -435,6 +435,10 @@ export function parseAction(reply: string): { reply: string; action: any } {
   };
 }
 
+export function resolveAssistantActionReply(reply: string): { reply: string; action: any } {
+  return parseAction(reply);
+}
+
 const INJECTION_PATTERNS = [
   /ignore\s*(all\s*)?(previous|above|prior)\s*instructions?/i,
   /忽略\s*(所有|之前的|上面的)?\s*指令/i,
