@@ -7,8 +7,10 @@ import { LoadingOverlay } from "@/components/LoadingSpinner";
 import { Scrollbar } from "@/components/ui/scrollbar";
 import { WriterFlowChart } from "@/components/WriterFlowChart";
 import { RotatingText } from "@/components/RotatingText";
+import Shuffle from "@/components/Shuffle";
 import { CountUp } from "@/components/CountUp";
 import {
+  CreationWeather,
   DocumentLifeline,
   type CreationWeatherTone,
   type DocumentLifelineStage,
@@ -624,7 +626,6 @@ export function DocumentCenterPage({
     wordEstimate: latestWordEstimate,
     isUngrouped: !!latestDoc && !latestDoc.groupId,
   });
-  const clampedWeatherIntensity = Math.max(0, Math.min(100, creationWeatherProfile.intensity));
   const weeklyCreativeWords = weeklyTotal + journalWeeklyTotal;
   const todayShareOfWeek = weeklyCreativeWords > 0
     ? Math.max(6, Math.min(100, Math.round((todayCreativeWords / weeklyCreativeWords) * 100)))
@@ -935,7 +936,16 @@ export function DocumentCenterPage({
                         />
                       </h1>
                       <div className="mt-3 flex flex-wrap items-baseline gap-x-3 gap-y-2 text-[22px] font-semibold leading-tight text-surface-800 dark:text-surface-100 xl:text-[28px]">
-                        <span>{t("documents.workbenchHeroPrefix")}</span>
+                        <Shuffle
+                          text={t("documents.workbenchHeroPrefix")}
+                          shuffleDirection="up"
+                          duration={0.9}
+                          loop
+                          loopDelay={2.4}
+                          shuffleTimes={1}
+                          stagger={0.025}
+                          triggerOnHover={false}
+                        />
                         <RotatingText
                           texts={greetingRotations}
                           interval={2400}
@@ -1021,51 +1031,16 @@ export function DocumentCenterPage({
                               {t("documents.signalReady")}
                             </span>
                           </div>
-                          <div className="mt-4 rounded-xl border border-brand-200/70 bg-brand-50/70 p-3 dark:border-brand-500/20 dark:bg-brand-500/10">
-                            <div className="flex items-start gap-2.5">
-                              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-brand-700 shadow-sm ring-1 ring-brand-200/70 dark:bg-surface-950/45 dark:text-brand-300 dark:ring-brand-500/20">
-                                <Sparkles className="h-4 w-4" />
-                              </div>
-                              <div className="min-w-0">
-                                <p className="text-[11px] font-semibold text-surface-500 dark:text-surface-400">
-                                  {t("workbench.weather.label")}
-                                </p>
-                                <h3 className="mt-0.5 break-words text-sm font-semibold leading-snug text-surface-950 dark:text-surface-50">
-                                  {t(creationWeatherProfile.titleKey)}
-                                </h3>
-                                <p className="mt-1 text-xs leading-5 text-surface-500 dark:text-surface-400">
-                                  {t(creationWeatherProfile.descKey)}
-                                </p>
-                              </div>
-                            </div>
-                            <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-surface-100 dark:bg-surface-900">
-                              <div
-                                className="h-full rounded-full bg-brand-400 dark:bg-brand-300"
-                                style={{ width: `${clampedWeatherIntensity}%` }}
-                              />
-                            </div>
-                          </div>
-                          <div className="mt-3 grid grid-cols-2 gap-2">
-                            {creativeSignals.map((signal) => (
-                              <div
-                                key={signal.label}
-                                className="min-w-0 rounded-xl border border-surface-200 bg-surface-50/75 p-3 dark:border-surface-800 dark:bg-surface-900/45"
-                              >
-                                <div className="flex items-start justify-between gap-2">
-                                  <span className="min-w-0 text-[11px] font-medium leading-4 text-surface-500 dark:text-surface-400">{signal.label}</span>
-                                  <signal.icon className="h-3.5 w-3.5 shrink-0 text-brand-500" />
-                                </div>
-                                <div className="mt-2 flex items-baseline gap-1.5">
-                                  <CountUp
-                                    value={signal.value}
-                                    formatValue={(value) => numberFormatter.format(Math.round(value))}
-                                    className="text-xl font-semibold tabular-nums text-surface-950 dark:text-surface-50"
-                                  />
-                                  <span className="text-[11px] font-medium text-surface-400">{signal.unit}</span>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
+                          <CreationWeather
+                            label={t("workbench.weather.label")}
+                            tone={creationWeatherProfile.tone}
+                            title={t(creationWeatherProfile.titleKey)}
+                            description={t(creationWeatherProfile.descKey)}
+                            intensity={creationWeatherProfile.intensity}
+                            signals={creativeSignals}
+                            className="mt-4"
+                            formatValue={(value) => numberFormatter.format(value)}
+                          />
                           <div className="mt-3 rounded-xl border border-surface-200 bg-white/70 p-3 dark:border-surface-800 dark:bg-surface-900/45">
                             <div className="flex items-center justify-between gap-3">
                               <span className="text-[11px] font-medium text-surface-500 dark:text-surface-400">
