@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { FileText, Sparkles } from "lucide-react";
+import { getLoadingPresentation, type CreativeLoaderVariant, type LoadingTone } from "@/lib/displayExperience";
 import { cn } from "@/lib/utils";
 
 type LoaderSize = "sm" | "md" | "lg";
-export type CreativeLoaderVariant = "manuscript" | "ai" | "cursor" | "dots";
-type LoadingTone = "document" | "ai" | "quiet";
+export type { CreativeLoaderVariant, LoadingTone } from "@/lib/displayExperience";
 
 interface LoadingSpinnerProps {
   size?: LoaderSize;
@@ -265,35 +265,41 @@ export function useLoading() {
   return { loading, loadingMsg, withLoading };
 }
 
-const overlayToneClasses: Record<LoadingTone, string> = {
-  document:
-    "bg-[radial-gradient(circle_at_48%_42%,rgba(216,189,115,0.18),transparent_34%),linear-gradient(90deg,rgba(185,149,78,0.08)_1px,transparent_1px),linear-gradient(0deg,rgba(185,149,78,0.08)_1px,transparent_1px)] bg-[size:auto,36px_36px,36px_36px]",
-  ai:
-    "bg-[radial-gradient(circle_at_50%_42%,rgba(99,102,241,0.16),transparent_32%),radial-gradient(circle_at_44%_58%,rgba(185,149,78,0.12),transparent_30%)]",
-  quiet:
-    "bg-[radial-gradient(circle_at_50%_45%,rgba(148,163,184,0.18),transparent_34%)]",
-};
-
 export function LoadingOverlay({ message, tone = "document", className }: LoadingOverlayProps) {
-  const variant: CreativeLoaderVariant = tone === "ai" ? "ai" : tone === "quiet" ? "dots" : "manuscript";
+  const presentation = getLoadingPresentation(tone);
 
   return (
     <div
       className={cn(
-        "absolute inset-0 z-50 flex flex-col items-center justify-center overflow-hidden bg-white/85 backdrop-blur-[5px] fade-in dark:bg-surface-950/85",
+        "absolute inset-0 z-50 flex flex-col items-center justify-center overflow-hidden fade-in",
+        presentation.overlayClassName,
         className
       )}
       role={message ? "status" : undefined}
       aria-live={message ? "polite" : undefined}
     >
-      <div className={cn("pointer-events-none absolute inset-0 opacity-90", overlayToneClasses[tone])} />
+      <div
+        className={cn(
+          "pointer-events-none absolute inset-0 opacity-90",
+          tone === "document" &&
+            "bg-[radial-gradient(circle_at_48%_42%,rgba(216,189,115,0.18),transparent_34%),linear-gradient(90deg,rgba(185,149,78,0.08)_1px,transparent_1px),linear-gradient(0deg,rgba(185,149,78,0.08)_1px,transparent_1px)] bg-[size:auto,36px_36px,36px_36px]",
+          tone === "ai" &&
+            "bg-[radial-gradient(circle_at_50%_42%,rgba(99,102,241,0.16),transparent_32%),radial-gradient(circle_at_44%_58%,rgba(185,149,78,0.12),transparent_30%)]",
+          tone === "quiet" &&
+            "bg-[radial-gradient(circle_at_50%_45%,rgba(148,163,184,0.18),transparent_34%)]",
+          tone === "settings" &&
+            "bg-[radial-gradient(circle_at_42%_38%,rgba(245,158,11,0.15),transparent_30%),linear-gradient(135deg,rgba(148,163,184,0.08)_1px,transparent_1px)] bg-[size:auto,34px_34px]",
+          tone === "brain" &&
+            "bg-[radial-gradient(circle_at_50%_38%,rgba(20,184,166,0.15),transparent_30%),radial-gradient(circle_at_60%_58%,rgba(99,102,241,0.14),transparent_34%)]"
+        )}
+      />
       <div className="pointer-events-none absolute inset-x-10 top-1/2 h-px -translate-y-12 bg-gradient-to-r from-transparent via-brand-300/45 to-transparent dark:via-brand-300/20" />
       <div className="relative flex min-w-[190px] flex-col items-center rounded-2xl border border-white/70 bg-white/78 px-7 py-6 shadow-[0_22px_70px_rgba(15,23,42,0.14)] backdrop-blur-xl dark:border-white/10 dark:bg-surface-900/78 dark:shadow-[0_24px_80px_rgba(0,0,0,0.32)]">
         <CreativeLoader
-          variant={variant}
+          variant={presentation.variant}
           size="lg"
           label={message}
-          className={tone === "ai" ? "text-accent-500" : "text-brand-500"}
+          className={presentation.accentClassName}
         />
       </div>
     </div>

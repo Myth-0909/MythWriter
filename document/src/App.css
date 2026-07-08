@@ -219,8 +219,8 @@ body.dark {
 @keyframes pageEnter {
   from {
     opacity: 0;
-    transform: translateY(10px) scale(0.992);
-    filter: blur(2px);
+    transform: translateY(var(--page-enter-y, 10px)) scale(var(--page-enter-scale, 0.992));
+    filter: blur(var(--page-enter-blur, 2px));
   }
   to {
     opacity: 1;
@@ -515,6 +515,19 @@ body.dark {
 
   .page-transition-shell [data-page-motion] {
     animation: znPageMotionItem 0.42s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  .page-transition-editor [data-page-motion] {
+    animation-duration: 0.28s;
+  }
+
+  .page-transition-workbench [data-page-motion],
+  .page-transition-brain [data-page-motion] {
+    animation-duration: 0.5s;
+  }
+
+  .page-transition-settings [data-page-motion] {
+    animation-duration: 0.34s;
   }
 
   .page-transition-shell [data-page-motion]:nth-child(2) {

@@ -183,6 +183,43 @@ function buildGenericToolLines(results: AssistantToolResult[], lang: string): st
     });
 }
 
+export function buildToolResultSummary(result: AssistantToolResult, lang: string): string {
+  if (result.status === "error") {
+    return t(lang, "执行失败", "Failed");
+  }
+
+  const stats = parseUserStats(result.content);
+  if (stats) {
+    return t(
+      lang,
+      `文档 ${formatNumber(stats.docCount)} 篇 · 随记 ${formatNumber(stats.journalCount)} 条 · 脑库 ${formatNumber(stats.brainCount)} 条`,
+      `${formatNumber(stats.docCount)} docs · ${formatNumber(stats.journalCount)} journals · ${formatNumber(stats.brainCount)} brain notes`
+    );
+  }
+
+  const today = parseTodayWriting(result.content);
+  if (today) {
+    const total = today.totalWords ?? (today.docWords ?? 0) + (today.journalWords ?? 0);
+    return t(
+      lang,
+      `今日 ${formatNumber(total)} 字 · 文档 ${formatNumber(today.docCount)} 篇 · 随记 ${formatNumber(today.journalCount)} 条`,
+      `${formatNumber(total)} words today · ${formatNumber(today.docCount)} docs · ${formatNumber(today.journalCount)} journals`
+    );
+  }
+
+  const recentDocs = parseRecentDocuments(result.content);
+  if (recentDocs.length > 0) {
+    const titles = recentDocs.map((doc) => t(lang, `《${doc.title}》`, `"${doc.title}"`)).join("、");
+    return t(lang, `最近文档 ${titles}`, `Recent documents ${titles}`);
+  }
+
+  const compact = (result.result || result.content)
+    .trim()
+    .replace(/\s+/g, " ")
+    .slice(0, 90);
+  return compact || t(lang, "已完成", "Done");
+}
+
 function collectEvidenceTokens(results: AssistantToolResult[]): string[] {
   return results.flatMap((result) => {
     const numericTokens = result.content.match(/\d[\d,]*/g) || [];

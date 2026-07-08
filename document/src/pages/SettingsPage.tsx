@@ -16,6 +16,7 @@ import { useAuth } from "@/auth";
 import { api } from "@/api";
 import { getServerAssetUrl } from "@/lib/apiBase";
 import { getFontOption, isFontFamilyKey } from "@/lib/fontCatalog";
+import { InlineLoading } from "@/components/LoadingSpinner";
 import { Check, Sparkles, Sun, Moon, Monitor, Languages, User, Camera, Info, Loader2 } from "lucide-react";
 
 export function SettingsPage() {
@@ -297,6 +298,43 @@ export function SettingsPage() {
                 </div>
               </div>
 
+              <div
+                className="overflow-hidden rounded-xl border border-surface-200 bg-[linear-gradient(135deg,rgba(185,149,78,0.08),transparent_36%),linear-gradient(90deg,rgba(15,23,42,0.035)_1px,transparent_1px),linear-gradient(0deg,rgba(15,23,42,0.035)_1px,transparent_1px)] bg-white bg-[size:auto,28px_28px,28px_28px] p-4 shadow-sm transition-colors dark:border-surface-700 dark:bg-surface-950 dark:bg-[linear-gradient(135deg,rgba(185,149,78,0.12),transparent_34%),linear-gradient(90deg,rgba(148,163,184,0.045)_1px,transparent_1px),linear-gradient(0deg,rgba(148,163,184,0.045)_1px,transparent_1px)]"
+                style={{ fontFamily: selectedFont.cssFamily }}
+              >
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-semibold uppercase text-brand-600 dark:text-brand-300">
+                      {t("settings.previewTitle")}
+                    </p>
+                    <p className="mt-1 text-xs leading-5 text-surface-500">
+                      {theme === "dark" ? t("settings.previewThemeDark") : t("settings.previewThemeLight")} · {t(selectedFont.labelKey)}
+                    </p>
+                  </div>
+                  <span className="rounded-full border border-brand-200 bg-brand-50 px-3 py-1 text-[11px] font-semibold text-brand-700 dark:border-brand-500/30 dark:bg-brand-950/40 dark:text-brand-200">
+                    {fontSourceLabel(selectedFont.source)}
+                  </span>
+                </div>
+                <div className="grid gap-3 md:grid-cols-[minmax(0,1.2fr)_minmax(160px,0.8fr)]">
+                  <div className="rounded-lg border border-surface-200/80 bg-white/82 p-4 dark:border-surface-700/80 dark:bg-surface-900/82">
+                    <h4 className="text-xl font-semibold leading-snug text-surface-950 dark:text-surface-50">
+                      {t("settings.previewHeadline")}
+                    </h4>
+                    <p className="mt-2 text-sm leading-7 text-surface-600 dark:text-surface-300">
+                      {t("settings.previewBody")}
+                    </p>
+                  </div>
+                  <div className="flex flex-col justify-between gap-3 rounded-lg border border-surface-200/80 bg-surface-50/86 p-4 dark:border-surface-700/80 dark:bg-surface-900/72">
+                    <blockquote className="border-l-2 border-brand-400 pl-3 text-sm leading-6 text-surface-700 dark:text-surface-300">
+                      {t("settings.previewQuote")}
+                    </blockquote>
+                    <span className="inline-flex h-9 w-fit items-center rounded-lg bg-surface-900 px-3 text-xs font-semibold text-white shadow-sm dark:bg-brand-400 dark:text-surface-950">
+                      {t("settings.previewAction")}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
               <Separator />
 
               <div className="flex items-center justify-between py-2">
@@ -334,7 +372,7 @@ export function SettingsPage() {
           {/* Save Button */}
           <div className="flex justify-end">
             <Button onClick={handleSave} disabled={saving}>
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : t("settings.save")}
+              {saving ? <InlineLoading variant="cursor" size="sm" label={t("settings.save")} /> : t("settings.save")}
             </Button>
           </div>
         </div>

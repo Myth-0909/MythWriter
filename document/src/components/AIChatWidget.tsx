@@ -296,7 +296,7 @@ function escapeRegExp(value: string): string {
 }
 
 
-type ToolCallEvent = { index: number; id?: string; name: string; arguments?: string; status: string; result?: string };
+type ToolCallEvent = { index: number; id?: string; name: string; arguments?: string; status: string; result?: string; summary?: string };
 
 function parseToolArguments(value?: string): Record<string, unknown> {
   if (!value) return {};
@@ -1950,12 +1950,17 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
                                   const inProgress = tc.status === "calling";
                                   const done = tc.status === "done";
                                   const failed = tc.status === "error";
+                                  const evidence = tc.summary || tc.result;
                                   return (
                                     <details key={i} className="rounded-lg border border-amber-200/60 bg-amber-50/40 dark:border-amber-500/15 dark:bg-amber-500/5" open={inProgress}>
-                                      <summary className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-[11px] select-none">
+                                      <summary className="flex cursor-pointer items-center gap-2 px-3 py-2 text-[11px] select-none">
                                         <span className="text-xs">{toolIcon}</span>
                                         <span className="font-medium text-amber-700 dark:text-amber-300">{toolLabel}</span>
-                                        {tc.result && <span className="text-[10px] text-amber-500 truncate max-w-[120px]">"{tc.result}"</span>}
+                                        {evidence && (
+                                          <span className="min-w-[120px] flex-1 whitespace-normal break-words rounded-full border border-amber-200/70 bg-white/70 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:border-amber-500/15 dark:bg-surface-900/55 dark:text-amber-200">
+                                            {evidence}
+                                          </span>
+                                        )}
                                         <span className="ml-auto flex items-center gap-1 shrink-0">
                                           {inProgress && (
                                             <InlineLoading
@@ -1970,9 +1975,12 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
                                           {failed && <XCircle className="h-3 w-3 text-red-400" />}
                                         </span>
                                       </summary>
-                                      {tc.result && done && (
-                                        <div className="border-t border-amber-200/40 px-3 py-1.5 text-[10px] leading-relaxed text-surface-500 dark:border-amber-500/10 dark:text-surface-400 max-h-32 overflow-y-auto">
-                                          {tc.result}
+                                      {evidence && done && (
+                                        <div className="border-t border-amber-200/40 px-3 py-2 text-[10px] leading-relaxed text-surface-500 dark:border-amber-500/10 dark:text-surface-400 max-h-32 overflow-y-auto">
+                                          <div className="font-medium text-surface-700 dark:text-surface-200">{tc.summary || evidence}</div>
+                                          {tc.summary && tc.result && tc.summary !== tc.result && (
+                                            <div className="mt-1 text-surface-400 dark:text-surface-500">{tc.result}</div>
+                                          )}
                                         </div>
                                       )}
                                     </details>

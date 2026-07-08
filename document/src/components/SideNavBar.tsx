@@ -78,8 +78,8 @@ function NavButton({ item, isActive, collapsed, onClick }: {
           ? "justify-center w-10 h-10 mx-auto"
           : "w-full px-3 py-2",
         isActive
-          ? "bg-surface-200 text-surface-900 dark:bg-surface-800 dark:text-surface-100"
-          : "text-surface-600 hover:bg-surface-100 hover:text-surface-900 dark:text-surface-400 dark:hover:bg-surface-800 dark:hover:text-surface-200"
+          ? "bg-surface-200 text-surface-900 dark:bg-surface-800 dark:text-surface-50 dark:ring-1 dark:ring-white/10"
+          : "text-surface-600 hover:bg-surface-100 hover:text-surface-900 dark:text-surface-400 dark:hover:bg-surface-800/90 dark:hover:text-surface-50 dark:hover:ring-1 dark:hover:ring-white/10"
       )}
     >
       <item.icon className="h-[18px] w-[18px] shrink-0" />
@@ -193,7 +193,7 @@ export function SideNavBar({
                             e.stopPropagation();
                             onAddGroup();
                           }}
-                          className="hover:text-surface-700 dark:hover:text-surface-200 transition-colors p-0.5 rounded cursor-pointer"
+                          className="rounded p-0.5 transition-colors hover:bg-surface-100 hover:text-surface-700 dark:hover:bg-brand-500/15 dark:hover:text-brand-200 cursor-pointer"
                           title={t("group.newGroup")}
                         >
                           <Plus className="h-3 w-3" />
@@ -207,7 +207,7 @@ export function SideNavBar({
                             e.stopPropagation();
                             onAddGroup();
                           }}
-                          className="w-full text-left px-2 py-1.5 text-[11px] text-brand-500 hover:text-brand-600 hover:bg-surface-100 dark:hover:bg-surface-900 rounded-md cursor-pointer border border-dashed border-brand-200 dark:border-brand-900/40 transition-colors"
+                          className="w-full text-left px-2 py-1.5 text-[11px] text-brand-500 hover:text-brand-600 hover:bg-surface-100 dark:text-brand-300 dark:hover:bg-brand-500/15 dark:hover:text-brand-100 rounded-md cursor-pointer border border-dashed border-brand-200 dark:border-brand-500/25 transition-colors"
                         >
                           {t("group.noGroups")}
                         </button>
@@ -225,8 +225,8 @@ export function SideNavBar({
                                 className={cn(
                                   "group/item relative flex items-center justify-between px-2 py-1 rounded-md text-[12px] font-medium cursor-pointer transition-all min-w-0",
                                   isGroupActive
-                                    ? "bg-surface-200 text-surface-900 dark:bg-surface-800 dark:text-surface-100"
-                                    : "text-surface-600 hover:bg-surface-100 hover:text-surface-900 dark:text-surface-400 dark:hover:bg-surface-900 dark:hover:text-surface-100"
+                                    ? "bg-surface-200 text-surface-900 dark:bg-surface-800 dark:text-surface-50 dark:ring-1 dark:ring-brand-400/25"
+                                    : "text-surface-600 hover:bg-surface-100 hover:text-surface-900 dark:text-surface-400 dark:hover:bg-surface-800/90 dark:hover:text-surface-50 dark:hover:ring-1 dark:hover:ring-white/10"
                                 )}
                               >
                                 <div className="flex items-center gap-2 min-w-0 flex-1">
@@ -248,17 +248,18 @@ export function SideNavBar({
                                     <DropdownMenuTrigger asChild>
                                       <button
                                         onClick={(e) => e.stopPropagation()}
-                                        className="rounded p-0.5 text-surface-400 transition-colors hover:bg-surface-200 hover:text-surface-600 dark:hover:bg-surface-800 dark:hover:text-surface-100 cursor-pointer"
+                                        className="rounded p-0.5 text-surface-400 transition-all hover:bg-surface-200 hover:text-surface-700 dark:text-surface-500 dark:hover:bg-brand-500/15 dark:hover:text-brand-100 dark:hover:ring-1 dark:hover:ring-brand-400/25 cursor-pointer"
                                       >
                                         <Settings className="h-3 w-3" />
                                       </button>
                                     </DropdownMenuTrigger>
-                                    <DropdownMenuContent align="end" className="w-[120px]">
+                                    <DropdownMenuContent align="end" className="w-[128px] dark:border-surface-700 dark:bg-surface-900 dark:shadow-[0_18px_45px_rgba(0,0,0,0.38)]">
                                       <DropdownMenuItem
                                         onClick={(e) => {
                                           e.stopPropagation();
                                           onRenameGroup(group.id, group.name);
                                         }}
+                                        className="dark:hover:bg-brand-500/15 dark:hover:text-brand-100"
                                       >
                                         <span>{t("group.renameGroup")}</span>
                                       </DropdownMenuItem>

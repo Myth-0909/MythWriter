@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import {
   buildToolFallbackReply,
   buildToolFollowUpMessages,
+  buildToolResultSummary,
   shouldUseToolFallbackReply,
   type AssistantToolCall,
   type AssistantToolResult,
@@ -117,6 +118,58 @@ describe("ai tool conversation helpers", () => {
     assert.match(reply, /最近文档/);
     assert.match(reply, /第一章/);
     assert.match(reply, /第二章/);
+  });
+
+  it("summarizes known tool results into compact UI evidence", () => {
+    const statsSummary = buildToolResultSummary(
+      {
+        index: 0,
+        name: "get_user_stats",
+        status: "done",
+        result: "12 docs, 3 journals",
+        content: [
+          "用户工作区统计：",
+          "- 文档总数：12 篇",
+          "- 随记总数：3 条",
+          "- 随记总字数：223 字",
+          "- 文档分组：2 个",
+          "- 脑库条目：4 条",
+        ].join("\n"),
+      },
+      "zh"
+    );
+    const todaySummary = buildToolResultSummary(
+      {
+        index: 1,
+        name: "get_today_writing",
+        status: "done",
+        result: "188 words today",
+        content: [
+          "今日写作统计（2026-07-07）：",
+          "- 今日更新文档 2 篇，当前共 148 字",
+          "- 今日随记 1 条，共 40 字",
+          "- 可确认合计 188 字",
+        ].join("\n"),
+      },
+      "zh"
+    );
+    const recentSummary = buildToolResultSummary(
+      {
+        index: 2,
+        name: "list_recent_documents",
+        status: "done",
+        result: "5 docs",
+        content: "用户最近 5 篇文档：\n1. 《第一章》— 1200 字，最后修改 2026-07-07",
+      },
+      "zh"
+    );
+
+    assert.match(statsSummary, /文档 12 篇/);
+    assert.match(statsSummary, /随记 3 条/);
+    assert.match(statsSummary, /脑库 4 条/);
+    assert.match(todaySummary, /今日 188 字/);
+    assert.match(todaySummary, /文档 2 篇/);
+    assert.match(recentSummary, /第一章/);
   });
 
   it("builds valid follow-up messages even when streamed tool call ids are missing", () => {

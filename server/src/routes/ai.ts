@@ -19,6 +19,7 @@ import { formatLocalDateKey, getLocalDayRange } from "../services/writingStats";
 import {
   buildToolFallbackReply,
   buildToolFollowUpMessages,
+  buildToolResultSummary,
   shouldUseToolFallbackReply,
   type AssistantToolResult,
 } from "../services/aiToolConversation";
@@ -1061,7 +1062,7 @@ router.post("/chat", async (req: Request, res: Response) => {
 
     // Execute any accumulated tool calls (native function calling)
     const toolResults: AssistantToolResult[] = [];
-    let toolCallResults: { index: number; name: string; status: string; result?: string }[] = [];
+    let toolCallResults: { index: number; name: string; status: string; result?: string; summary?: string }[] = [];
     if (accumulatedToolCalls.length > 0) {
       console.log("[AI] Tool calls detected:", accumulatedToolCalls.length);
       for (const tc of accumulatedToolCalls) {
@@ -1231,6 +1232,7 @@ router.post("/chat", async (req: Request, res: Response) => {
         } catch (err) {
           console.error("[AI] Tool execution error:", err);
           const errMsg = err instanceof Error ? err.message : String(err);
+          resultMsg = errMsg;
           toolResults.push({
             index: toolCallIndex,
             name: tc.name,
@@ -1239,8 +1241,10 @@ router.post("/chat", async (req: Request, res: Response) => {
             content: `Error: ${tc.name} failed. ${errMsg}`,
           });
         }
-        toolCallResults.push({ index: toolCallIndex, name: tc.name, status, result: resultMsg });
-        emitSse("tool_call", { index: toolCallIndex, id: tc.id, name: tc.name, arguments: tc.arguments, status, result: resultMsg });
+        const toolResult = toolResults.find((result) => result.index === toolCallIndex);
+        const summary = toolResult ? buildToolResultSummary(toolResult, userLang) : undefined;
+        toolCallResults.push({ index: toolCallIndex, name: tc.name, status, result: resultMsg, summary });
+        emitSse("tool_call", { index: toolCallIndex, id: tc.id, name: tc.name, arguments: tc.arguments, status, result: resultMsg, summary });
       }
     }
 
