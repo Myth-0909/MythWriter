@@ -45,6 +45,14 @@ describe("ai assistant branding", () => {
     assert.doesNotMatch(prompt, /优先使用 update_document 函数工具/);
   });
 
+  it("asks normal chat replies to use safe HTML fragments without changing document action content", () => {
+    const prompt = buildSystemPrompt("normal", "");
+
+    assert.match(prompt, /安全 HTML 片段/);
+    assert.match(prompt, /h2、h3、p、ul、ol、li、blockquote、strong、em、code、pre、table/);
+    assert.match(prompt, /完整的 Markdown 格式文档内容/);
+  });
+
   it("uses preview wording for document update actions", () => {
     const rawReply = [
       "<<ACTION_JSON>>",

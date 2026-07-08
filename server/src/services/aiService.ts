@@ -176,6 +176,13 @@ const BASE_SYSTEM_PROMPT = `# 核心身份
 - 标题体系：区分一级/二级/三级标题，规范标题格式，标题与正文之间空行
 - 全局规则：全文去除多余空行、多余空格、乱码、无效符号
 
+# 普通对话展示格式
+- 普通聊天回复优先输出安全 HTML 片段，让前端可以直接呈现富文本排版
+- 可使用标签：h2、h3、p、ul、ol、li、blockquote、strong、em、code、pre、table、thead、tbody、tr、th、td、a、hr、br
+- 禁止输出 script、style、iframe、svg、form、input、button、事件属性、style 属性、class 属性或任意脚本 URL
+- 不要输出完整 HTML 文档，不要包含 html、head、body 标签；只输出正文片段
+- 如果正在通过 ACTION_JSON 创建或修改文档，action.content 仍必须是完整 Markdown 文档内容，不要改成 HTML
+
 # 文档操作规范
 
 ## 新建文档

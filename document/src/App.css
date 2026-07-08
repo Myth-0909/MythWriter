@@ -1010,13 +1010,20 @@ textarea::placeholder {
 
 .ai-chat-markdown {
   word-break: break-word;
+  color: inherit;
+  line-height: 1.72;
+  font-size: 0.92rem;
 }
 
 .ai-chat-markdown p {
-  margin: 0 0 0.5em;
+  margin: 0 0 0.62em;
 }
 
-.ai-chat-markdown p:last-child {
+.ai-chat-markdown :first-child {
+  margin-top: 0;
+}
+
+.ai-chat-markdown :last-child {
   margin-bottom: 0;
 }
 
@@ -1024,18 +1031,45 @@ textarea::placeholder {
 .ai-chat-markdown h2,
 .ai-chat-markdown h3,
 .ai-chat-markdown h4 {
-  margin: 0.6em 0 0.3em;
-  font-weight: 600;
-  line-height: 1.35;
+  margin: 0.8em 0 0.42em;
+  color: #0f172a;
+  font-weight: 750;
+  line-height: 1.28;
+  letter-spacing: 0;
 }
 
-.ai-chat-markdown h1 { font-size: 1.25em; }
-.ai-chat-markdown h2 { font-size: 1.15em; }
-.ai-chat-markdown h3 { font-size: 1.05em; }
+.dark .ai-chat-markdown h1,
+.dark .ai-chat-markdown h2,
+.dark .ai-chat-markdown h3,
+.dark .ai-chat-markdown h4 {
+  color: #f8fafc;
+}
+
+.ai-chat-markdown h1 { font-size: 1.22em; }
+.ai-chat-markdown h2 {
+  display: flex;
+  align-items: center;
+  gap: 0.45em;
+  font-size: 1.14em;
+}
+.ai-chat-markdown h2::before {
+  content: "";
+  width: 0.34em;
+  height: 1.1em;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #d4b265, #0f9f8f);
+  flex: 0 0 auto;
+}
+.ai-chat-markdown h3 { font-size: 1.04em; }
 .ai-chat-markdown h4 { font-size: 1em; }
 
 .ai-chat-markdown strong {
-  font-weight: 600;
+  color: #0f172a;
+  font-weight: 750;
+}
+
+.dark .ai-chat-markdown strong {
+  color: #f8fafc;
 }
 
 .ai-chat-markdown em {
@@ -1049,40 +1083,82 @@ textarea::placeholder {
 
 .ai-chat-markdown ul,
 .ai-chat-markdown ol {
-  padding-left: 1.4em;
-  margin: 0.3em 0 0.5em;
+  padding-left: 0;
+  margin: 0.45em 0 0.68em;
 }
 
-.ai-chat-markdown ul { list-style-type: disc; }
-.ai-chat-markdown ol { list-style-type: decimal; }
+.ai-chat-markdown ul,
+.ai-chat-markdown ol {
+  list-style: none;
+}
 
 .ai-chat-markdown li {
-  margin-bottom: 0.15em;
-  line-height: 1.5;
+  position: relative;
+  margin-bottom: 0.36em;
+  padding-left: 1.32em;
+  line-height: 1.62;
 }
 
-.ai-chat-markdown ul ul { list-style-type: circle; }
+.ai-chat-markdown li::before {
+  position: absolute;
+  left: 0.15em;
+  top: 0.72em;
+  width: 0.42em;
+  height: 0.42em;
+  border-radius: 999px;
+  background: #0f9f8f;
+  box-shadow: 0 0 0 3px rgba(15, 159, 143, 0.12);
+  content: "";
+}
+
+.ai-chat-markdown ol {
+  counter-reset: ai-chat-list;
+}
+
+.ai-chat-markdown ol > li {
+  counter-increment: ai-chat-list;
+  padding-left: 1.72em;
+}
+
+.ai-chat-markdown ol > li::before {
+  top: 0.15em;
+  display: inline-flex;
+  width: 1.35em;
+  height: 1.35em;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: rgba(185, 149, 78, 0.15);
+  box-shadow: none;
+  color: #9a6d1e;
+  content: counter(ai-chat-list);
+  font-size: 0.72em;
+  font-weight: 800;
+}
 
 .ai-chat-markdown code {
-  background: rgba(0, 0, 0, 0.06);
-  color: #c7254e;
-  padding: 0.1em 0.35em;
-  border-radius: 4px;
+  border: 1px solid rgba(185, 149, 78, 0.26);
+  background: rgba(185, 149, 78, 0.11);
+  color: #845a16;
+  padding: 0.12em 0.38em;
+  border-radius: 6px;
   font-size: 0.88em;
   font-family: "JetBrains Mono", "Fira Code", "Cascadia Code", monospace;
 }
 
 .dark .ai-chat-markdown code {
-  background: rgba(255, 255, 255, 0.1);
-  color: #f87171;
+  border-color: rgba(216, 189, 115, 0.24);
+  background: rgba(216, 189, 115, 0.12);
+  color: #f0d78b;
 }
 
 .ai-chat-markdown pre {
-  background: #1e293b;
-  color: #e2e8f0;
-  padding: 0.75em 1em;
-  border-radius: 8px;
-  margin: 0.4em 0 0.5em;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  background: #111827;
+  color: #e5e7eb;
+  padding: 0.9em 1em;
+  border-radius: 12px;
+  margin: 0.56em 0 0.75em;
   overflow-x: auto;
   font-family: "JetBrains Mono", "Fira Code", "Cascadia Code", monospace;
   font-size: 0.85em;
@@ -1090,7 +1166,8 @@ textarea::placeholder {
 }
 
 .dark .ai-chat-markdown pre {
-  background: #0c1322;
+  border-color: rgba(255, 255, 255, 0.08);
+  background: #070d18;
 }
 
 .ai-chat-markdown pre code {
@@ -1102,22 +1179,25 @@ textarea::placeholder {
 }
 
 .ai-chat-markdown blockquote {
-  border-left: 3px solid #b9954e;
-  padding: 0.3em 0.8em;
-  margin: 0.4em 0;
-  color: #64748b;
-  font-style: italic;
+  border-left: 3px solid #0f9f8f;
+  border-radius: 0 10px 10px 0;
+  background: linear-gradient(90deg, rgba(15, 159, 143, 0.1), rgba(15, 159, 143, 0.02));
+  padding: 0.55em 0.85em;
+  margin: 0.56em 0;
+  color: #475569;
+  font-style: normal;
 }
 
 .dark .ai-chat-markdown blockquote {
-  border-left-color: #d8bd73;
-  color: #94a3b8;
+  border-left-color: #34d4bd;
+  background: linear-gradient(90deg, rgba(52, 212, 189, 0.12), rgba(52, 212, 189, 0.03));
+  color: #cbd5e1;
 }
 
 .ai-chat-markdown hr {
   border: none;
-  border-top: 1px solid #e2e8f0;
-  margin: 0.6em 0;
+  border-top: 1px solid rgba(148, 163, 184, 0.38);
+  margin: 0.78em 0;
 }
 
 .dark .ai-chat-markdown hr {
@@ -1125,27 +1205,34 @@ textarea::placeholder {
 }
 
 .ai-chat-markdown a {
-  color: #2563eb;
+  color: #0f766e;
+  font-weight: 650;
   text-decoration: underline;
-  text-underline-offset: 2px;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
 }
 
 .dark .ai-chat-markdown a {
-  color: #60a5fa;
+  color: #5eead4;
 }
 
 .ai-chat-markdown table {
+  display: block;
   border-collapse: collapse;
   width: 100%;
-  margin: 0.4em 0;
+  max-width: 100%;
+  margin: 0.56em 0;
+  overflow-x: auto;
   font-size: 0.9em;
+  border-radius: 12px;
 }
 
 .ai-chat-markdown th,
 .ai-chat-markdown td {
-  border: 1px solid #e2e8f0;
-  padding: 0.3em 0.6em;
+  border: 1px solid rgba(148, 163, 184, 0.34);
+  padding: 0.48em 0.64em;
   text-align: left;
+  vertical-align: top;
 }
 
 .dark .ai-chat-markdown th,
@@ -1154,8 +1241,9 @@ textarea::placeholder {
 }
 
 .ai-chat-markdown th {
-  background: rgba(0, 0, 0, 0.04);
-  font-weight: 600;
+  background: rgba(15, 159, 143, 0.08);
+  color: #0f172a;
+  font-weight: 750;
 }
 
 /* ==================== Ant Design X Overrides ==================== */
@@ -1204,5 +1292,6 @@ textarea::placeholder {
 }
 
 .dark .ai-chat-markdown th {
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(52, 212, 189, 0.1);
+  color: #f8fafc;
 }

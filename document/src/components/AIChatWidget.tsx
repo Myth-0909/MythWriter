@@ -13,8 +13,8 @@ import { useToast } from "@/components/Toast";
 import { useDocuments } from "@/store";
 import { useAuth } from "@/auth";
 import { api } from "@/api";
+import { renderAiChatHtml } from "@/lib/aiChatHtml";
 import { markdownToHtml } from "@/lib/markdown";
-import { sanitizeHtml } from "@/lib/html";
 import { API_BASE, getServerAssetUrl } from "@/lib/apiBase";
 import {
   AI_CHAT_TYPEWRITER_INTERVAL_MS,
@@ -2057,8 +2057,8 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
                             )}
 
                             <div
-                              className="ai-chat-markdown prose prose-sm max-w-none dark:prose-invert"
-                              dangerouslySetInnerHTML={{ __html: sanitizeHtml(markdownToHtml(msg.content)) }}
+                              className="ai-chat-markdown"
+                              dangerouslySetInnerHTML={{ __html: renderAiChatHtml(msg.content) }}
                             />
                             {msg.interrupted && (
                               <div className="mt-2 inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-600 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300">
@@ -2121,7 +2121,7 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
                                   e.stopPropagation();
                                   try {
                                     const div = document.createElement("div");
-                                    div.innerHTML = markdownToHtml(assistantActionContent);
+                                    div.innerHTML = renderAiChatHtml(assistantActionContent);
                                     const text = div.textContent || div.innerText || assistantActionContent;
                                     await navigator.clipboard.writeText(text);
                                     setCopiedMsgIdx(i);
