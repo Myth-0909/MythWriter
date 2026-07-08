@@ -4,7 +4,11 @@ import {
   buildToolFallbackReply,
   buildToolFollowUpMessages,
   buildToolResultSummary,
+  endsWithDsmlToolCallEnd,
   extractDsmlToolCalls,
+  isDsmlToolCallStart,
+  isDsmlToolCallStartPrefix,
+  shouldPreferTodayWritingTool,
   shouldUseToolFallbackReply,
   type AssistantToolCall,
   type AssistantToolResult,
@@ -27,6 +31,27 @@ describe("ai tool conversation helpers", () => {
     assert.deepEqual(parsed.toolCalls, [
       { id: "", name: "get_today_writing", arguments: "{}" },
     ]);
+  });
+
+  it("extracts DSML tool calls written with full-width double bars", () => {
+    const parsed = extractDsmlToolCalls('<｜｜DSML｜｜tool_calls> <｜｜DSML｜｜invoke name="get_user_stats"> </｜｜DSML｜｜invoke> </｜｜DSML｜｜tool_calls>');
+
+    assert.equal(parsed.cleanContent, "");
+    assert.deepEqual(parsed.toolCalls, [
+      { id: "", name: "get_user_stats", arguments: "{}" },
+    ]);
+  });
+
+  it("identifies malformed DSML prefixes and endings for stream filtering", () => {
+    assert.equal(isDsmlToolCallStartPrefix("<｜｜DSM"), true);
+    assert.equal(isDsmlToolCallStart("<｜｜DSML｜｜tool_calls>"), true);
+    assert.equal(endsWithDsmlToolCallEnd("body </｜｜DSML｜｜tool_calls>"), true);
+  });
+
+  it("prefers today's writing tool for today's generated article count questions", () => {
+    assert.equal(shouldPreferTodayWritingTool("我今天一共生成了多少文章？"), true);
+    assert.equal(shouldPreferTodayWritingTool("今天写了多少篇文章？"), true);
+    assert.equal(shouldPreferTodayWritingTool("我一共有多少文章？"), false);
   });
 
   it("turns writing-stat tool results into a concrete fallback answer", () => {
@@ -77,6 +102,7 @@ describe("ai tool conversation helpers", () => {
         result: "188 words in touched items today",
         content: [
           "今日写作统计（2026-07-07）：",
+          "- 今日新建文档 1 篇",
           "- 今日更新文档 2 篇，当前共 148 字",
           "- 今日随记 1 条，共 40 字",
           "- 可确认合计 188 字",
@@ -87,6 +113,7 @@ describe("ai tool conversation helpers", () => {
     const reply = buildToolFallbackReply(results, "zh");
 
     assert.match(reply, /今日更新文档 2 篇/);
+    assert.match(reply, /今日新建文档 1 篇/);
     assert.match(reply, /当前共 148 字/);
     assert.doesNotMatch(reply, /新增/);
   });

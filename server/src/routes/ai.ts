@@ -21,7 +21,11 @@ import {
   buildToolFallbackReply,
   buildToolFollowUpMessages,
   buildToolResultSummary,
+  endsWithDsmlToolCallEnd,
   extractDsmlToolCalls,
+  isDsmlToolCallStart,
+  isDsmlToolCallStartPrefix,
+  shouldPreferTodayWritingTool,
   shouldUseToolFallbackReply,
   type AssistantToolCall,
   type AssistantToolResult,
@@ -386,10 +390,13 @@ async function executeChatToolCalls(params: {
       } else if (toolCall.name === "get_today_writing") {
         const todayRange = getLocalDayRange();
         const todayStr = formatLocalDateKey(todayRange.start);
-        const [todayDocs, todayJournals] = await Promise.all([
+        const [todayDocs, todayCreatedDocCount, todayJournals] = await Promise.all([
           prisma.document.findMany({
             where: { userId: params.userId, isDeleted: false, updatedAt: { gte: todayRange.start, lt: todayRange.end } },
             select: { content: true },
+          }),
+          prisma.document.count({
+            where: { userId: params.userId, isDeleted: false, createdAt: { gte: todayRange.start, lt: todayRange.end } },
           }),
           prisma.workRecord.findMany({
             where: { userId: params.userId, targetDate: todayStr },
@@ -402,11 +409,11 @@ async function executeChatToolCalls(params: {
           index: toolCallIndex,
           name: toolCall.name,
           status: "done",
-          result: `${todayDocs.length} docs touched, ${todayJournals.length} journals, ${docWords + journalWords} words in touched items today`,
-          content: `今日写作统计（${todayStr}）：\n- 今日更新文档 ${todayDocs.length} 篇，当前共 ${docWords} 字\n- 今日随记 ${todayJournals.length} 条，共 ${journalWords} 字\n- 可确认合计 ${docWords + journalWords} 字`,
+          result: `${todayCreatedDocCount} docs created, ${todayDocs.length} docs touched, ${todayJournals.length} journals, ${docWords + journalWords} words in touched items today`,
+          content: `今日写作统计（${todayStr}）：\n- 今日新建文档 ${todayCreatedDocCount} 篇\n- 今日更新文档 ${todayDocs.length} 篇，当前共 ${docWords} 字\n- 今日随记 ${todayJournals.length} 条，共 ${journalWords} 字\n- 可确认合计 ${docWords + journalWords} 字`,
         });
         status = "done";
-        resultMsg = `${todayDocs.length} docs touched, ${todayJournals.length} journals, ${docWords + journalWords} words in touched items today`;
+        resultMsg = `${todayCreatedDocCount} docs created, ${todayDocs.length} docs touched, ${todayJournals.length} journals, ${docWords + journalWords} words in touched items today`;
       }
     } catch (err) {
       console.error("[AI] Tool execution error:", err);
@@ -1013,8 +1020,6 @@ router.post("/chat", async (req: Request, res: Response) => {
     // Real-time token forwarding with action marker filtering
     const ACTION_START = "<<ACTION_JSON>>";
     const ACTION_END = "<<ACTION_JSON_END>>";
-    const DSML_TOOL_START = "<|DSML|tool_calls>";
-    const DSML_TOOL_END = "</|DSML|tool_calls>";
     let actionBuffer = "";
     let inAction = false;
     let dsmlBuffer = "";
@@ -1057,7 +1062,7 @@ router.post("/chat", async (req: Request, res: Response) => {
       }
       if (inDsmlToolCalls) {
         dsmlBuffer += char;
-        if (dsmlBuffer.endsWith(DSML_TOOL_END)) {
+        if (endsWithDsmlToolCallEnd(dsmlBuffer)) {
           inDsmlToolCalls = false;
           dsmlBuffer = "";
         }
@@ -1071,7 +1076,7 @@ router.post("/chat", async (req: Request, res: Response) => {
         pendingChars = "";
         return;
       }
-      if (pendingChars === DSML_TOOL_START) {
+      if (isDsmlToolCallStart(pendingChars)) {
         inDsmlToolCalls = true;
         dsmlBuffer = pendingChars;
         pendingChars = "";
@@ -1081,7 +1086,7 @@ router.post("/chat", async (req: Request, res: Response) => {
       while (
         pendingChars &&
         !ACTION_START.startsWith(pendingChars) &&
-        !DSML_TOOL_START.startsWith(pendingChars)
+        !isDsmlToolCallStartPrefix(pendingChars)
       ) {
         forwardDelta(pendingChars[0]);
         pendingChars = pendingChars.slice(1);
@@ -1166,7 +1171,13 @@ router.post("/chat", async (req: Request, res: Response) => {
     }
 
     // Flush any remaining pending characters (that weren't part of an action marker)
-    if (pendingChars && !inAction && !inDsmlToolCalls) {
+    if (
+      pendingChars &&
+      !inAction &&
+      !inDsmlToolCalls &&
+      !ACTION_START.startsWith(pendingChars) &&
+      !isDsmlToolCallStartPrefix(pendingChars)
+    ) {
       forwardDelta(pendingChars);
     }
     // If we ended mid-action, the pending chars are part of the action — append to fullContent but don't forward
@@ -1225,6 +1236,25 @@ router.post("/chat", async (req: Request, res: Response) => {
         });
       }
       console.log("[AI] DSML tool calls detected:", dsmlToolCallParse.toolCalls.length);
+    }
+
+    if (shouldPreferTodayWritingTool(lastUserMsg.content)) {
+      const hasTodayWritingTool = accumulatedToolCalls.some((toolCall) => toolCall?.name === "get_today_writing");
+      if (!hasTodayWritingTool) {
+        const statsToolIndex = accumulatedToolCalls.findIndex((toolCall) => toolCall?.name === "get_user_stats");
+        const forcedToolCall = {
+          id: statsToolIndex >= 0 ? accumulatedToolCalls[statsToolIndex].id : "",
+          name: "get_today_writing",
+          arguments: "{}",
+        };
+        const forcedIndex = statsToolIndex >= 0 ? statsToolIndex : accumulatedToolCalls.length;
+        accumulatedToolCalls[forcedIndex] = forcedToolCall;
+        emitToolCall(forcedIndex, forcedToolCall.name, "calling", {
+          id: forcedToolCall.id,
+          arguments: forcedToolCall.arguments,
+        });
+        console.log("[AI] Forced get_today_writing for today's article count question");
+      }
     }
 
     // Execute any accumulated tool calls (native function calling)

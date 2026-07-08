@@ -40,6 +40,7 @@ type ParsedUserStats = {
 
 type ParsedTodayWriting = {
   date?: string;
+  createdDocCount?: number;
   docCount?: number;
   docWords?: number;
   journalCount?: number;
@@ -77,10 +78,40 @@ function normalizeToolArguments(value: string | undefined): string {
   }
 }
 
+const DSML_OPEN_ANGLE = ["<", "＜"];
+const DSML_CLOSE_ANGLE = [">", "＞"];
+const DSML_PIPE_PAIRS = ["|", "||", "｜", "｜｜"];
+
+function buildDsmlToolMarkers(closing: boolean): string[] {
+  return DSML_OPEN_ANGLE.flatMap((open) => (
+    DSML_CLOSE_ANGLE.flatMap((close) => (
+      DSML_PIPE_PAIRS.map((pipes) => `${open}${closing ? "/" : ""}${pipes}DSML${pipes}tool_calls${close}`)
+    ))
+  ));
+}
+
+const DSML_TOOL_START_MARKERS = buildDsmlToolMarkers(false);
+const DSML_TOOL_END_PATTERN = /[<＜]\s*\/\s*[|｜]{1,2}\s*DSML\s*[|｜]{1,2}\s*tool_calls\s*[>＞]\s*$/;
+const DSML_TOOL_BLOCK_PATTERN = /[<＜]\s*[|｜]{1,2}\s*DSML\s*[|｜]{1,2}\s*tool_calls\s*[>＞]([\s\S]*?)(?:[<＜]\s*\/\s*[|｜]{1,2}\s*DSML\s*[|｜]{1,2}\s*tool_calls\s*[>＞]|$)/g;
+const DSML_INVOKE_PATTERN = /[<＜]\s*[|｜]{1,2}\s*DSML\s*[|｜]{1,2}\s*invoke\b([^>＞]*)[>＞]([\s\S]*?)(?:[<＜]\s*\/\s*[|｜]{1,2}\s*DSML\s*[|｜]{1,2}\s*invoke\s*[>＞]|(?=[<＜]\s*[|｜]{1,2}\s*DSML\s*[|｜]{1,2}\s*invoke\b)|$)/g;
+
+export function isDsmlToolCallStartPrefix(value: string): boolean {
+  if (!value) return false;
+  return DSML_TOOL_START_MARKERS.some((marker) => marker.startsWith(value));
+}
+
+export function isDsmlToolCallStart(value: string): boolean {
+  return DSML_TOOL_START_MARKERS.includes(value);
+}
+
+export function endsWithDsmlToolCallEnd(value: string): boolean {
+  return DSML_TOOL_END_PATTERN.test(value);
+}
+
 export function extractDsmlToolCalls(content: string): { cleanContent: string; toolCalls: AssistantToolCall[] } {
   const toolCalls: AssistantToolCall[] = [];
-  const cleanContent = content.replace(/<\|DSML\|tool_calls>([\s\S]*?)(?:<\/\|DSML\|tool_calls>|$)/g, (_block, body: string) => {
-    for (const invoke of String(body || "").matchAll(/<\|DSML\|invoke\b([^>]*)>([\s\S]*?)(?:<\/\|DSML\|invoke>|(?=<\|DSML\|invoke\b)|$)/g)) {
+  const cleanContent = content.replace(DSML_TOOL_BLOCK_PATTERN, (_block, body: string) => {
+    for (const invoke of String(body || "").matchAll(DSML_INVOKE_PATTERN)) {
       const attrs = parseAttributes(invoke[1] || "");
       const name = String(attrs.name || "").trim();
       if (!name) continue;
@@ -94,6 +125,16 @@ export function extractDsmlToolCalls(content: string): { cleanContent: string; t
     return "";
   }).trim();
   return { cleanContent, toolCalls };
+}
+
+export function shouldPreferTodayWritingTool(content: string): boolean {
+  const normalized = String(content || "").toLowerCase().replace(/\s+/g, "");
+  if (!normalized) return false;
+  const asksToday = /今天|今日|本日|today/.test(normalized);
+  const asksCount = /多少|几|一共|总共|合计|howmany|count/.test(normalized);
+  const mentionsWritingArtifact = /文章|文档|稿件|篇|article|document|doc|piece/.test(normalized);
+  const mentionsTodayActivity = /生成|创建|新建|写了|写作|产出|更新|create|created|generate|generated|write|wrote|written|touch|touched/.test(normalized);
+  return asksToday && asksCount && mentionsWritingArtifact && mentionsTodayActivity;
 }
 
 function parseNumber(value: string | undefined): number | undefined {
@@ -123,6 +164,7 @@ function parseUserStats(content: string): ParsedUserStats | null {
 
 function parseTodayWriting(content: string): ParsedTodayWriting | null {
   if (!content.includes("今日写作统计")) return null;
+  const createdMatch = content.match(/今日新建文档\s*([\d,]+)\s*篇/);
   const docMatch =
     content.match(/今日更新文档\s*([\d,]+)\s*篇，当前共\s*([\d,]+)\s*字/) ||
     content.match(/修改文档\s*([\d,]+)\s*篇，新增\s*([\d,]+)\s*字/);
@@ -131,6 +173,7 @@ function parseTodayWriting(content: string): ParsedTodayWriting | null {
     content.match(/随记\s*([\d,]+)\s*条，共\s*([\d,]+)\s*字/);
   return {
     date: content.match(/今日写作统计（([^）]+)）/)?.[1],
+    createdDocCount: parseNumber(createdMatch?.[1]),
     docCount: parseNumber(docMatch?.[1]),
     docWords: parseNumber(docMatch?.[2]),
     journalCount: parseNumber(journalMatch?.[1]),
@@ -177,10 +220,16 @@ function buildKnownToolLines(results: AssistantToolResult[], lang: string): stri
   const lines: string[] = [];
   if (today) {
     const total = today.totalWords ?? (today.docWords ?? 0) + (today.journalWords ?? 0);
+    const createdDocLine = today.createdDocCount !== undefined
+      ? `今日新建文档 ${formatNumber(today.createdDocCount)} 篇；`
+      : "";
+    const createdDocLineEn = today.createdDocCount !== undefined
+      ? `${formatNumber(today.createdDocCount)} documents created today; `
+      : "";
     lines.push(t(
       lang,
-      `- 今天（${today.date || "今日"}）：今日更新文档 ${formatNumber(today.docCount)} 篇，当前共 ${formatNumber(today.docWords)} 字；今日随记 ${formatNumber(today.journalCount)} 条，共 ${formatNumber(today.journalWords)} 字；可确认合计 ${formatNumber(total)} 字。`,
-      `- Today (${today.date || "today"}): ${formatNumber(today.docCount)} documents touched, currently ${formatNumber(today.docWords)} document words; ${formatNumber(today.journalCount)} journal entries, ${formatNumber(today.journalWords)} words; ${formatNumber(total)} confirmed words in touched items.`
+      `- 今天（${today.date || "今日"}）：${createdDocLine}今日更新文档 ${formatNumber(today.docCount)} 篇，当前共 ${formatNumber(today.docWords)} 字；今日随记 ${formatNumber(today.journalCount)} 条，共 ${formatNumber(today.journalWords)} 字；可确认合计 ${formatNumber(total)} 字。`,
+      `- Today (${today.date || "today"}): ${createdDocLineEn}${formatNumber(today.docCount)} documents touched, currently ${formatNumber(today.docWords)} document words; ${formatNumber(today.journalCount)} journal entries, ${formatNumber(today.journalWords)} words; ${formatNumber(total)} confirmed words in touched items.`
     ));
   }
 
@@ -238,10 +287,13 @@ export function buildToolResultSummary(result: AssistantToolResult, lang: string
   const today = parseTodayWriting(result.content);
   if (today) {
     const total = today.totalWords ?? (today.docWords ?? 0) + (today.journalWords ?? 0);
+    const createdDocPart = today.createdDocCount !== undefined
+      ? t(lang, ` · 新建 ${formatNumber(today.createdDocCount)} 篇`, ` · ${formatNumber(today.createdDocCount)} created`)
+      : "";
     return t(
       lang,
-      `今日 ${formatNumber(total)} 字 · 文档 ${formatNumber(today.docCount)} 篇 · 随记 ${formatNumber(today.journalCount)} 条`,
-      `${formatNumber(total)} words today · ${formatNumber(today.docCount)} docs · ${formatNumber(today.journalCount)} journals`
+      `今日 ${formatNumber(total)} 字${createdDocPart} · 文档 ${formatNumber(today.docCount)} 篇 · 随记 ${formatNumber(today.journalCount)} 条`,
+      `${formatNumber(total)} words today${createdDocPart} · ${formatNumber(today.docCount)} docs · ${formatNumber(today.journalCount)} journals`
     );
   }
 
