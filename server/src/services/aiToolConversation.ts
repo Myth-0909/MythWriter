@@ -269,10 +269,38 @@ function collectEvidenceTokens(results: AssistantToolResult[]): string[] {
   });
 }
 
+function hasCountWithWritingUnit(reply: string, count: number | undefined): boolean {
+  if (count === undefined) return true;
+  const compact = reply.replace(/\s+/g, "").toLowerCase();
+  const variants = Array.from(new Set([
+    String(count),
+    formatNumber(count),
+    formatNumber(count).replace(/,/g, ""),
+  ])).filter(Boolean).map((value) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  const zhUnit = "(?:文档|文章|稿件|篇)";
+  const enUnit = "(?:docs?|documents?|articles?|pieces?)";
+  return variants.some((value) => (
+    new RegExp(`(?:${zhUnit})[^\\d]{0,8}${value}(?:篇|个)?`).test(compact) ||
+    new RegExp(`${value}(?:篇|个)?[^\\d]{0,8}(?:${zhUnit})`).test(compact) ||
+    new RegExp(`(?:${enUnit})[^\\d]{0,8}${value}`).test(compact) ||
+    new RegExp(`${value}[^\\d]{0,8}(?:${enUnit})`).test(compact)
+  ));
+}
+
+function missesRequiredTodayWritingCount(reply: string, results: AssistantToolResult[]): boolean {
+  const today = results
+    .map((result) => parseTodayWriting(result.content))
+    .find((parsed): parsed is ParsedTodayWriting => Boolean(parsed));
+  if (!today) return false;
+  return !hasCountWithWritingUnit(reply, today.docCount);
+}
+
 export function shouldUseToolFallbackReply(reply: string, results: AssistantToolResult[]): boolean {
   const normalized = reply.trim().replace(/\s+/g, " ").toLowerCase();
   if (!normalized) return true;
   if (results.length === 0) return false;
+
+  if (missesRequiredTodayWritingCount(reply, results)) return true;
 
   const hasConcreteEvidence = collectEvidenceTokens(results).some((token) => normalized.includes(token));
   if (hasConcreteEvidence) return false;

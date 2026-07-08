@@ -402,11 +402,11 @@ async function executeChatToolCalls(params: {
           index: toolCallIndex,
           name: toolCall.name,
           status: "done",
-          result: `${docWords + journalWords} words in touched items today`,
+          result: `${todayDocs.length} docs touched, ${todayJournals.length} journals, ${docWords + journalWords} words in touched items today`,
           content: `今日写作统计（${todayStr}）：\n- 今日更新文档 ${todayDocs.length} 篇，当前共 ${docWords} 字\n- 今日随记 ${todayJournals.length} 条，共 ${journalWords} 字\n- 可确认合计 ${docWords + journalWords} 字`,
         });
         status = "done";
-        resultMsg = `${docWords + journalWords} words in touched items today`;
+        resultMsg = `${todayDocs.length} docs touched, ${todayJournals.length} journals, ${docWords + journalWords} words in touched items today`;
       }
     } catch (err) {
       console.error("[AI] Tool execution error:", err);

@@ -114,6 +114,26 @@ describe("ai tool conversation helpers", () => {
     assert.equal(shouldUseToolFallbackReply(placeholder, results), true);
   });
 
+  it("rejects today-writing replies that omit the touched document count", () => {
+    const results: AssistantToolResult[] = [
+      {
+        index: 0,
+        name: "get_today_writing",
+        status: "done",
+        result: "2 docs touched, 1 journals, 188 words in touched items today",
+        content: [
+          "今日写作统计（2026-07-07）：",
+          "- 今日更新文档 2 篇，当前共 148 字",
+          "- 今日随记 1 条，共 40 字",
+          "- 可确认合计 188 字",
+        ].join("\n"),
+      },
+    ];
+
+    assert.equal(shouldUseToolFallbackReply("今天你写了 188 字。", results), true);
+    assert.equal(shouldUseToolFallbackReply("今天更新了 2 篇文档，共 188 字。", results), false);
+  });
+
   it("includes recent document clues in fallback writing-state answers", () => {
     const results: AssistantToolResult[] = [
       {
