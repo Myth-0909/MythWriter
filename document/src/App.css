@@ -41,11 +41,11 @@
 }
 
 :root {
-  --font-zn-sans: "DM Serif Display", "Noto Serif SC", "STIX Two Text",
-    "Times New Roman", serif;
+  --font-zn-sans: "DM Serif Display", "Noto Serif SC", "Songti SC", "SimSun",
+    "STIX Two Text", "Times New Roman", serif;
   --font-zn-writing: var(--font-zn-sans);
-  --font-zn-display: "DM Serif Display", "Noto Serif SC", "STIX Two Text",
-    "Times New Roman", serif;
+  --font-zn-display: "DM Serif Display", "Noto Serif SC", "Songti SC", "SimSun",
+    "STIX Two Text", "Times New Roman", serif;
 }
 
 * {

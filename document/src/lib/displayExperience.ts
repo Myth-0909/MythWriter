@@ -16,6 +16,22 @@ export type PageTransitionProfile = {
   blur: string;
 };
 
+export type WorkbenchLayoutClasses = {
+  shell: string;
+  hero: string;
+};
+
+const WORKBENCH_LAYOUT_CLASSES: WorkbenchLayoutClasses = {
+  shell:
+    "grid gap-5 min-[1180px]:grid-cols-[minmax(0,1fr)_minmax(320px,400px)] min-[1440px]:grid-cols-[minmax(0,1.25fr)_420px]",
+  hero:
+    "mt-6 grid items-stretch gap-4 min-[1120px]:grid-cols-[minmax(0,1fr)_minmax(300px,340px)]",
+};
+
+export function getWorkbenchLayoutClasses(): WorkbenchLayoutClasses {
+  return WORKBENCH_LAYOUT_CLASSES;
+}
+
 export function getLoadingPresentation(tone: LoadingTone): LoadingPresentation {
   const presentations: Record<LoadingTone, LoadingPresentation> = {
     document: {

@@ -3,7 +3,7 @@ import type { TranslationKey } from "@/components/I18nProvider";
 export const DEFAULT_FONT_FAMILY_KEY = "current";
 
 export const DEFAULT_PROJECT_FONT_STACK =
-  "\"DM Serif Display\", \"Noto Serif SC\", \"STIX Two Text\", \"Times New Roman\", serif";
+  "\"DM Serif Display\", \"Noto Serif SC\", \"Songti SC\", \"SimSun\", \"STIX Two Text\", \"Times New Roman\", serif";
 
 type FontSource = "current" | "adobe" | "local";
 type FontMood = "serif" | "sans" | "mono" | "handwriting";
@@ -158,7 +158,7 @@ export const FONT_OPTIONS = [
     labelKey: "settings.font.systemUi",
     previewKey: "settings.font.preview.system",
     moodKey: "settings.font.mood.sans",
-    cssFamily: "-apple-system, BlinkMacSystemFont, \"Segoe UI\", \"PingFang SC\", sans-serif",
+    cssFamily: "-apple-system, BlinkMacSystemFont, \"Segoe UI\", \"PingFang SC\", \"Microsoft YaHei\", sans-serif",
     source: "local",
     mood: "sans",
   },

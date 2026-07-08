@@ -72,6 +72,7 @@ import { useToast } from "@/components/Toast";
 import { api } from "@/api";
 import { escapeHtml, sanitizeHtml } from "@/lib/html";
 import { buildDocumentCountSummary, buildImportPreview, buildSearchStatus } from "@/lib/interactionState";
+import { getWorkbenchLayoutClasses } from "@/lib/displayExperience";
 import { cn } from "@/lib/utils";
 import { categoryLabels, type Document, type DocumentCategory, type WorkRecord } from "@/types";
 import { formatFullDateTime, formatRelativeModified } from "@/lib/date";
@@ -844,6 +845,7 @@ export function DocumentCenterPage({
         ? t("documents.workspaceSubtitle")
         : t("documents.subtitle");
   const gridClass = viewMode === "grid" ? "grid grid-cols-2 gap-4 xl:grid-cols-4" : "flex flex-col gap-2";
+  const workbenchLayout = getWorkbenchLayoutClasses();
   const emptyIsSearch = !!debouncedQuery || categoryFilter !== "all";
 
   const openMoveDialog = (docId: string) => {
@@ -888,7 +890,7 @@ export function DocumentCenterPage({
         <LoadingOverlay message={loading ? t("loading.documents") : t("loading.documentAction")} />
       )}
       <div className="mx-auto w-full max-w-[1360px] px-8 py-8 xl:px-10">
-        <div className={cn("grid gap-5", isWorkbench ? "xl:grid-cols-[minmax(0,1.25fr)_440px]" : "grid-cols-1")}>
+        <div className={isWorkbench ? workbenchLayout.shell : "grid grid-cols-1 gap-5"}>
           <section className="relative overflow-hidden rounded-2xl border border-surface-200 bg-white p-7 shadow-sm dark:border-surface-800 dark:bg-[#101826]">
             <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_10%_0%,rgba(185,149,78,0.13),transparent_34%),linear-gradient(90deg,rgba(15,23,42,0.028)_1px,transparent_1px),linear-gradient(0deg,rgba(15,23,42,0.028)_1px,transparent_1px)] bg-[size:auto,32px_32px,32px_32px] dark:bg-[radial-gradient(circle_at_12%_0%,rgba(185,149,78,0.16),transparent_32%),linear-gradient(90deg,rgba(148,163,184,0.035)_1px,transparent_1px),linear-gradient(0deg,rgba(148,163,184,0.035)_1px,transparent_1px)]" />
             <div className="relative">
@@ -944,7 +946,7 @@ export function DocumentCenterPage({
                         {t("documents.workbenchHeroDesc")}
                       </p>
 
-                      <div className="mt-6 grid items-stretch gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
+                      <div className={workbenchLayout.hero}>
                         <div className="relative h-full overflow-hidden rounded-2xl border border-brand-200/70 bg-gradient-to-br from-brand-50 via-white to-surface-50 p-4 shadow-sm dark:border-brand-500/25 dark:from-brand-500/15 dark:via-surface-950/55 dark:to-surface-900/70">
                           <div className="relative flex h-full min-h-[300px] flex-col">
                             <div className="flex flex-1 flex-col">
