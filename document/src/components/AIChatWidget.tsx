@@ -19,7 +19,6 @@ import { API_BASE, getServerAssetUrl } from "@/lib/apiBase";
 import {
   AI_CHAT_TYPEWRITER_INTERVAL_MS,
   canSendAssistantFeedback,
-  filterApiHistoryToolCalls,
   getTypewriterChunkSize,
   normalizeChatToolCallId,
   resolveAssistantActionContent,
@@ -27,6 +26,7 @@ import {
   resolveStoredAssistantContent,
   shouldIncludeAssistantInPrompt,
 } from "@/lib/aiChatStream";
+import { toApiMessages, type ToolCallEvent } from "@/lib/aiChatApiMessages";
 import {
   buildToolMemoryContent,
   resolveActionDisplayContent,
@@ -303,8 +303,6 @@ function escapeRegExp(value: string): string {
 }
 
 
-type ToolCallEvent = { index: number; id?: string; name: string; arguments?: string; status: string; result?: string; summary?: string; content?: string };
-
 function parseToolArguments(value?: string): Record<string, unknown> {
   if (!value) return {};
   try {
@@ -313,56 +311,6 @@ function parseToolArguments(value?: string): Record<string, unknown> {
   } catch {
     return {};
   }
-}
-
-// Convert UI Message objects to clean API format, including tool call history
-export function toApiMessages(messages: { role: string; content: string; finalContent?: string; interrupted?: boolean; toolCalls?: ToolCallEvent[]; tool_call_id?: string }[]): { role: string; content: string; tool_calls?: any[]; tool_call_id?: string; name?: string }[] {
-  const result: any[] = [];
-  const emittedToolResultIds = new Set<string>();
-  for (const m of messages) {
-    if (m.role === "tool") {
-      const rawToolCallId = String(m.tool_call_id || "").trim();
-      if (!rawToolCallId) continue;
-      const toolCallId = normalizeChatToolCallId({ id: rawToolCallId }, result.length);
-      if (!emittedToolResultIds.has(toolCallId)) {
-        emittedToolResultIds.add(toolCallId);
-        result.push({ role: "tool", tool_call_id: toolCallId, content: m.content });
-      }
-    } else if (m.role === "assistant" && !shouldIncludeAssistantInPrompt({
-      content: m.content,
-      finalContent: m.finalContent,
-      interrupted: m.interrupted,
-    })) {
-      continue;
-    } else if (m.role === "assistant" && m.toolCalls && m.toolCalls.length > 0) {
-      const assistantContent = resolveStoredAssistantContent({ displayContent: m.content, finalContent: m.finalContent });
-      const apiToolCalls = filterApiHistoryToolCalls(m.toolCalls);
-      if (apiToolCalls.length === 0) {
-        result.push({ role: "assistant", content: assistantContent || "" });
-        continue;
-      }
-      // Build assistant message with tool_calls in API format
-      result.push({
-        role: "assistant",
-        content: assistantContent || "",
-        tool_calls: apiToolCalls.map((tc, i) => ({
-          id: normalizeChatToolCallId(tc, i),
-          type: "function",
-          function: { name: tc.name, arguments: tc.arguments || "{}" },
-        })),
-      });
-      // Append tool result messages
-      for (const tc of apiToolCalls) {
-        const toolContent = buildToolMemoryContent(tc);
-        const toolCallId = normalizeChatToolCallId(tc, tc.index);
-        emittedToolResultIds.add(toolCallId);
-        result.push({ role: "tool", tool_call_id: toolCallId, content: toolContent });
-      }
-    } else {
-      result.push({ role: m.role, content: resolveStoredAssistantContent({ displayContent: m.content, finalContent: m.finalContent }) });
-    }
-  }
-  return result;
 }
 
 async function streamChat(

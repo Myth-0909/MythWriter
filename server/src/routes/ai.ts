@@ -23,6 +23,7 @@ import {
   buildToolResultSummary,
   extractDsmlToolCalls,
   shouldUseToolFallbackReply,
+  type AssistantToolCall,
   type AssistantToolResult,
 } from "../services/aiToolConversation";
 
@@ -288,6 +289,156 @@ async function buildBrainKnowledgeContext(userId: string, text: string, referenc
     console.error("Build brain knowledge context error:", err);
     return "";
   }
+}
+
+type ChatToolExecutionEvent = {
+  index: number;
+  id?: string;
+  name: string;
+  arguments?: string;
+  status: string;
+  result?: string;
+  summary?: string;
+  content?: string;
+};
+
+async function executeChatToolCalls(params: {
+  toolCalls: (AssistantToolCall | undefined)[];
+  userId: string;
+  userLang: string;
+  emitResult?: (event: ChatToolExecutionEvent) => void;
+}): Promise<{ toolResults: AssistantToolResult[]; toolCallResults: ChatToolExecutionEvent[] }> {
+  const toolResults: AssistantToolResult[] = [];
+  const toolCallResults: ChatToolExecutionEvent[] = [];
+
+  for (const [toolCallIndex, toolCall] of params.toolCalls.entries()) {
+    if (!toolCall?.name) continue;
+
+    let status = "error";
+    let resultMsg = "";
+    try {
+      if (toolCall.name === "search_web") {
+        const args = JSON.parse(toolCall.arguments || "{}");
+        const query = args.query || "";
+        if (query) {
+          const searchResult = await webSearch(query);
+          toolResults.push({
+            index: toolCallIndex,
+            name: toolCall.name,
+            status: "done",
+            result: query,
+            content: `Web search results for "${query}":\n${searchResult}`,
+          });
+          status = "done";
+          resultMsg = query;
+        }
+      } else if (toolCall.name === "create_document" || toolCall.name === "update_document") {
+        resultMsg = "document writes are handled by client action confirmation";
+        toolResults.push({
+          index: toolCallIndex,
+          name: toolCall.name,
+          status: "error",
+          result: resultMsg,
+          content: `Error: ${toolCall.name} is not available as a direct server tool in chat. Return ACTION_JSON so the client can execute and verify the document action.`,
+        });
+      } else if (toolCall.name === "get_user_stats") {
+        const [docCount, journalCount, groupCount, brainCount] = await Promise.all([
+          prisma.document.count({ where: { userId: params.userId, isDeleted: false } }),
+          prisma.workRecord.count({ where: { userId: params.userId } }),
+          prisma.documentGroup.count({ where: { userId: params.userId } }),
+          prisma.aIBrainKnowledge.count({ where: { userId: params.userId } }),
+        ]);
+        const totalJournalWords = (await prisma.workRecord.findMany({
+          where: { userId: params.userId }, select: { content: true },
+        })).reduce((sum: number, record: { content: string | null }) => sum + (record.content || "").length, 0);
+        toolResults.push({
+          index: toolCallIndex,
+          name: toolCall.name,
+          status: "done",
+          result: `${docCount} docs, ${journalCount} journals`,
+          content: `用户工作区统计：\n- 文档总数：${docCount} 篇\n- 随记总数：${journalCount} 条\n- 随记总字数：${totalJournalWords} 字\n- 文档分组：${groupCount} 个\n- 脑库条目：${brainCount} 条`,
+        });
+        status = "done";
+        resultMsg = `${docCount} docs, ${journalCount} journals`;
+      } else if (toolCall.name === "list_recent_documents") {
+        const args = JSON.parse(toolCall.arguments || "{}");
+        const limit = Math.min(args.limit || 5, 10);
+        const docs = await prisma.document.findMany({
+          where: { userId: params.userId, isDeleted: false },
+          orderBy: { updatedAt: "desc" },
+          take: limit,
+          select: { title: true, updatedAt: true, content: true },
+        });
+        const lines = docs.map((doc: { title: string; updatedAt: Date; content: string | null }, index: number) => {
+          const wordCount = stripHtml(doc.content || "").replace(/\s+/g, "").length;
+          const date = doc.updatedAt.toISOString().slice(0, 10);
+          return `${index + 1}. 《${doc.title}》— ${wordCount} 字，最后修改 ${date}`;
+        });
+        toolResults.push({
+          index: toolCallIndex,
+          name: toolCall.name,
+          status: "done",
+          result: `${docs.length} docs`,
+          content: `用户最近 ${limit} 篇文档：\n${lines.join("\n")}${docs.length === 0 ? "暂无文档" : ""}`,
+        });
+        status = "done";
+        resultMsg = `${docs.length} docs`;
+      } else if (toolCall.name === "get_today_writing") {
+        const todayRange = getLocalDayRange();
+        const todayStr = formatLocalDateKey(todayRange.start);
+        const [todayDocs, todayJournals] = await Promise.all([
+          prisma.document.findMany({
+            where: { userId: params.userId, isDeleted: false, updatedAt: { gte: todayRange.start, lt: todayRange.end } },
+            select: { content: true },
+          }),
+          prisma.workRecord.findMany({
+            where: { userId: params.userId, targetDate: todayStr },
+            select: { content: true },
+          }),
+        ]);
+        const docWords = todayDocs.reduce((sum: number, doc: { content: string | null }) => sum + stripHtml(doc.content || "").replace(/\s+/g, "").length, 0);
+        const journalWords = todayJournals.reduce((sum: number, record: { content: string | null }) => sum + (record.content || "").length, 0);
+        toolResults.push({
+          index: toolCallIndex,
+          name: toolCall.name,
+          status: "done",
+          result: `${docWords + journalWords} words in touched items today`,
+          content: `今日写作统计（${todayStr}）：\n- 今日更新文档 ${todayDocs.length} 篇，当前共 ${docWords} 字\n- 今日随记 ${todayJournals.length} 条，共 ${journalWords} 字\n- 可确认合计 ${docWords + journalWords} 字`,
+        });
+        status = "done";
+        resultMsg = `${docWords + journalWords} words in touched items today`;
+      }
+    } catch (err) {
+      console.error("[AI] Tool execution error:", err);
+      const errMsg = err instanceof Error ? err.message : String(err);
+      resultMsg = errMsg;
+      toolResults.push({
+        index: toolCallIndex,
+        name: toolCall.name,
+        status: "error",
+        result: errMsg,
+        content: `Error: ${toolCall.name} failed. ${errMsg}`,
+      });
+    }
+
+    const toolResult = toolResults.find((result) => result.index === toolCallIndex);
+    const summary = toolResult ? buildToolResultSummary(toolResult, params.userLang) : undefined;
+    const evidenceContent = toolResult?.content;
+    const event = {
+      index: toolCallIndex,
+      id: toolCall.id,
+      name: toolCall.name,
+      arguments: toolCall.arguments,
+      status,
+      result: resultMsg,
+      summary,
+      content: evidenceContent,
+    };
+    toolCallResults.push(event);
+    params.emitResult?.(event);
+  }
+
+  return { toolResults, toolCallResults };
 }
 
 // All AI routes require auth (with blacklist check) + rate limit
@@ -797,7 +948,35 @@ router.post("/chat", async (req: Request, res: Response) => {
     if (isJson) {
       try {
         const json = await response.json() as any;
-        const content = json.choices?.[0]?.message?.content || json.choices?.[0]?.text || "";
+        const message = json.choices?.[0]?.message || {};
+        let content = message.content || json.choices?.[0]?.text || "";
+        const jsonToolCalls: AssistantToolCall[] = [];
+        const nativeToolCalls = Array.isArray(message.tool_calls) ? message.tool_calls : (
+          message.function_call
+            ? [{ id: message.tool_call_id || "", function: message.function_call }]
+            : []
+        );
+        for (const toolCall of nativeToolCalls) {
+          jsonToolCalls.push({
+            id: toolCall.id || "",
+            name: toolCall.function?.name || "",
+            arguments: toolCall.function?.arguments || "{}",
+          });
+        }
+        const dsmlToolCallParse = extractDsmlToolCalls(content);
+        content = dsmlToolCallParse.cleanContent;
+        jsonToolCalls.push(...dsmlToolCallParse.toolCalls);
+        if (jsonToolCalls.length > 0) {
+          const executed = await executeChatToolCalls({
+            toolCalls: jsonToolCalls,
+            userId: authReq.user!.userId,
+            userLang,
+          });
+          const reply = buildToolFallbackReply(executed.toolResults, userLang);
+          console.log("[AI] Non-streaming JSON tool calls handled:", jsonToolCalls.length);
+          res.json({ reply, action: null, toolCalls: executed.toolCallResults });
+          return;
+        }
         const { reply, action } = parseAction(content);
         console.log("[AI] Got non-streaming JSON response, content length:", content.length);
         res.json({ reply: reply || content, action });
@@ -1049,126 +1228,18 @@ router.post("/chat", async (req: Request, res: Response) => {
     }
 
     // Execute any accumulated tool calls (native function calling)
-    const toolResults: AssistantToolResult[] = [];
-    let toolCallResults: { index: number; name: string; status: string; result?: string; summary?: string; content?: string }[] = [];
+    let toolResults: AssistantToolResult[] = [];
+    let toolCallResults: ChatToolExecutionEvent[] = [];
     if (accumulatedToolCalls.length > 0) {
       console.log("[AI] Tool calls detected:", accumulatedToolCalls.length);
-      for (const tc of accumulatedToolCalls) {
-        const toolCallIndex = accumulatedToolCalls.indexOf(tc);
-        let status = "error";
-        let resultMsg = "";
-        try {
-          if (tc.name === "search_web") {
-            const args = JSON.parse(tc.arguments || "{}");
-            const query = args.query || "";
-            if (query) {
-              const searchResult = await webSearch(query);
-              toolResults.push({
-                index: toolCallIndex,
-                name: tc.name,
-                status: "done",
-                result: query,
-                content: `Web search results for "${query}":\n${searchResult}`,
-              });
-              status = "done";
-              resultMsg = query;
-            }
-          } else if (tc.name === "create_document" || tc.name === "update_document") {
-            resultMsg = "document writes are handled by client action confirmation";
-            toolResults.push({
-              index: toolCallIndex,
-              name: tc.name,
-              status: "error",
-              result: resultMsg,
-              content: `Error: ${tc.name} is not available as a direct server tool in chat. Return ACTION_JSON so the client can execute and verify the document action.`,
-            });
-          } else if (tc.name === "get_user_stats") {
-            const userId = authReq.user!.userId;
-            const [docCount, journalCount, groupCount, brainCount] = await Promise.all([
-              prisma.document.count({ where: { userId, isDeleted: false } }),
-              prisma.workRecord.count({ where: { userId } }),
-              prisma.documentGroup.count({ where: { userId } }),
-              prisma.aIBrainKnowledge.count({ where: { userId } }),
-            ]);
-            const totalJournalWords = (await prisma.workRecord.findMany({
-              where: { userId }, select: { content: true },
-            })).reduce((s: number, r: { content: string | null }) => s + (r.content || "").length, 0);
-            toolResults.push({
-              index: toolCallIndex,
-              name: tc.name,
-              status: "done",
-              result: `${docCount} docs, ${journalCount} journals`,
-              content: `用户工作区统计：\n- 文档总数：${docCount} 篇\n- 随记总数：${journalCount} 条\n- 随记总字数：${totalJournalWords} 字\n- 文档分组：${groupCount} 个\n- 脑库条目：${brainCount} 条`,
-            });
-            status = "done";
-            resultMsg = `${docCount} docs, ${journalCount} journals`;
-          } else if (tc.name === "list_recent_documents") {
-            const args = JSON.parse(tc.arguments || "{}");
-            const limit = Math.min(args.limit || 5, 10);
-            const docs = await prisma.document.findMany({
-              where: { userId: authReq.user!.userId, isDeleted: false },
-              orderBy: { updatedAt: "desc" },
-              take: limit,
-              select: { title: true, updatedAt: true, content: true },
-            });
-            const lines = docs.map((d: { title: string; updatedAt: Date; content: string | null }, i: number) => {
-              const wordCount = stripHtml(d.content || "").replace(/\s+/g, "").length;
-              const date = d.updatedAt.toISOString().slice(0, 10);
-              return `${i + 1}. 《${d.title}》— ${wordCount} 字，最后修改 ${date}`;
-            });
-            toolResults.push({
-              index: toolCallIndex,
-              name: tc.name,
-              status: "done",
-              result: `${docs.length} docs`,
-              content: `用户最近 ${limit} 篇文档：\n${lines.join("\n")}${docs.length === 0 ? "暂无文档" : ""}`,
-            });
-            status = "done";
-            resultMsg = `${docs.length} docs`;
-          } else if (tc.name === "get_today_writing") {
-            const userId = authReq.user!.userId;
-            const todayRange = getLocalDayRange();
-            const todayStr = formatLocalDateKey(todayRange.start);
-            const [todayDocs, todayJournals] = await Promise.all([
-              prisma.document.findMany({
-                where: { userId, isDeleted: false, updatedAt: { gte: todayRange.start, lt: todayRange.end } },
-                select: { content: true },
-              }),
-              prisma.workRecord.findMany({
-                where: { userId, targetDate: todayStr },
-                select: { content: true },
-              }),
-            ]);
-            const docWords = todayDocs.reduce((s: number, d: { content: string | null }) => s + stripHtml(d.content || "").replace(/\s+/g, "").length, 0);
-            const journalWords = todayJournals.reduce((s: number, r: { content: string | null }) => s + (r.content || "").length, 0);
-            toolResults.push({
-              index: toolCallIndex,
-              name: tc.name,
-              status: "done",
-              result: `${docWords + journalWords} words in touched items today`,
-              content: `今日写作统计（${todayStr}）：\n- 今日更新文档 ${todayDocs.length} 篇，当前共 ${docWords} 字\n- 今日随记 ${todayJournals.length} 条，共 ${journalWords} 字\n- 可确认合计 ${docWords + journalWords} 字`,
-            });
-            status = "done";
-            resultMsg = `${docWords + journalWords} words in touched items today`;
-          }
-        } catch (err) {
-          console.error("[AI] Tool execution error:", err);
-          const errMsg = err instanceof Error ? err.message : String(err);
-          resultMsg = errMsg;
-          toolResults.push({
-            index: toolCallIndex,
-            name: tc.name,
-            status: "error",
-            result: errMsg,
-            content: `Error: ${tc.name} failed. ${errMsg}`,
-          });
-        }
-        const toolResult = toolResults.find((result) => result.index === toolCallIndex);
-        const summary = toolResult ? buildToolResultSummary(toolResult, userLang) : undefined;
-        const evidenceContent = toolResult?.content;
-        toolCallResults.push({ index: toolCallIndex, name: tc.name, status, result: resultMsg, summary, content: evidenceContent });
-        emitSse("tool_call", { index: toolCallIndex, id: tc.id, name: tc.name, arguments: tc.arguments, status, result: resultMsg, summary, content: evidenceContent });
-      }
+      const executed = await executeChatToolCalls({
+        toolCalls: accumulatedToolCalls,
+        userId: authReq.user!.userId,
+        userLang,
+        emitResult: (event) => emitSse("tool_call", event),
+      });
+      toolResults = executed.toolResults;
+      toolCallResults = executed.toolCallResults;
     }
 
     // If tools were executed, make a follow-up call with results
@@ -1179,44 +1250,48 @@ router.post("/chat", async (req: Request, res: Response) => {
       try {
         const followUpSystemPrompt = `${finalSystemPrompt}\n\nTool follow-up instruction: tools have already been executed. Use the tool results below to answer the user's request directly with concrete numbers or outcomes. Do not call tools again. Do not say "please check the results".`;
         const followUpMessages = buildToolFollowUpMessages(accumulatedToolCalls, toolResults);
-        const followUpRes = await fetch(apiUrl, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${apiKey}`,
-          },
-          body: JSON.stringify({
-            model: aiModel,
-            messages: [
-              { role: "system", content: followUpSystemPrompt },
-              ...messages,
-              ...followUpMessages,
-            ],
-            temperature: 0.7,
-            max_tokens: 2048,
-            stream: false,
-          }),
-          signal: followUpSignal.signal,
-        });
-        if (followUpRes.ok) {
-          const json = await followUpRes.json() as any;
-          const followUpContent = json.choices?.[0]?.message?.content || "";
-          if (shouldUseToolFallbackReply(followUpContent, toolResults)) {
-            console.warn("[AI] Follow-up reply was a tool placeholder; using tool-result fallback");
-            followUpReply = "";
-          } else {
-            const parsedFollowUp = resolveAssistantActionReply(followUpContent);
-            followUpReply = parsedFollowUp.reply;
-            finalAction = parsedFollowUp.action;
-            for (const char of followUpReply) {
-              emitSse("delta", { delta: char });
-            }
-          }
-          console.log("[AI] Follow-up reply length:", followUpReply.length);
+        if (!followUpMessages.some((message) => message.role === "tool")) {
+          console.warn("[AI] Follow-up payload had no matched tool results; using tool-result fallback");
         } else {
-          console.error("[AI] Follow-up call failed:", followUpRes.status);
-          const errText = await followUpRes.text().catch(() => "");
-          console.error("[AI] Follow-up error body:", errText.slice(0, 300));
+          const followUpRes = await fetch(apiUrl, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${apiKey}`,
+            },
+            body: JSON.stringify({
+              model: aiModel,
+              messages: [
+                { role: "system", content: followUpSystemPrompt },
+                ...messages,
+                ...followUpMessages,
+              ],
+              temperature: 0.7,
+              max_tokens: 2048,
+              stream: false,
+            }),
+            signal: followUpSignal.signal,
+          });
+          if (followUpRes.ok) {
+            const json = await followUpRes.json() as any;
+            const followUpContent = json.choices?.[0]?.message?.content || "";
+            if (shouldUseToolFallbackReply(followUpContent, toolResults)) {
+              console.warn("[AI] Follow-up reply was a tool placeholder; using tool-result fallback");
+              followUpReply = "";
+            } else {
+              const parsedFollowUp = resolveAssistantActionReply(followUpContent);
+              followUpReply = parsedFollowUp.reply;
+              finalAction = parsedFollowUp.action;
+              for (const char of followUpReply) {
+                emitSse("delta", { delta: char });
+              }
+            }
+            console.log("[AI] Follow-up reply length:", followUpReply.length);
+          } else {
+            console.error("[AI] Follow-up call failed:", followUpRes.status);
+            const errText = await followUpRes.text().catch(() => "");
+            console.error("[AI] Follow-up error body:", errText.slice(0, 300));
+          }
         }
       } catch (err) {
         console.error("[AI] Follow-up call error:", err);

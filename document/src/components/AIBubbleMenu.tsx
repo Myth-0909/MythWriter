@@ -6,7 +6,7 @@ import { InlineLoading } from "@/components/LoadingSpinner";
 import { useI18n } from "@/components/I18nProvider";
 import { useToast } from "@/components/Toast";
 import { API_BASE } from "@/lib/apiBase";
-import { toApiMessages } from "@/components/AIChatWidget";
+import { toApiMessages } from "@/lib/aiChatApiMessages";
 
 function safePersonality(raw: string | null): string {
   const valid = ["normal", "cute", "catgirl", "serious", "silly"];

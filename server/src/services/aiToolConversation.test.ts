@@ -20,6 +20,15 @@ describe("ai tool conversation helpers", () => {
     ]);
   });
 
+  it("recovers unfinished DSML tool calls without exposing protocol tags", () => {
+    const parsed = extractDsmlToolCalls('我先查一下<|DSML|tool_calls><|DSML|invoke name="get_today_writing">');
+
+    assert.equal(parsed.cleanContent, "我先查一下");
+    assert.deepEqual(parsed.toolCalls, [
+      { id: "", name: "get_today_writing", arguments: "{}" },
+    ]);
+  });
+
   it("turns writing-stat tool results into a concrete fallback answer", () => {
     const results: AssistantToolResult[] = [
       {
@@ -228,5 +237,21 @@ describe("ai tool conversation helpers", () => {
     assert.equal(tool.role, "tool");
     if (tool.role !== "tool") throw new Error("Expected tool result message");
     assert.equal(tool.tool_call_id, "call_stats");
+  });
+
+  it("does not emit orphan tool result messages in follow-up payloads", () => {
+    const toolCalls: AssistantToolCall[] = [
+      { id: "call_stats", name: "get_user_stats", arguments: "{}" },
+    ];
+    const toolResults: AssistantToolResult[] = [
+      { index: 1, name: "get_today_writing", status: "done", content: "today" },
+    ];
+
+    const messages = buildToolFollowUpMessages(toolCalls, toolResults);
+    const assistant = messages[0];
+
+    assert.equal(messages.length, 1);
+    assert.equal(assistant.role, "assistant");
+    assert.equal(assistant.tool_calls.length, 0);
   });
 });

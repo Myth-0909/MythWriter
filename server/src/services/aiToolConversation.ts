@@ -79,8 +79,8 @@ function normalizeToolArguments(value: string | undefined): string {
 
 export function extractDsmlToolCalls(content: string): { cleanContent: string; toolCalls: AssistantToolCall[] } {
   const toolCalls: AssistantToolCall[] = [];
-  const cleanContent = content.replace(/<\|DSML\|tool_calls>([\s\S]*?)<\/\|DSML\|tool_calls>/g, (_block, body: string) => {
-    for (const invoke of String(body || "").matchAll(/<\|DSML\|invoke\b([^>]*)>([\s\S]*?)<\/\|DSML\|invoke>/g)) {
+  const cleanContent = content.replace(/<\|DSML\|tool_calls>([\s\S]*?)(?:<\/\|DSML\|tool_calls>|$)/g, (_block, body: string) => {
+    for (const invoke of String(body || "").matchAll(/<\|DSML\|invoke\b([^>]*)>([\s\S]*?)(?:<\/\|DSML\|invoke>|(?=<\|DSML\|invoke\b)|$)/g)) {
       const attrs = parseAttributes(invoke[1] || "");
       const name = String(attrs.name || "").trim();
       if (!name) continue;
@@ -313,16 +313,18 @@ export function buildToolFollowUpMessages(
   toolCalls: AssistantToolCall[],
   toolResults: AssistantToolResult[]
 ): ToolFollowUpMessage[] {
-  const resultIndexes = new Set(toolResults.map((result, fallbackIndex) => (
-    Number.isInteger(result.index) ? result.index : fallbackIndex
-  )));
-  const includedToolCalls = toolCalls
-    .map((toolCall, index) => ({ toolCall, index }))
-    .filter(({ index }) => resultIndexes.has(index));
+  const includedResults = toolResults
+    .map((result, fallbackIndex) => {
+      const index = Number.isInteger(result.index) ? result.index : fallbackIndex;
+      return { result, index, toolCall: toolCalls[index] };
+    })
+    .filter((entry): entry is { result: AssistantToolResult; index: number; toolCall: AssistantToolCall } => (
+      Boolean(entry.toolCall?.name)
+    ));
   const assistantMessage: ToolFollowUpMessage = {
     role: "assistant",
     content: "",
-    tool_calls: includedToolCalls.map(({ toolCall, index }) => ({
+    tool_calls: includedResults.map(({ toolCall, index }) => ({
       id: normalizeToolCallId(toolCall, index),
       type: "function",
       function: {
@@ -332,11 +334,10 @@ export function buildToolFollowUpMessages(
     })),
   };
 
-  const resultMessages = toolResults.map((result, fallbackIndex) => {
-    const index = Number.isInteger(result.index) ? result.index : fallbackIndex;
+  const resultMessages = includedResults.map(({ result, index, toolCall }) => {
     return {
       role: "tool" as const,
-      tool_call_id: normalizeToolCallId(toolCalls[index], index),
+      tool_call_id: normalizeToolCallId(toolCall, index),
       content: result.content,
     };
   });
