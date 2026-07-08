@@ -26,6 +26,12 @@ import {
   resolveStoredAssistantContent,
   shouldIncludeAssistantInPrompt,
 } from "@/lib/aiChatStream";
+import {
+  buildToolMemoryContent,
+  resolveActionDisplayContent,
+  resolveActionFailureContent,
+  resolveActionSuccessContent,
+} from "@/lib/aiActionState";
 import { Tooltip } from "@/components/ui/tooltip";
 import type { DocumentVersion } from "@/types";
 import type { OverlayScrollbarsComponentRef } from "overlayscrollbars-react";
@@ -296,7 +302,7 @@ function escapeRegExp(value: string): string {
 }
 
 
-type ToolCallEvent = { index: number; id?: string; name: string; arguments?: string; status: string; result?: string; summary?: string };
+type ToolCallEvent = { index: number; id?: string; name: string; arguments?: string; status: string; result?: string; summary?: string; content?: string };
 
 function parseToolArguments(value?: string): Record<string, unknown> {
   if (!value) return {};
@@ -341,10 +347,12 @@ export function toApiMessages(messages: { role: string; content: string; finalCo
       });
       // Append tool result messages
       for (const tc of m.toolCalls) {
-        if (tc.status === "done" && tc.result !== undefined) {
+        if (tc.status === "done") {
+          const toolContent = buildToolMemoryContent(tc);
+          if (!toolContent) continue;
           const toolCallId = normalizeChatToolCallId(tc, tc.index);
           emittedToolResultIds.add(toolCallId);
-          result.push({ role: "tool", tool_call_id: toolCallId, content: String(tc.result) });
+          result.push({ role: "tool", tool_call_id: toolCallId, content: toolContent });
         }
       }
     } else {
@@ -419,7 +427,7 @@ async function streamChat(
       finalReply = data.reply;
       finalAction = data.action;
       if (data.thinking) thinking = data.thinking;
-      if (data.toolCalls) Object.assign(toolCalls, data.toolCalls);
+      if (data.toolCalls) toolCalls.splice(0, toolCalls.length, ...data.toolCalls);
     } else if (event === "delta" || event === "message") {
       // Legacy: raw data: without event: prefix
       if (data.delta) {
@@ -519,6 +527,7 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
   const [editMode, setEditMode] = useState(false);
   const [selectedMsgs, setSelectedMsgs] = useState<Set<number>>(new Set());
   const [deleteMsgConfirm, setDeleteMsgConfirm] = useState(false);
+  const [conversationId, setConversationId] = useState<string | null>(null);
   const feedbackDoneRef = useRef<Set<number>>(new Set());
   const restoredRef = useRef(false);
   const [keyOk, setKeyOk] = useState(false);
@@ -629,12 +638,19 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
     });
     setSaving(true);
     try {
-      await api.saveConversation({ messages: normalizedMessages, personality: personalityRef.current });
+      const res = await api.saveConversation({
+        messages: normalizedMessages,
+        personality: personalityRef.current,
+        conversationId: conversationId || undefined,
+      });
+      if (res.conversation?.id) {
+        setConversationId(res.conversation.id);
+      }
     } catch (err) {
       console.warn("[ai] Failed to save conversation:", err);
     }
     setSaving(false);
-  }, [messages, loading, streaming, saving]);
+  }, [conversationId, messages, loading, streaming, saving]);
 
   // Drag - restore saved position or default bottom-left
   const [pos, setPos] = useState<Position>(() => {
@@ -743,14 +759,19 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
           const last = res.conversations[0];
           const msgs = last.messages as Message[];
           if (msgs.length > 0) {
+            setConversationId(last.id);
             setMessages(msgs);
             memoryRef.current = msgs;
             return;
           }
         }
+        setConversationId(null);
         // No saved conversation — greet
         greetUser();
-      }).catch(() => greetUser());
+      }).catch(() => {
+        setConversationId(null);
+        greetUser();
+      });
     }
   }, [open, keyOk]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1088,30 +1109,62 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
       if (!finalContent.trim()) {
         throw new Error(t("ai.emptyReply"));
       }
-      queueAssistantContent(finalContent);
+      const actionLabels = {
+        createPending: t("ai.docCreating"),
+        createSuccess: t("ai.docCreatedConfirmed"),
+        createFailed: t("ai.docCreateFailedDetailed"),
+        updatePreview: t("ai.docUpdatePreviewReady"),
+        genericFailure: t("ai.menu.failed"),
+        fallbackTitle: t("editor.untitled"),
+      };
+      const displayContent = resolveActionDisplayContent(action, finalContent, actionLabels);
+      queueAssistantContent(displayContent);
       upsertAssistantMessage({
-        finalContent,
+        finalContent: displayContent,
         isTyping: true,
         thinking: thinking || fullThinking,
         toolCalls: finalToolCalls,
       });
       await waitForTypewriterIdle();
       upsertAssistantMessage({
-        content: finalContent,
-        finalContent,
+        content: displayContent,
+        finalContent: displayContent,
         isTyping: false,
         thinking: thinking || fullThinking,
         toolCalls: finalToolCalls,
       });
 
-      const assistantMemory: Message[] = [{ role: "assistant", content: finalContent, toolCalls: finalToolCalls.length > 0 ? finalToolCalls : undefined }];
-      for (const tc of finalToolCalls) {
-        if (tc.status === "done" && tc.result !== undefined) {
-          assistantMemory.push({ role: "tool", tool_call_id: normalizeChatToolCallId(tc, tc.index), content: String(tc.result) });
+      const replaceLastAssistantMessage = (content: string) => {
+        upsertAssistantMessage({
+          content,
+          finalContent: content,
+          isTyping: false,
+          thinking: thinking || fullThinking,
+          toolCalls: finalToolCalls,
+        });
+      };
+
+      const saveAssistantTurn = (content: string) => {
+        const assistantMemory: Message[] = [{
+          role: "assistant",
+          content,
+          toolCalls: finalToolCalls.length > 0 ? finalToolCalls : undefined,
+        }];
+        for (const tc of finalToolCalls) {
+          if (tc.status === "done") {
+            const toolContent = buildToolMemoryContent(tc);
+            if (toolContent) {
+              assistantMemory.push({
+                role: "tool",
+                tool_call_id: normalizeChatToolCallId(tc, tc.index),
+                content: toolContent,
+              });
+            }
+          }
         }
-      }
-      memoryRef.current = [...memory, ...assistantMemory];
-      saveMemory(memoryRef.current);
+        memoryRef.current = [...memory, ...assistantMemory];
+        saveMemory(memoryRef.current);
+      };
 
       const documentToolCalls = finalToolCalls.filter((tc) =>
         tc.status === "done" && (tc.name === "create_document" || tc.name === "update_document")
@@ -1132,44 +1185,59 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
         try {
           const nextContent = typeof action.content === "string" ? action.content.trim() : "";
           if (!nextContent) {
+            const message = resolveActionFailureContent(action, actionLabels);
+            replaceLastAssistantMessage(message);
+            saveAssistantTurn(message);
             toast(t("ai.menu.emptyResult"), "error");
             return;
           }
           const title = typeof action.title === "string" && action.title.trim() ? action.title.trim() : t("editor.untitled");
           const docId = await createDocument("general", title, markdownToHtml(nextContent));
+          const verifiedDoc = await loadDocument(docId);
+          if (!verifiedDoc) {
+            const message = t("ai.docCreateVerifyFailed");
+            replaceLastAssistantMessage(message);
+            saveAssistantTurn(message);
+            toast(message, "error");
+            return;
+          }
+          await refreshDocuments();
+          const successMessage = resolveActionSuccessContent({ ...action, title }, actionLabels);
+          replaceLastAssistantMessage(successMessage);
+          saveAssistantTurn(successMessage);
           const docNote = { role: "assistant" as const, content: `[系统] 已为用户创建文档「${title}」[doc:${docId}]。内容摘要：${nextContent.slice(0, 200)}...` };
           memoryRef.current = [...memoryRef.current, docNote];
           saveMemory(memoryRef.current);
+          toast(t("ai.docCreated"), "success");
         } catch {
+          const message = resolveActionFailureContent(action, actionLabels);
+          replaceLastAssistantMessage(message);
+          saveAssistantTurn(message);
           toast(t("ai.docCreateFailed"), "error");
         }
+        return;
       }
 
       // Handle update_document action
-      if (action?.type === "update_document" && action.content) {
+      if (action?.type === "update_document") {
         try {
           const nextContent = typeof action.content === "string" ? action.content.trim() : "";
           if (!nextContent) {
+            const message = t("ai.docUpdateEmpty");
+            replaceLastAssistantMessage(message);
+            saveAssistantTurn(message);
             toast(t("ai.docUpdateEmpty"), "error");
             return;
           }
           const actionDocId = typeof action.docId === "string" ? action.docId.trim() : "";
           const docReferences = requestReferences.filter((ref): ref is DocumentReference => ref.type === "document");
           const fallbackDocId = docReferences.length === 1 ? docReferences[0].id : "";
-          const targetDocId = actionDocId && getDocument(actionDocId) ? actionDocId : fallbackDocId || actionDocId;
+          const targetDocId = actionDocId || fallbackDocId;
           const targetDoc = targetDocId ? getDocument(targetDocId) || await loadDocument(targetDocId) : null;
           if (!targetDoc) {
             const message = t("ai.docUpdateTargetMissing");
-            setMessages((prev) => {
-              const next = [...prev];
-              const last = next[next.length - 1];
-              if (last && last.role === "assistant") {
-                next[next.length - 1] = { ...last, content: message, timestamp: formatTimestamp() };
-              } else {
-                next.push({ role: "assistant", content: message, timestamp: formatTimestamp() });
-              }
-              return next;
-            });
+            replaceLastAssistantMessage(message);
+            saveAssistantTurn(message);
             toast(message, "error");
             return;
           }
@@ -1189,18 +1257,25 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
           });
           setTaskStage("preview");
           toast(t("ai.diffReady"), "info");
+          saveAssistantTurn(displayContent);
         } catch (err: any) {
           console.error("[update_doc] error:", err);
+          const message = t("ai.docUpdateFailed");
+          replaceLastAssistantMessage(message);
+          saveAssistantTurn(message);
           toast(t("ai.docUpdateFailed"), "error");
         }
+        return;
       }
+
+      saveAssistantTurn(displayContent);
     } catch (error: any) {
       if (error.name === "AbortError") return;
       setMessages((prev) => {
         const next = [...prev];
         const last = next[next.length - 1];
         if (last && last.role === "assistant" && !last.content) {
-          next[next.length - 1] = { role: "assistant", content: error.message || "AI 服务不可用", timestamp: formatTimestamp() };
+          next[next.length - 1] = { role: "assistant", content: error.message || t("ai.serviceUnavailable"), timestamp: formatTimestamp() };
         } else {
           next.push({ role: "assistant", content: error.message || t("ai.serviceUnavailable"), timestamp: formatTimestamp() });
         }
@@ -2578,7 +2653,7 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
           feedbackDoneRef.current = new Set();
           setSelectedMsgs(new Set());
           api.logActivity({ action: "chat_delete", detail: `deleted_${selectedMsgs.size}_msgs` }).catch(() => {});
-          toast("消息已删除", "success");
+          toast(t("ai.messageDeleted"), "success");
           setDeleteMsgConfirm(false);
         }}
       />
@@ -2595,6 +2670,7 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
         onConfirm={async () => {
           try {
             await api.deleteConversations();
+            setConversationId(null);
             setMessages([]);
             memoryRef.current = [];
             localStorage.removeItem(MEMORY_KEY);

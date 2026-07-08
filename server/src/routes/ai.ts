@@ -13,7 +13,8 @@ import type { Personality } from "../services/aiService";
 import { selectReferencedBrainIds, type ChatReference } from "../services/aiReferences";
 import { formatBrainKnowledgeContext, RAG_SCORE_THRESHOLD, ragService } from "../services/ragService";
 import { createAgentWriteService, markdownToBasicHtml } from "../services/agentService";
-import { createDocument, updateDocument } from "../services/documentService";
+import { buildChatTools } from "../services/aiChatTools";
+import { createDocument } from "../services/documentService";
 import { createLinkedTimeoutSignal } from "../lib/abortSignal";
 import { formatLocalDateKey, getLocalDayRange } from "../services/writingStats";
 import {
@@ -731,83 +732,7 @@ router.post("/chat", async (req: Request, res: Response) => {
     const apiUrl = buildChatCompletionsUrl(apiBaseUrl);
     console.log("[AI] Sending request to:", apiUrl, "model:", aiModel);
 
-    // Define available tools for the model
-    const chatTools = [
-      {
-        type: "function" as const,
-        function: {
-          name: "search_web",
-          description: "Search the web for current information. Use this when the user asks about recent events, facts, or information beyond your knowledge cutoff.",
-          parameters: {
-            type: "object",
-            properties: {
-              query: { type: "string", description: "The search query" },
-            },
-            required: ["query"],
-          },
-        },
-      },
-      {
-        type: "function" as const,
-        function: {
-          name: "create_document",
-          description: "Create a new document in the user's ZNWriter workspace.",
-          parameters: {
-            type: "object",
-            properties: {
-              title: { type: "string", description: "Document title" },
-              content: { type: "string", description: "Full Markdown content of the document" },
-            },
-            required: ["title", "content"],
-          },
-        },
-      },
-      {
-        type: "function" as const,
-        function: {
-          name: "update_document",
-          description: "Update an existing document. docId must be the UUID from the current document context.",
-          parameters: {
-            type: "object",
-            properties: {
-              docId: { type: "string", description: "UUID of the document to update" },
-              content: { type: "string", description: "Full updated Markdown content" },
-            },
-            required: ["docId", "content"],
-          },
-        },
-      },
-      {
-        type: "function" as const,
-        function: {
-          name: "get_user_stats",
-          description: "Get the current user's workspace statistics: total documents, journal entries, groups, brain knowledge items, and word counts. Use this when the user asks questions like 'how many documents do I have?', 'how many journals?', 'my writing stats', etc.",
-          parameters: { type: "object", properties: {}, required: [] },
-        },
-      },
-      {
-        type: "function" as const,
-        function: {
-          name: "list_recent_documents",
-          description: "List the user's most recently updated documents. Use this when the user asks 'what documents do I have?', 'list my docs', 'show my recent documents', etc.",
-          parameters: {
-            type: "object",
-            properties: {
-              limit: { type: "number", description: "Number of documents to return, default 5, max 10" },
-            },
-            required: [],
-          },
-        },
-      },
-      {
-        type: "function" as const,
-        function: {
-          name: "get_today_writing",
-          description: "Get today's writing activity: how many words written today, how many documents edited, how many journal entries. Use when the user asks 'how much did I write today?', 'today's progress', etc.",
-          parameters: { type: "object", properties: {}, required: [] },
-        },
-      },
-    ];
+    const chatTools = buildChatTools();
 
     // Use streaming with 3min timeout (vLLM cold start can be slow)
     const controller = new AbortController();
@@ -1052,7 +977,28 @@ router.post("/chat", async (req: Request, res: Response) => {
     if (!fullContent && rawFallback) {
       try {
         const json = JSON.parse(rawFallback);
-        finalContent = json.choices?.[0]?.message?.content || json.choices?.[0]?.text || "";
+        const message = json.choices?.[0]?.message;
+        finalContent = message?.content || json.choices?.[0]?.text || "";
+        const jsonToolCalls = message?.tool_calls || (
+          message?.function_call
+            ? [{ id: message.tool_call_id || "", function: message.function_call }]
+            : []
+        );
+        if (Array.isArray(jsonToolCalls)) {
+          for (const [index, tc] of jsonToolCalls.entries()) {
+            accumulatedToolCalls[index] = {
+              id: tc.id || "",
+              name: tc.function?.name || "",
+              arguments: tc.function?.arguments || "",
+            };
+            if (accumulatedToolCalls[index].name) {
+              emitToolCall(index, accumulatedToolCalls[index].name, "calling", {
+                id: accumulatedToolCalls[index].id,
+                arguments: accumulatedToolCalls[index].arguments,
+              });
+            }
+          }
+        }
         console.log("[AI] Fallback JSON parse success, content length:", finalContent.length);
       } catch {
         finalContent = rawFallback;
@@ -1062,7 +1008,7 @@ router.post("/chat", async (req: Request, res: Response) => {
 
     // Execute any accumulated tool calls (native function calling)
     const toolResults: AssistantToolResult[] = [];
-    let toolCallResults: { index: number; name: string; status: string; result?: string; summary?: string }[] = [];
+    let toolCallResults: { index: number; name: string; status: string; result?: string; summary?: string; content?: string }[] = [];
     if (accumulatedToolCalls.length > 0) {
       console.log("[AI] Tool calls detected:", accumulatedToolCalls.length);
       for (const tc of accumulatedToolCalls) {
@@ -1085,81 +1031,15 @@ router.post("/chat", async (req: Request, res: Response) => {
               status = "done";
               resultMsg = query;
             }
-          } else if (tc.name === "create_document") {
-            const args = JSON.parse(tc.arguments || "{}");
-            const title = String(args.title || "").trim();
-            const rawContent = String(args.content || "").trim();
-            if (!title) {
-              toolResults.push({
-                index: toolCallIndex,
-                name: tc.name,
-                status: "error",
-                result: "missing title",
-                content: "Error: document title is required.",
-              });
-              resultMsg = "missing title";
-            } else if (!rawContent) {
-              toolResults.push({
-                index: toolCallIndex,
-                name: tc.name,
-                status: "error",
-                result: "empty content",
-                content: "Error: document content is empty. Please provide the full document content in Markdown format.",
-              });
-              resultMsg = "empty content";
-            } else {
-              const htmlContent = markdownToBasicHtml(rawContent);
-              const doc = await createDocument(authReq.user!.userId, {
-                title,
-                content: htmlContent,
-                category: "general",
-              });
-              ragService.reindexDocument({ userId: authReq.user!.userId, id: doc.id, content: doc.content }).catch(() => {});
-              toolResults.push({
-                index: toolCallIndex,
-                name: tc.name,
-                status: "done",
-                result: title,
-                content: `Document created successfully: "${title}" (id: ${doc.id})`,
-              });
-              status = "done";
-              resultMsg = title;
-            }
-          } else if (tc.name === "update_document") {
-            const args = JSON.parse(tc.arguments || "{}");
-            const targetDocId = String(args.docId || "").trim();
-            const rawContent = String(args.content || "").trim();
-            if (!targetDocId) {
-              toolResults.push({
-                index: toolCallIndex,
-                name: tc.name,
-                status: "error",
-                result: "missing docId",
-                content: "Error: docId is required for update_document.",
-              });
-              resultMsg = "missing docId";
-            } else if (!rawContent) {
-              toolResults.push({
-                index: toolCallIndex,
-                name: tc.name,
-                status: "error",
-                result: "empty content",
-                content: "Error: document content is empty.",
-              });
-              resultMsg = "empty content";
-            } else {
-              const htmlContent = markdownToBasicHtml(rawContent);
-              await updateDocument(targetDocId, authReq.user!.userId, { content: htmlContent });
-              toolResults.push({
-                index: toolCallIndex,
-                name: tc.name,
-                status: "done",
-                result: targetDocId,
-                content: `Document ${targetDocId} updated successfully.`,
-              });
-              status = "done";
-              resultMsg = targetDocId;
-            }
+          } else if (tc.name === "create_document" || tc.name === "update_document") {
+            resultMsg = "document writes are handled by client action confirmation";
+            toolResults.push({
+              index: toolCallIndex,
+              name: tc.name,
+              status: "error",
+              result: resultMsg,
+              content: `Error: ${tc.name} is not available as a direct server tool in chat. Return ACTION_JSON so the client can execute and verify the document action.`,
+            });
           } else if (tc.name === "get_user_stats") {
             const userId = authReq.user!.userId;
             const [docCount, journalCount, groupCount, brainCount] = await Promise.all([
@@ -1243,8 +1123,9 @@ router.post("/chat", async (req: Request, res: Response) => {
         }
         const toolResult = toolResults.find((result) => result.index === toolCallIndex);
         const summary = toolResult ? buildToolResultSummary(toolResult, userLang) : undefined;
-        toolCallResults.push({ index: toolCallIndex, name: tc.name, status, result: resultMsg, summary });
-        emitSse("tool_call", { index: toolCallIndex, id: tc.id, name: tc.name, arguments: tc.arguments, status, result: resultMsg, summary });
+        const evidenceContent = toolResult?.content;
+        toolCallResults.push({ index: toolCallIndex, name: tc.name, status, result: resultMsg, summary, content: evidenceContent });
+        emitSse("tool_call", { index: toolCallIndex, id: tc.id, name: tc.name, arguments: tc.arguments, status, result: resultMsg, summary, content: evidenceContent });
       }
     }
 
@@ -1354,12 +1235,12 @@ router.get("/conversations", async (req: Request, res: Response) => {
 router.post("/conversations", async (req: Request, res: Response) => {
   try {
     const authReq = req as AuthRequest;
-    const { messages, personality } = req.body;
+    const { messages, personality, conversationId } = req.body;
     if (!messages) {
       res.status(400).json({ error: "messages is required" });
       return;
     }
-    const conversation = await saveConversation(authReq.user!.userId, messages, personality);
+    const conversation = await saveConversation(authReq.user!.userId, messages, personality, conversationId);
     res.json({ conversation });
   } catch (error) {
     console.error("Save conversation error:", error);

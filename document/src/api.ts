@@ -383,7 +383,7 @@ export const api = {
       "/ai/conversations"
     ),
 
-  saveConversation: (data: { messages: { role: string; content: string }[]; personality: string }) =>
+  saveConversation: (data: { messages: { role: string; content: string }[]; personality: string; conversationId?: string }) =>
     request<{ conversation: { id: string } }>(
       "/ai/conversations", { method: "POST", body: JSON.stringify(data) }
     ),

@@ -36,4 +36,36 @@ describe("ai assistant branding", () => {
     });
     assert.doesNotMatch(parsed.reply, /ACTION_JSON/);
   });
+
+  it("does not instruct the model to use direct document write tools", () => {
+    const prompt = buildSystemPrompt("normal", "");
+
+    assert.match(prompt, /ACTION_JSON/);
+    assert.doesNotMatch(prompt, /优先使用 create_document 函数工具/);
+    assert.doesNotMatch(prompt, /优先使用 update_document 函数工具/);
+  });
+
+  it("uses preview wording for document update actions", () => {
+    const rawReply = [
+      "<<ACTION_JSON>>",
+      JSON.stringify({
+        reply: "",
+        action: {
+          type: "update_document",
+          docId: "15e429e0-6a61-4711-bee8-8fa688cdec67",
+          content: "# 修改稿",
+        },
+      }),
+      "<<ACTION_JSON_END>>",
+    ].join("");
+
+    const parsed = resolveAssistantActionReply(rawReply);
+
+    assert.equal(parsed.reply, "已生成修改预览，请确认应用。");
+    assert.deepEqual(parsed.action, {
+      type: "update_document",
+      docId: "15e429e0-6a61-4711-bee8-8fa688cdec67",
+      content: "# 修改稿",
+    });
+  });
 });

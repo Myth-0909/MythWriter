@@ -179,11 +179,10 @@ const BASE_SYSTEM_PROMPT = `# 核心身份
 # 文档操作规范
 
 ## 新建文档
-当用户要求创建新内容（如写文章、生成文档）时，**优先使用 create_document 函数工具**来创建文档。
-如果模型不支持函数调用，则通过文本输出：
+当用户要求创建新内容（如写文章、生成文档）时，必须通过以下 ACTION_JSON 交给客户端执行。客户端会创建文档并校验结果，在校验完成前不要声称已经写入数据库：
 <<ACTION_JSON>>
 {
-  "reply": "已为您生成文档「标题」，请查看~",
+  "reply": "正在为您创建文档「标题」~",
   "action": {
     "type": "create_document",
     "title": "文档标题",
@@ -193,11 +192,10 @@ const BASE_SYSTEM_PROMPT = `# 核心身份
 <<ACTION_JSON_END>>
 
 ## 修改文档
-当用户要求修改当前文档时，**优先使用 update_document 函数工具**来更新文档。
-如果模型不支持函数调用，则通过文本输出：
+当用户要求修改当前文档时，必须通过以下 ACTION_JSON 交给客户端生成修改预览。用户确认预览后才会真正写入文档：
 <<ACTION_JSON>>
 {
-  "reply": "SHORT confirmation only, like '已为您完成修改，请查看文档~'.",
+  "reply": "已生成修改预览，请确认应用。",
   "action": {
     "type": "update_document",
     "docId": "从 [doc:xxxxx] 中获取的 UUID，不要用标题",
@@ -207,14 +205,13 @@ const BASE_SYSTEM_PROMPT = `# 核心身份
 <<ACTION_JSON_END>>
 
 ## 重要约束
-- 使用函数工具时，直接在函数参数中传入完整内容，不要在 reply 文本中重复输出内容
-- 函数调用完成后，只需简短确认，不要输出文章全文
-- "reply" 只能是一句简短确认，如 "已为您完成修改，请查看文档~" 或 "已为您生成文档「标题」，请查看~"
+- 文档创建和修改只能通过 ACTION_JSON 的 action 交给客户端执行，不要伪造 create_document 或 update_document 工具调用
+- 输出 ACTION_JSON 时，完整内容只放在 action.content 中，不要在 reply 文本中重复输出内容
+- "reply" 只能是一句状态提示，新建文档用 "正在为您创建文档「标题」~"，修改文档用 "已生成修改预览，请确认应用。"
 - 绝对禁止在 reply 中输出任何文章内容、改动说明、操作摘要、段落对比
 - 禁止使用 "以下是"、"改动说明"、"具体改动如下"、"本次修改"、"新增了"、"删除了" 等引导词
 - 完整内容只放在 "action.content" 中，reply 只做一句话通知
 - docId 必须是 UUID（如 15e429e0-6a61-4711-bee8-8fa688cdec67），不能用文档标题
-- 调用 create_document 或 update_document 函数后，只需回复确认语，不要再输出 <<ACTION_JSON>> 标记
 
 # 全局规则
 - 效率：用户消息模糊或无明确写作需求（如 "你好"、"在吗"、表情、随机字符），简短回复，不要长篇大论
@@ -336,10 +333,10 @@ function extractStructuredAction(reply: string): { reply: string; action: any } 
     const MAX_REPLY_CHARS = 60;
     if (cleanReply.length > MAX_REPLY_CHARS || !cleanReply) {
       if (action?.type === "update_document") {
-        cleanReply = "已为您完成修改，请查看文档~";
+        cleanReply = "已生成修改预览，请确认应用。";
       } else if (action?.type === "create_document") {
         const title = typeof action.title === "string" && action.title.trim() ? action.title.trim() : "文档";
-        cleanReply = `已为您生成文档「${title}」，请查看~`;
+        cleanReply = `正在为您创建文档「${title}」~`;
       } else {
         cleanReply = "已完成操作，请查看~";
       }
@@ -353,7 +350,7 @@ function extractStructuredAction(reply: string): { reply: string; action: any } 
       const docId = typeof action.docId === "string" ? action.docId.trim() : "";
       const content = typeof action.content === "string" ? action.content.trim() : "";
       return {
-        reply: cleanReply || "已为您完成修改，请查看文档~",
+        reply: cleanReply || "已生成修改预览，请确认应用。",
         action: docId && content ? { type: "update_document", docId, content } : null,
       };
     }
@@ -362,7 +359,7 @@ function extractStructuredAction(reply: string): { reply: string; action: any } 
       const title = typeof action.title === "string" && action.title.trim() ? action.title.trim() : "无标题文档";
       const content = typeof action.content === "string" ? action.content.trim() : "";
       return {
-        reply: cleanReply || `已为您生成文档「${title}」，请查看~`,
+        reply: cleanReply || `正在为您创建文档「${title}」~`,
         action: content ? { type: "create_document", title, content } : null,
       };
     }
@@ -407,7 +404,7 @@ export function parseAction(reply: string): { reply: string; action: any } {
       .trim();
 
     if (!cleanReply) {
-      cleanReply = "已为您完成修改，请查看文档~";
+      cleanReply = "已生成修改预览，请确认应用。";
     }
 
     return {
@@ -426,7 +423,7 @@ export function parseAction(reply: string): { reply: string; action: any } {
     .trim();
 
   if (!cleanReply) {
-    cleanReply = `已为您生成文档「${title}」，请查看~`;
+    cleanReply = `正在为您创建文档「${title}」~`;
   }
 
   return {
@@ -514,15 +511,18 @@ export async function listConversations(userId: string) {
   });
 }
 
-export async function saveConversation(userId: string, messages: any[], personality: string) {
-  const lastConversation = await prisma.conversation.findFirst({
-    where: { userId },
-    orderBy: { updatedAt: "desc" },
-  });
-
-  if (lastConversation) {
+export async function saveConversation(userId: string, messages: any[], personality: string, conversationId?: string | null) {
+  const targetId = typeof conversationId === "string" ? conversationId.trim() : "";
+  if (targetId) {
+    const existing = await prisma.conversation.findFirst({
+      where: { id: targetId, userId },
+      select: { id: true },
+    });
+    if (!existing) {
+      throw new Error("Conversation not found");
+    }
     return prisma.conversation.update({
-      where: { id: lastConversation.id },
+      where: { id: existing.id },
       data: {
         messages,
         personality: personality || "normal",
