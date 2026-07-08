@@ -855,6 +855,7 @@ const translations = {
   "ai.replying": { zh: "小安正在回复中...", en: "XiaoAn is replying..." },
   "ai.send": { zh: "发送", en: "Send" },
   "ai.stop": { zh: "停止生成", en: "Stop generating" },
+  "ai.stopped": { zh: "已停止生成", en: "Generation stopped" },
   "ai.thinking": { zh: "小安正在思考...", en: "XiaoAn is thinking..." },
   "ai.action": { zh: "小安正在行动...", en: "XiaoAn is acting..." },
   "ai.reasoning": { zh: "思考过程", en: "Reasoning" },

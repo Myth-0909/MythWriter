@@ -18,10 +18,13 @@ import { sanitizeHtml } from "@/lib/html";
 import { API_BASE, getServerAssetUrl } from "@/lib/apiBase";
 import {
   AI_CHAT_TYPEWRITER_INTERVAL_MS,
+  canSendAssistantFeedback,
   getTypewriterChunkSize,
   normalizeChatToolCallId,
+  resolveAssistantActionContent,
   resolveChatFinalContent,
   resolveStoredAssistantContent,
+  shouldIncludeAssistantInPrompt,
 } from "@/lib/aiChatStream";
 import { Tooltip } from "@/components/ui/tooltip";
 import type { DocumentVersion } from "@/types";
@@ -56,6 +59,7 @@ interface Message {
   content: string;
   finalContent?: string;
   isTyping?: boolean;
+  interrupted?: boolean;
   thinking?: string;
   toolCalls?: ToolCallEvent[];
   tool_call_id?: string;
@@ -250,7 +254,14 @@ function formatTimestamp(): string {
 
 function buildMemoryContext(memory: Message[]): string {
   if (memory.length === 0) return "";
-  return memory.map((m) => {
+  return memory.filter((m) => (
+    m.role !== "assistant" ||
+    shouldIncludeAssistantInPrompt({
+      content: m.content,
+      finalContent: m.finalContent,
+      interrupted: m.interrupted,
+    })
+  )).map((m) => {
     if (m.role === "tool") {
       return `[工具结果: ${m.content.slice(0, 500)}]`;
     }
@@ -298,7 +309,7 @@ function parseToolArguments(value?: string): Record<string, unknown> {
 }
 
 // Convert UI Message objects to clean API format, including tool call history
-export function toApiMessages(messages: { role: string; content: string; finalContent?: string; toolCalls?: ToolCallEvent[]; tool_call_id?: string }[]): { role: string; content: string; tool_calls?: any[]; tool_call_id?: string; name?: string }[] {
+export function toApiMessages(messages: { role: string; content: string; finalContent?: string; interrupted?: boolean; toolCalls?: ToolCallEvent[]; tool_call_id?: string }[]): { role: string; content: string; tool_calls?: any[]; tool_call_id?: string; name?: string }[] {
   const result: any[] = [];
   const emittedToolResultIds = new Set<string>();
   for (const m of messages) {
@@ -310,6 +321,12 @@ export function toApiMessages(messages: { role: string; content: string; finalCo
         emittedToolResultIds.add(toolCallId);
         result.push({ role: "tool", tool_call_id: toolCallId, content: m.content });
       }
+    } else if (m.role === "assistant" && !shouldIncludeAssistantInPrompt({
+      content: m.content,
+      finalContent: m.finalContent,
+      interrupted: m.interrupted,
+    })) {
+      continue;
     } else if (m.role === "assistant" && m.toolCalls && m.toolCalls.length > 0) {
       const assistantContent = resolveStoredAssistantContent({ displayContent: m.content, finalContent: m.finalContent });
       // Build assistant message with tool_calls in API format
@@ -1210,6 +1227,23 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
   const handleStop = useCallback(() => {
     typewriterControlRef.current?.skip();
     abortRef.current?.abort();
+    setMessages((prev) => {
+      const next = [...prev];
+      const last = next[next.length - 1];
+      if (last?.role !== "assistant") return prev;
+      const content = resolveAssistantActionContent({
+        content: last.content,
+        finalContent: last.finalContent,
+      });
+      next[next.length - 1] = {
+        ...last,
+        content,
+        finalContent: content || undefined,
+        isTyping: false,
+        interrupted: true,
+      };
+      return next;
+    });
     setLoading(false);
     setStreaming(false);
     setIsActing(false);
@@ -1827,6 +1861,15 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
                 {messages.map((msg, i) => {
                   const isUser = msg.role === "user";
                   const isLastAssistant = !isUser && i === messages.length - 1;
+                  const assistantActionContent = isUser
+                    ? ""
+                    : resolveAssistantActionContent({ content: msg.content, finalContent: msg.finalContent });
+                  const canFeedback = !isUser && canSendAssistantFeedback({
+                    content: msg.content,
+                    finalContent: msg.finalContent,
+                    isTyping: msg.isTyping,
+                    interrupted: msg.interrupted,
+                  });
                   return (
                     <div key={i} className={cn("mb-4 flex gap-2 items-start", isUser ? "flex-row-reverse" : "flex-row")}>
                       {/* Edit checkbox */}
@@ -1948,6 +1991,12 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
                               className="ai-chat-markdown prose prose-sm max-w-none dark:prose-invert"
                               dangerouslySetInnerHTML={{ __html: sanitizeHtml(markdownToHtml(msg.content)) }}
                             />
+                            {msg.interrupted && (
+                              <div className="mt-2 inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-600 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300">
+                                <XCircle className="h-3 w-3" />
+                                {t("ai.stopped")}
+                              </div>
+                            )}
                           </>
                         )}
                         {!isUser && msg.sources && msg.sources.length > 0 && (
@@ -1985,7 +2034,7 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
                           </div>
                         )}
                         {/* Action buttons: regenerate + copy + feedback, appear on hover */}
-                        {!isUser && !streaming && msg.content && (
+                        {!isUser && !streaming && assistantActionContent.trim() && (
                           <div className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-full pl-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex flex-col gap-0.5">
                             {isLastAssistant && (
                               <Tooltip content={t("ai.regenerate")} delay={150} side="right">
@@ -2003,8 +2052,8 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
                                   e.stopPropagation();
                                   try {
                                     const div = document.createElement("div");
-                                    div.innerHTML = markdownToHtml(msg.content);
-                                    const text = div.textContent || div.innerText || msg.content;
+                                    div.innerHTML = markdownToHtml(assistantActionContent);
+                                    const text = div.textContent || div.innerText || assistantActionContent;
                                     await navigator.clipboard.writeText(text);
                                     setCopiedMsgIdx(i);
                                     toast(t("ai.copied"), "success");
@@ -2018,7 +2067,7 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
                                 {copiedMsgIdx === i ? <CopyCheck className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
                               </button>
                             </Tooltip>
-                            {!feedbackDoneRef.current.has(i) && (<>
+                            {canFeedback && !feedbackDoneRef.current.has(i) && (<>
                             <Tooltip content={t("ai.like")} delay={150} side="right">
                               <button
                                 onClick={(e) => {
@@ -2063,7 +2112,7 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
                                     key={star}
                                     onClick={async (e) => {
                                       e.stopPropagation();
-                                      await api.sendFeedback({ messageContent: msg.content, feedbackType: "like", rating: star });
+                                      await api.sendFeedback({ messageContent: assistantActionContent, feedbackType: "like", rating: star });
                                       api.logActivity({ action: "chat_feedback", detail: `like:${star}` }).catch(() => {});
                                       toast(t("ai.feedbackThanks"), "success");
                                       feedbackDoneRef.current.add(i);
@@ -2096,7 +2145,7 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
                                     key={reason}
                                     onClick={async (e) => {
                                       e.stopPropagation();
-                                      await api.sendFeedback({ messageContent: msg.content, feedbackType: "dislike", reason });
+                                      await api.sendFeedback({ messageContent: assistantActionContent, feedbackType: "dislike", reason });
                                       api.logActivity({ action: "chat_feedback", detail: `dislike:${reason}` }).catch(() => {});
                                       toast(t("ai.feedbackThanks"), "success");
                                       feedbackDoneRef.current.add(i);

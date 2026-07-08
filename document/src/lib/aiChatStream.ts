@@ -26,6 +26,44 @@ export function resolveStoredAssistantContent({
   return final ? finalContent || "" : displayContent;
 }
 
+export function resolveAssistantActionContent({
+  content,
+  finalContent,
+}: {
+  content: string;
+  finalContent?: string;
+}): string {
+  return resolveStoredAssistantContent({ displayContent: content, finalContent });
+}
+
+export function canSendAssistantFeedback({
+  content,
+  finalContent,
+  isTyping,
+  interrupted,
+}: {
+  content: string;
+  finalContent?: string;
+  isTyping?: boolean;
+  interrupted?: boolean;
+}): boolean {
+  if (isTyping || interrupted) return false;
+  return resolveAssistantActionContent({ content, finalContent }).trim().length > 0;
+}
+
+export function shouldIncludeAssistantInPrompt({
+  content,
+  finalContent,
+  interrupted,
+}: {
+  content: string;
+  finalContent?: string;
+  interrupted?: boolean;
+}): boolean {
+  if (interrupted) return false;
+  return resolveAssistantActionContent({ content, finalContent }).trim().length > 0;
+}
+
 export function resolveChatFinalContent({
   streamedContent,
   finalReply,
