@@ -32,6 +32,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useI18n } from "@/components/I18nProvider";
 import { useToast } from "@/components/Toast";
 import { sanitizeHtml } from "@/lib/html";
+import { buildDraftKey } from "@/lib/interactionState";
 import { cn } from "@/lib/utils";
 import type { WorkRecord, WorkRecordPeriod } from "@/types";
 import type { ClipboardEvent, MouseEvent as ReactMouseEvent, RefObject } from "react";
@@ -335,6 +336,8 @@ export function WorkRecordPanel({ className, view = "editor" }: { className?: st
   const [backfillTargetDate, setBackfillTargetDate] = useState(todayKey);
   const [deleteTarget, setDeleteTarget] = useState<WorkRecord | null>(null);
   const [aiLoading, setAiLoading] = useState<"generate" | "polish" | null>(null);
+  const [draftStatus, setDraftStatus] = useState<"" | "dirty" | "saved" | "restored">("");
+  const draftSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const periodItems = useMemo(
     () => [
@@ -460,6 +463,69 @@ export function WorkRecordPanel({ className, view = "editor" }: { className?: st
     setContent(nextRecord.content);
   };
 
+  const draftKey = useMemo(() => buildDraftKey(period, targetDate), [period, targetDate]);
+  const hasUnsavedDraft = !isListView && !loading && (
+    title !== (record?.title || "") || content !== (record?.content || "")
+  );
+
+  useEffect(() => {
+    if (isListView || loading) return;
+    const rawDraft = localStorage.getItem(draftKey);
+    if (!rawDraft) {
+      setDraftStatus("");
+      return;
+    }
+    try {
+      const draft = JSON.parse(rawDraft) as { title?: string; content?: string };
+      const nextTitle = draft.title || "";
+      const nextContent = draft.content || "";
+      if (nextTitle !== (record?.title || "") || nextContent !== (record?.content || "")) {
+        setTitle(nextTitle);
+        setContent(nextContent);
+        setDraftStatus("restored");
+        toast(t("workbench.recordDraftRestored"), "info");
+      }
+    } catch {
+      localStorage.removeItem(draftKey);
+    }
+  }, [draftKey, isListView, loading, record?.content, record?.title, t, toast]);
+
+  useEffect(() => {
+    if (isListView || loading) return;
+    if (draftSaveTimerRef.current) clearTimeout(draftSaveTimerRef.current);
+    if (!hasUnsavedDraft) {
+      localStorage.removeItem(draftKey);
+      setDraftStatus("");
+      return;
+    }
+    setDraftStatus("dirty");
+    draftSaveTimerRef.current = setTimeout(() => {
+      localStorage.setItem(draftKey, JSON.stringify({ title, content }));
+      setDraftStatus("saved");
+    }, 500);
+    return () => {
+      if (draftSaveTimerRef.current) clearTimeout(draftSaveTimerRef.current);
+    };
+  }, [content, draftKey, hasUnsavedDraft, isListView, loading, title]);
+
+  useEffect(() => {
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (!hasUnsavedDraft) return;
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [hasUnsavedDraft]);
+
+  const discardDraft = () => {
+    if (draftSaveTimerRef.current) clearTimeout(draftSaveTimerRef.current);
+    localStorage.removeItem(draftKey);
+    setTitle(record?.title || "");
+    setContent(record?.content || "");
+    setDraftStatus("");
+  };
+
   const refreshRecent = async () => {
     const listRes = await api.listWorkRecords({ period: listPeriod, limit: 100 });
     setRecentRecords(listRes.records);
@@ -477,6 +543,8 @@ export function WorkRecordPanel({ className, view = "editor" }: { className?: st
       setTargetDate(res.record.targetDate.slice(0, 10));
       setTitle(res.record.title);
       setContent(res.record.content);
+      localStorage.removeItem(draftKey);
+      setDraftStatus("");
       await refreshRecent();
       toast(t("workbench.recordSaved"), "success");
     } catch (error: any) {
@@ -495,6 +563,8 @@ export function WorkRecordPanel({ className, view = "editor" }: { className?: st
       setTargetDate(res.record.targetDate.slice(0, 10));
       setTitle(res.record.title);
       setContent(res.record.content);
+      localStorage.removeItem(draftKey);
+      setDraftStatus("");
       await refreshRecent();
       toast(t("workbench.recordGenerated"), "success");
     } catch (error: any) {
@@ -530,6 +600,8 @@ export function WorkRecordPanel({ className, view = "editor" }: { className?: st
       setRecord(null);
       setTitle("");
       setContent("");
+      localStorage.removeItem(draftKey);
+      setDraftStatus("");
       await refreshRecent();
       toast(t("workbench.recordDeleted"), "success");
     } catch (error: any) {
@@ -869,6 +941,16 @@ export function WorkRecordPanel({ className, view = "editor" }: { className?: st
                 <p className="mt-1 text-xs text-surface-500 dark:text-surface-400">
                   {periodLabel}{t("date.separator")}{currentPeriodLabel}
                 </p>
+                {draftStatus && (
+                  <div className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700 dark:border-amber-500/25 dark:bg-amber-500/10 dark:text-amber-200">
+                    <Clock3 className="h-3 w-3" />
+                    {draftStatus === "saved"
+                      ? t("workbench.recordDraftSaved")
+                      : draftStatus === "restored"
+                        ? t("workbench.recordDraftRestored")
+                        : t("workbench.recordUnsaved")}
+                  </div>
+                )}
               </div>
               <div className="flex shrink-0 items-center gap-2">
                 {period !== "daily" && (
@@ -942,6 +1024,18 @@ export function WorkRecordPanel({ className, view = "editor" }: { className?: st
                 >
                   <Trash2 className="h-4 w-4" />
                   <span>{t("common.delete")}</span>
+                </Button>
+              )}
+              {hasUnsavedDraft && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-10 gap-1.5 px-3"
+                  onClick={discardDraft}
+                  disabled={saving}
+                >
+                  <X className="h-4 w-4" />
+                  <span>{t("workbench.recordDraftDiscard")}</span>
                 </Button>
               )}
             </div>
@@ -1053,6 +1147,26 @@ export function WorkRecordPanel({ className, view = "editor" }: { className?: st
                 </Button>
               </div>
             </div>
+            {hasListFilters && (
+              <div className="flex flex-wrap items-center gap-2 border-t border-surface-200 pt-3 text-[11px] dark:border-surface-800">
+                <span className="font-semibold text-surface-500 dark:text-surface-400">{t("workbench.activeFilters")}</span>
+                {searchQuery && (
+                  <span className="rounded-full bg-white px-2 py-1 font-medium text-surface-600 shadow-sm dark:bg-surface-900 dark:text-surface-300">
+                    {searchQuery}
+                  </span>
+                )}
+                {dateFrom && (
+                  <span className="rounded-full bg-white px-2 py-1 font-medium text-surface-600 shadow-sm dark:bg-surface-900 dark:text-surface-300">
+                    {t("workbench.dateFrom")}: {dateFrom}
+                  </span>
+                )}
+                {dateTo && (
+                  <span className="rounded-full bg-white px-2 py-1 font-medium text-surface-600 shadow-sm dark:bg-surface-900 dark:text-surface-300">
+                    {t("workbench.dateTo")}: {dateTo}
+                  </span>
+                )}
+              </div>
+            )}
           </div>
 
           <div className="overflow-hidden rounded-2xl border border-surface-200 dark:border-surface-800">

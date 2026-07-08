@@ -27,6 +27,7 @@ import { Input } from "@/components/ui/input";
 import { useI18n, type TranslationKey } from "@/components/I18nProvider";
 import { useToast } from "@/components/Toast";
 import { api } from "@/api";
+import { buildIndexProgressLabel } from "@/lib/interactionState";
 import { cn } from "@/lib/utils";
 import {
   Brain, Plus, Search, Edit2, Trash2, X, GripVertical,
@@ -169,6 +170,8 @@ export function BrainMemoryPage() {
   const [ragAvailable, setRagAvailable] = useState(false);
   const [reindexAllLoading, setReindexAllLoading] = useState(false);
   const [reindexingIds, setReindexingIds] = useState<Set<string>>(new Set());
+  const [reindexProgress, setReindexProgress] = useState<{ done: number; total: number; failed: number } | null>(null);
+  const [categoryOrderStatus, setCategoryOrderStatus] = useState<"" | "changed" | "saving" | "saved" | "failed">("");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
 
@@ -234,6 +237,7 @@ export function BrainMemoryPage() {
       const newIndex = prev.findIndex((cat) => cat.id === over.id);
       if (oldIndex === -1 || newIndex === -1) return prev;
       categoryOrderChanged.current = true;
+      setCategoryOrderStatus("changed");
       return arrayMove(prev, oldIndex, newIndex);
     });
   };
@@ -249,10 +253,14 @@ export function BrainMemoryPage() {
       sortOrder: index,
     }));
     try {
+      setCategoryOrderStatus("saving");
       await api.reorderBrainCategories(ordered);
       categoryOrderChanged.current = false;
+      setCategoryOrderStatus("saved");
+      window.setTimeout(() => setCategoryOrderStatus((status) => status === "saved" ? "" : status), 1600);
     } catch (err: any) {
       console.error("Failed to reorder categories:", err);
+      setCategoryOrderStatus("failed");
       toast(err.message || t("brain.persistOrderFailed"), "error");
     }
   };
@@ -373,14 +381,17 @@ export function BrainMemoryPage() {
 
   const handleReindexAll = async () => {
     setReindexAllLoading(true);
+    setReindexProgress({ done: 0, total: cards.length, failed: 0 });
     try {
       const result = await api.reindexAllBrainKnowledge();
+      setReindexProgress({ done: result.indexed, total: result.total, failed: result.failed });
       void refreshRagAvailability();
       toast(`${t("rag.reindexDone")} (${result.indexed}/${result.total})`, result.failed === 0 ? "success" : "info");
     } catch (err: any) {
       toast(err.message || t("rag.reindexFailed"), "error");
     } finally {
       setReindexAllLoading(false);
+      window.setTimeout(() => setReindexProgress(null), 3500);
     }
   };
 
@@ -516,6 +527,27 @@ export function BrainMemoryPage() {
             </Button>
           </div>
         </div>
+
+        {reindexProgress && (
+          <div className="mb-8 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-200">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <span className="font-semibold">
+                {buildIndexProgressLabel(t("rag.reindexProgress"), reindexProgress.done, reindexProgress.total)}
+              </span>
+              {reindexProgress.failed > 0 && (
+                <span className="text-xs">
+                  {t("rag.reindexPartial").replace("{failed}", String(reindexProgress.failed))}
+                </span>
+              )}
+            </div>
+            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/70 dark:bg-surface-950/50">
+              <div
+                className="h-full rounded-full bg-emerald-500 transition-[width] duration-300"
+                style={{ width: `${reindexProgress.total > 0 ? Math.round((reindexProgress.done / reindexProgress.total) * 100) : 0}%` }}
+              />
+            </div>
+          </div>
+        )}
 
         {/* Filter and Search Bar */}
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
@@ -804,6 +836,29 @@ export function BrainMemoryPage() {
               <span>{t("brain.categoryCount")}</span>
               <span className="h-1 w-1 rounded-full bg-surface-300 dark:bg-surface-700" />
               <span>{t("brain.categoryDragHint")}</span>
+              {categoryOrderStatus && (
+                <>
+                  <span className="h-1 w-1 rounded-full bg-surface-300 dark:bg-surface-700" />
+                  <span className={cn(
+                    "inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-semibold",
+                    categoryOrderStatus === "failed"
+                      ? "bg-red-50 text-red-600 dark:bg-red-500/10 dark:text-red-300"
+                      : "bg-brand-50 text-brand-700 dark:bg-brand-500/10 dark:text-brand-200"
+                  )}>
+                    {categoryOrderStatus === "saving" && <Loader2 className="h-3 w-3 animate-spin" />}
+                    {categoryOrderStatus === "saved" && <Check className="h-3 w-3" />}
+                    {categoryOrderStatus === "failed" && <AlertCircle className="h-3 w-3" />}
+                    {categoryOrderStatus === "changed" && t("brain.orderChanged")}
+                    {categoryOrderStatus === "saving" && t("brain.orderSaving")}
+                    {categoryOrderStatus === "saved" && t("brain.orderSaved")}
+                    {categoryOrderStatus === "failed" && (
+                      <button type="button" onClick={persistCategoryOrder} className="underline underline-offset-2">
+                        {t("brain.orderRetry")}
+                      </button>
+                    )}
+                  </span>
+                </>
+              )}
             </div>
 
             {categories.length === 0 ? (

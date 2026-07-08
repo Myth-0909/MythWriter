@@ -2005,63 +2005,98 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
                               </details>
                             )}
 
-                            {/* Tool call blocks */}
+                            {/* Tool call timeline */}
                             {msg.toolCalls && msg.toolCalls.length > 0 && (
-                              <div className="mb-2 space-y-1.5">
-                                {msg.toolCalls.map((tc, i) => {
-                                  const isSearch = tc.name === "search_web";
-                                  const isCreate = tc.name === "create_document";
-                                  const isUpdate = tc.name === "update_document";
-                                  const toolLabels: Record<string, string> = {
-                                    search_web: t("ai.searchWeb"),
-                                    create_document: t("ai.createDoc"),
-                                    update_document: t("ai.updateDoc"),
-                                    get_user_stats: t("ai.tool.getUserStats"),
-                                    get_today_writing: t("ai.tool.getTodayWriting"),
-                                    list_recent_documents: t("ai.tool.listRecentDocuments"),
-                                  };
-                                  const toolLabel = toolLabels[tc.name] || tc.name;
-                                  const toolIcon = isSearch ? "🔍" : isCreate || isUpdate ? "📝" : "🔧";
-                                  const inProgress = tc.status === "calling";
-                                  const done = tc.status === "done";
-                                  const failed = tc.status === "error";
-                                  const evidence = tc.summary || tc.result;
-                                  return (
-                                    <details key={i} className="rounded-lg border border-amber-200/60 bg-amber-50/40 dark:border-amber-500/15 dark:bg-amber-500/5" open={inProgress}>
-                                      <summary className="flex cursor-pointer items-center gap-2 px-3 py-2 text-[11px] select-none">
-                                        <span className="text-xs">{toolIcon}</span>
-                                        <span className="font-medium text-amber-700 dark:text-amber-300">{toolLabel}</span>
-                                        {evidence && (
-                                          <span className="min-w-[120px] flex-1 whitespace-normal break-words rounded-full border border-amber-200/70 bg-white/70 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:border-amber-500/15 dark:bg-surface-900/55 dark:text-amber-200">
-                                            {evidence}
-                                          </span>
+                              (() => {
+                                const hasRunningTool = msg.toolCalls.some((tc) => tc.status === "calling");
+                                const doneCount = msg.toolCalls.filter((tc) => tc.status === "done").length;
+                                const toolLabels: Record<string, string> = {
+                                  search_web: t("ai.searchWeb"),
+                                  create_document: t("ai.createDoc"),
+                                  update_document: t("ai.updateDoc"),
+                                  get_user_stats: t("ai.tool.getUserStats"),
+                                  get_today_writing: t("ai.tool.getTodayWriting"),
+                                  list_recent_documents: t("ai.tool.listRecentDocuments"),
+                                };
+
+                                return (
+                                  <details
+                                    className="mb-2 overflow-hidden rounded-xl border border-amber-200/70 bg-amber-50/45 dark:border-amber-500/15 dark:bg-amber-500/5"
+                                    open={hasRunningTool}
+                                  >
+                                    <summary className="flex cursor-pointer items-center gap-2 px-3 py-2 text-[11px] select-none text-amber-700 dark:text-amber-300">
+                                      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-white text-xs shadow-sm dark:bg-surface-900">🔧</span>
+                                      <span className="font-semibold">{t("ai.toolTimeline")}</span>
+                                      <span className="rounded-full border border-amber-200/70 bg-white/70 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:border-amber-500/15 dark:bg-surface-900/55 dark:text-amber-200">
+                                        {doneCount}/{msg.toolCalls.length}
+                                      </span>
+                                      <span className="ml-auto flex items-center gap-1 shrink-0">
+                                        {hasRunningTool ? (
+                                          <InlineLoading
+                                            variant="dots"
+                                            size="sm"
+                                            label={t("ai.toolRunning")}
+                                            className="text-amber-400"
+                                            labelClassName="text-[10px] text-amber-400"
+                                          />
+                                        ) : (
+                                          <ChevronDown className="h-3.5 w-3.5 opacity-70 transition-transform duration-200 group-open:rotate-180" />
                                         )}
-                                        <span className="ml-auto flex items-center gap-1 shrink-0">
-                                          {inProgress && (
-                                            <InlineLoading
-                                              variant="dots"
-                                              size="sm"
-                                              label={t("ai.toolRunning")}
-                                              className="text-amber-400"
-                                              labelClassName="text-[10px] text-amber-400"
-                                            />
-                                          )}
-                                          {done && <CheckCircle2 className="h-3 w-3 text-green-500" />}
-                                          {failed && <XCircle className="h-3 w-3 text-red-400" />}
-                                        </span>
-                                      </summary>
-                                      {evidence && done && (
-                                        <div className="border-t border-amber-200/40 px-3 py-2 text-[10px] leading-relaxed text-surface-500 dark:border-amber-500/10 dark:text-surface-400 max-h-32 overflow-y-auto">
-                                          <div className="font-medium text-surface-700 dark:text-surface-200">{tc.summary || evidence}</div>
-                                          {tc.summary && tc.result && tc.summary !== tc.result && (
-                                            <div className="mt-1 text-surface-400 dark:text-surface-500">{tc.result}</div>
-                                          )}
-                                        </div>
-                                      )}
-                                    </details>
-                                  );
-                                })}
-                              </div>
+                                      </span>
+                                    </summary>
+                                    <div className="border-t border-amber-200/40 px-3 py-2 dark:border-amber-500/10">
+                                      <div className="space-y-2">
+                                        {msg.toolCalls.map((tc, i) => {
+                                          const isSearch = tc.name === "search_web";
+                                          const isCreate = tc.name === "create_document";
+                                          const isUpdate = tc.name === "update_document";
+                                          const toolLabel = toolLabels[tc.name] || tc.name;
+                                          const toolIcon = isSearch ? "🔍" : isCreate || isUpdate ? "📝" : "🔧";
+                                          const inProgress = tc.status === "calling";
+                                          const done = tc.status === "done";
+                                          const failed = tc.status === "error";
+                                          const evidence = tc.summary || tc.result;
+
+                                          return (
+                                            <div
+                                              key={`${tc.name}-${i}`}
+                                              className="grid grid-cols-[22px_minmax(0,1fr)_18px] gap-2 rounded-lg bg-white/68 px-2.5 py-2 dark:bg-surface-900/55"
+                                            >
+                                              <span className="mt-0.5 text-xs">{toolIcon}</span>
+                                              <div className="min-w-0">
+                                                <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                                                  <span className="text-[11px] font-semibold text-amber-800 dark:text-amber-200">
+                                                    {toolLabel}
+                                                  </span>
+                                                  {tc.arguments && (
+                                                    <span className="max-w-full truncate rounded-full border border-amber-200/70 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:border-amber-500/15 dark:text-amber-300">
+                                                      {tc.arguments}
+                                                    </span>
+                                                  )}
+                                                </div>
+                                                <div className="mt-1 text-[10px] leading-relaxed text-surface-500 dark:text-surface-400">
+                                                  <span className="font-medium text-surface-700 dark:text-surface-200">
+                                                    {t("ai.toolEvidence")}
+                                                  </span>
+                                                  <span className="mx-1">·</span>
+                                                  <span className="whitespace-pre-wrap break-words">
+                                                    {evidence || t("ai.toolNoEvidence")}
+                                                  </span>
+                                                </div>
+                                              </div>
+                                              <span className="mt-0.5 flex items-center justify-center">
+                                                {inProgress && <InlineLoading variant="dots" size="sm" className="text-amber-400" />}
+                                                {done && <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />}
+                                                {failed && <XCircle className="h-3.5 w-3.5 text-red-400" />}
+                                              </span>
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    </div>
+                                  </details>
+                                );
+                              })()
                             )}
                             {/* Placeholder content when tool calls are happening but no text yet */}
                             {(!msg.content || msg.content === "") && msg.toolCalls && msg.toolCalls.some(tc => tc.status === "calling") && (

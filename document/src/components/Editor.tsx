@@ -20,7 +20,7 @@ import {
   List, ListOrdered, Code, Code2, Quote, Minus,
   AlignLeft, AlignCenter, AlignRight,
   Undo2, Redo2, Heading1, Heading2, Heading3,
-  Highlighter, Star, Palette, Eraser, ClipboardCheck, Loader2, X, Sparkles,
+  Highlighter, Star, Palette, Eraser, ClipboardCheck, Loader2, X, Sparkles, AlertTriangle, RotateCcw,
 } from "lucide-react";
 import { useI18n } from "@/components/I18nProvider";
 import { useDocuments } from "@/store";
@@ -80,7 +80,7 @@ export function Editor({ documentId }: EditorProps) {
   const [title, setTitle] = useState("");
   const [charCount, setCharCount] = useState(0);
   const charCountRef = useRef(0);
-  const [saveStatus, setSaveStatus] = useState<"" | "saving" | "saved">("");
+  const [saveStatus, setSaveStatus] = useState<"" | "unsaved" | "saving" | "saved" | "failed">("");
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [showLineHeightPicker, setShowLineHeightPicker] = useState(false);
   const [currentFontSize, setCurrentFontSize] = useState(16);
@@ -220,7 +220,7 @@ export function Editor({ documentId }: EditorProps) {
       updateDocumentRef.current(prevDocId, {
         title: titleRef.current,
         content: editor.getHTML(),
-      });
+      }).catch(() => setSaveStatus("failed"));
     }
 
     isApplyingExternalContentRef.current = true;
@@ -243,26 +243,48 @@ export function Editor({ documentId }: EditorProps) {
         updateDocumentRef.current(loadedDocumentIdRef.current, {
           title: titleRef.current,
           content: editor?.getHTML() || "",
-        });
+        }).catch(() => {});
       }
     };
   }, [editor]);
+
+  const saveSnapshot = useCallback(async (targetDocumentId: string, titleVal: string, content: string) => {
+    setSaveStatus("saving");
+    try {
+      await updateDocumentRef.current(targetDocumentId, { title: titleVal, content });
+      lastSavedContentRef.current = content;
+      setSaveStatus("saved");
+      window.setTimeout(() => {
+        setSaveStatus((status) => (status === "saved" ? "" : status));
+      }, 1500);
+    } catch (error: any) {
+      setSaveStatus("failed");
+      toast(error.message || t("editor.saveFailed"), "error");
+    }
+  }, [t, toast]);
 
   const queueSave = useCallback(() => {
     const targetDocumentId = documentIdRef.current;
     if (!targetDocumentId || !editor) return;
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
 
-    setSaveStatus("saving");
+    setSaveStatus("unsaved");
     saveTimerRef.current = setTimeout(() => {
       const content = editor.getHTML();
       const titleVal = titleRef.current;
-      lastSavedContentRef.current = content;
-      updateDocumentRef.current(targetDocumentId, { title: titleVal, content });
-      setSaveStatus("saved");
-      setTimeout(() => setSaveStatus(""), 1500);
+      void saveSnapshot(targetDocumentId, titleVal, content);
     }, 1500);
-  }, [editor]);
+  }, [editor, saveSnapshot]);
+
+  const retrySave = useCallback(() => {
+    const targetDocumentId = documentIdRef.current;
+    if (!targetDocumentId || !editor) return;
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+    void saveSnapshot(targetDocumentId, titleRef.current, editor.getHTML());
+  }, [editor, saveSnapshot]);
 
   // Auto-save on title change
   useEffect(() => {
@@ -772,9 +794,25 @@ export function Editor({ documentId }: EditorProps) {
       {/* Footer */}
       <div className="flex items-center justify-between border-t border-surface-200 px-6 py-2 dark:border-surface-800">
         <div className="flex items-center gap-3">
-          <div className="text-xs text-surface-400">
-            {saveStatus === "saving" && t("editor.saving")}
+          <div className="flex items-center gap-2 text-xs text-surface-400">
+            {saveStatus === "unsaved" && <span className="text-amber-500">{t("editor.unsaved")}</span>}
+            {saveStatus === "saving" && (
+              <span className="inline-flex items-center gap-1 text-surface-500 dark:text-surface-400">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                {t("editor.saving")}
+              </span>
+            )}
             {saveStatus === "saved" && <span className="text-green-500">{t("editor.saved")}</span>}
+            {saveStatus === "failed" && (
+              <span className="inline-flex items-center gap-1 text-red-500">
+                <AlertTriangle className="h-3 w-3" />
+                {t("editor.saveFailed")}
+                <Button type="button" variant="ghost" size="sm" onClick={retrySave} className="h-6 px-2 text-[11px]">
+                  <RotateCcw className="h-3 w-3" />
+                  {t("editor.retrySave")}
+                </Button>
+              </span>
+            )}
           </div>
           {selectionChars > 0 && (
             <span className="text-xs text-brand-400">

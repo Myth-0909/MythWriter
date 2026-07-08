@@ -71,6 +71,7 @@ import { useDocuments } from "@/store";
 import { useToast } from "@/components/Toast";
 import { api } from "@/api";
 import { escapeHtml, sanitizeHtml } from "@/lib/html";
+import { buildImportPreview, buildSearchStatus } from "@/lib/interactionState";
 import { cn } from "@/lib/utils";
 import { categoryLabels, type Document, type DocumentCategory, type WorkRecord } from "@/types";
 import { formatFullDateTime, formatRelativeModified } from "@/lib/date";
@@ -334,6 +335,14 @@ export function DocumentCenterPage({
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [movingDocId, setMovingDocId] = useState<string | null>(null);
   const [moveDialogOpen, setMoveDialogOpen] = useState(false);
+  const [importPreview, setImportPreview] = useState<null | {
+    fileName: string;
+    title: string;
+    extension: string;
+    wordCount: number;
+    content: string;
+    targetGroupId: string | null;
+  }>(null);
   const [chartData, setChartData] = useState<{ dayIndices: number[]; dates: string[]; words: number[] }>({
     dayIndices: [],
     dates: [],
@@ -455,15 +464,35 @@ export function DocumentCenterPage({
         content = ext === "md" ? sanitizeHtml(await marked.parse(raw)) : plainTextToHtml(raw);
       }
 
-      const targetGroupId = isWorkbench ? null : activeGroupId;
-      const newId = await createDocument("general", title, content, targetGroupId);
+      const preview = buildImportPreview({ fileName: file.name, extension: ext, content });
+      setImportPreview({
+        ...preview,
+        fileName: file.name,
+        title,
+        content,
+        targetGroupId: isWorkbench ? null : activeGroupId,
+      });
+      toast(t("documents.importReady"), "info");
+    } catch (error: any) {
+      toast(error.message || t("toast.importFailed"), "error");
+    } finally {
+      setImporting(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  const confirmImport = async () => {
+    if (!importPreview) return;
+    setImporting(true);
+    try {
+      const newId = await createDocument("general", importPreview.title, importPreview.content, importPreview.targetGroupId);
+      setImportPreview(null);
       toast(t("toast.importSuccess"), "success");
       onOpenDoc?.(newId);
     } catch (error: any) {
       toast(error.message || t("toast.importFailed"), "error");
     } finally {
       setImporting(false);
-      if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
 
@@ -517,6 +546,11 @@ export function DocumentCenterPage({
   const mainDocs = filteredDocs.filter((doc) => !doc.isFavorite);
   const favDocs = filteredDocs.filter((doc) => doc.isFavorite);
   const visibleDocsCount = favDocs.length + mainDocs.length;
+  const searchStatus = buildSearchStatus(visibleDocsCount, debouncedQuery, {
+    results: t("documents.searchResultCount"),
+    empty: t("documents.searchNoResults"),
+    idle: "",
+  });
   const latestDoc = useMemo(() => sortDocuments(documents, "updated", lang)[0] ?? null, [documents, lang]);
   const latestDocGroup = latestDoc?.groupId ? groups.find((group) => group.id === latestDoc.groupId) : null;
   const journalWordsByDay = chartData.dates.map((dateKey) =>
@@ -1363,6 +1397,10 @@ export function DocumentCenterPage({
                 <p className="mt-1 max-w-[760px] text-xs leading-5 text-surface-500 dark:text-surface-400">
                   {t("documents.aiWorkbenchDesc")}
                 </p>
+                <p className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-surface-100 px-2.5 py-1 text-[11px] font-medium text-surface-500 dark:bg-surface-800 dark:text-surface-400">
+                  <Sparkles className="h-3.5 w-3.5 text-brand-500 dark:text-brand-300" />
+                  {t("documents.aiBasis")}
+                </p>
               </div>
             </div>
 
@@ -1496,6 +1534,21 @@ export function DocumentCenterPage({
               </span>
             </div>
           </div>
+          {searchStatus && (
+            <div className={cn(
+              "mt-3 rounded-xl border px-3 py-2 text-xs font-medium",
+              visibleDocsCount > 0
+                ? "border-brand-200 bg-brand-50 text-brand-700 dark:border-brand-500/20 dark:bg-brand-500/10 dark:text-brand-200"
+                : "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-200"
+            )}>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span>{searchStatus}</span>
+                {visibleDocsCount === 0 && (
+                  <span className="text-[11px] font-normal">{t("documents.searchNoResultsHint")}</span>
+                )}
+              </div>
+            </div>
+          )}
         </section>
 
         {favDocs.length > 0 && (
@@ -1564,8 +1617,8 @@ export function DocumentCenterPage({
             <div className="flex min-h-[300px] flex-col items-center justify-center rounded-[8px] border border-dashed border-surface-200 bg-white px-6 py-8 text-center dark:border-surface-800 dark:bg-surface-900">
               <EmptyScene
                 variant="paper"
-                title={emptyIsSearch ? t("documents.emptySearchTitle") : t("documents.emptyTitle")}
-                description={emptyIsSearch ? t("documents.emptySearchDesc") : t("documents.emptyDesc")}
+                title={emptyIsSearch ? t("documents.searchNoResults") : t("documents.emptyTitle")}
+                description={emptyIsSearch ? t("documents.searchNoResultsHint") : t("documents.emptyDesc")}
                 compact
                 className="min-h-[180px] border-0 bg-transparent p-0 dark:bg-transparent"
               />
@@ -1637,6 +1690,46 @@ export function DocumentCenterPage({
               );
             })}
           </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!importPreview} onOpenChange={(open) => !open && setImportPreview(null)}>
+        <DialogContent className="max-w-[520px]">
+          <DialogTitle>{t("documents.importPreviewTitle")}</DialogTitle>
+          <DialogDescription>{t("documents.importPreviewDesc")}</DialogDescription>
+          {importPreview && (
+            <div className="mt-4 grid gap-3">
+              {[
+                { label: t("documents.importFile"), value: importPreview.fileName },
+                { label: t("documents.importType"), value: importPreview.extension.toUpperCase() },
+                { label: t("documents.importWords"), value: `${numberFormatter.format(importPreview.wordCount)} ${t("documents.wordsUnit")}` },
+                {
+                  label: t("documents.importTargetGroup"),
+                  value: importPreview.targetGroupId
+                    ? groups.find((group) => group.id === importPreview.targetGroupId)?.name || t("group.unknown")
+                    : t("group.ungrouped"),
+                },
+              ].map((item) => (
+                <div key={item.label} className="flex items-center justify-between gap-4 rounded-xl border border-surface-200 bg-surface-50 px-3 py-2 dark:border-surface-800 dark:bg-surface-950">
+                  <span className="text-xs font-medium text-surface-500 dark:text-surface-400">{item.label}</span>
+                  <span className="min-w-0 truncate text-right text-sm font-semibold text-surface-900 dark:text-surface-100">{item.value}</span>
+                </div>
+              ))}
+              <div className="rounded-xl border border-surface-200 bg-white p-3 dark:border-surface-800 dark:bg-surface-900">
+                <div className="text-xs font-semibold text-surface-500 dark:text-surface-400">{t("editor.title")}</div>
+                <div className="mt-1 break-words text-base font-semibold text-surface-950 dark:text-surface-50">{importPreview.title}</div>
+              </div>
+              <div className="mt-2 flex justify-end gap-2">
+                <Button type="button" variant="outline" onClick={() => setImportPreview(null)} disabled={importing}>
+                  {t("common.cancel")}
+                </Button>
+                <Button type="button" onClick={confirmImport} disabled={importing}>
+                  {importing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                  {t("documents.importConfirm")}
+                </Button>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 

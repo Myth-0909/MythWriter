@@ -16,6 +16,7 @@ import { useAuth } from "@/auth";
 import { api } from "@/api";
 import { getServerAssetUrl } from "@/lib/apiBase";
 import { getFontOption, isFontFamilyKey } from "@/lib/fontCatalog";
+import { hasProfileChanges } from "@/lib/interactionState";
 import { InlineLoading } from "@/components/LoadingSpinner";
 import { Check, Sparkles, Sun, Moon, Monitor, Languages, User, Camera, Info, Loader2 } from "lucide-react";
 
@@ -41,11 +42,20 @@ export function SettingsPage() {
     }
   }, [user]);
 
+  const profileDirty = hasProfileChanges(name, user?.name || "");
+
   const handleSave = async () => {
+    if (!profileDirty) {
+      toast(t("settings.noChanges"), "info");
+      return;
+    }
+
     setSaving(true);
     try {
-      await api.updateProfile({ name });
-      updateUser({ name });
+      const nextName = name.trim();
+      await api.updateProfile({ name: nextName });
+      updateUser({ name: nextName });
+      setName(nextName);
       toast(t("settings.saved"), "success");
     } catch (error: any) {
       toast(error.message || t("toast.saveFailed"), "error");
@@ -130,11 +140,18 @@ export function SettingsPage() {
         <div className="flex flex-col gap-6">
           {/* Profile Section */}
           <section className="rounded-xl border border-surface-200 bg-white p-6 dark:border-surface-800 dark:bg-surface-900">
-            <div className="flex items-center gap-3 mb-6">
-              <User className="h-5 w-5 text-surface-500" />
-              <h3 className="text-base font-semibold text-surface-900 dark:text-surface-100">
-                {t("settings.profile")}
-              </h3>
+            <div className="mb-6 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <User className="h-5 w-5 text-surface-500" />
+                <h3 className="text-base font-semibold text-surface-900 dark:text-surface-100">
+                  {t("settings.profile")}
+                </h3>
+              </div>
+              {profileDirty && (
+                <span className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300">
+                  {t("settings.unsavedChanges")}
+                </span>
+              )}
             </div>
 
             {/* Avatar */}
@@ -205,15 +222,20 @@ export function SettingsPage() {
 
           {/* Appearance Section */}
           <section className="rounded-xl border border-surface-200 bg-white p-6 dark:border-surface-800 dark:bg-surface-900">
-            <div className="flex items-center gap-3 mb-6">
-              {theme === "light" ? (
-                <Sun className="h-5 w-5 text-surface-500" />
-              ) : (
-                <Moon className="h-5 w-5 text-surface-500" />
-              )}
-              <h3 className="text-base font-semibold text-surface-900 dark:text-surface-100">
-                {t("settings.appearance")}
-              </h3>
+            <div className="mb-6 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                {theme === "light" ? (
+                  <Sun className="h-5 w-5 text-surface-500" />
+                ) : (
+                  <Moon className="h-5 w-5 text-surface-500" />
+                )}
+                <h3 className="text-base font-semibold text-surface-900 dark:text-surface-100">
+                  {t("settings.appearance")}
+                </h3>
+              </div>
+              <span className="rounded-full border border-surface-200 bg-surface-50 px-2.5 py-1 text-[11px] font-semibold text-surface-500 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-400">
+                {t("settings.autoSaved")}
+              </span>
             </div>
             <div className="flex flex-col gap-4">
               <div className="flex items-center justify-between py-2">
@@ -371,7 +393,7 @@ export function SettingsPage() {
 
           {/* Save Button */}
           <div className="flex justify-end">
-            <Button onClick={handleSave} disabled={saving}>
+            <Button onClick={handleSave} disabled={saving || !profileDirty}>
               {saving ? <InlineLoading variant="cursor" size="sm" label={t("settings.save")} /> : t("settings.save")}
             </Button>
           </div>
