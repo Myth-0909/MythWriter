@@ -203,7 +203,7 @@ echo "[数据库] 就绪"
 
 # 启动后端
 echo "[后端] 启动 API 服务 (port $BACKEND_PORT)..."
-cd "$BACKEND_DIR" && HOST=0.0.0.0 npm run dev &
+cd "$BACKEND_DIR" && NODE_USE_ENV_PROXY="${NODE_USE_ENV_PROXY:-1}" HOST=0.0.0.0 npm run dev &
 BACKEND_PID=$!
 
 # 启动前端
