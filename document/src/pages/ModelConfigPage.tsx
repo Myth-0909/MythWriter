@@ -12,10 +12,9 @@ import { Scrollbar } from "@/components/ui/scrollbar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip } from "@/components/ui/tooltip";
 
-const DEFAULT_BASE_URL = "http://172.16.76.112:8000/v1";
-const DEFAULT_MODEL = "google/gemma-4-31B-it";
-const DEFAULT_API_KEY_PLACEHOLDER = "sk-7d2a1b5c9e4f8a0b3c6d9e1f2a5b8c4d";
-const DEFAULT_EMBEDDING_BASE_URL = "http://172.16.76.112:8001/v1";
+const DEFAULT_BASE_URL = "https://api.deepseek.com/v1";
+const DEFAULT_MODEL = "deepseek-chat";
+const DEFAULT_EMBEDDING_BASE_URL = "https://your-embedding-provider.example/v1";
 const DEFAULT_EMBEDDING_MODEL = "Qwen/Qwen3-Embedding-8B";
 
 function findCurrentHistoryId(histories: ApiKeyHistory[], current: { baseUrl: string; model: string; masked: string }) {
@@ -384,7 +383,7 @@ export function ModelConfigPage() {
                       type={showKey ? "text" : "password"}
                       value={apiKey}
                       onChange={(e) => setApiKey(e.target.value)}
-                      placeholder={DEFAULT_API_KEY_PLACEHOLDER}
+                      placeholder={t("apikey.apiKeyPlaceholder")}
                       disabled={isLocked}
                       className="pr-9"
                     />

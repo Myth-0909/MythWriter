@@ -3,4 +3,5 @@ dist/
 .env
 *.log
 data/
+uploads/
 src/lib/prisma-sqlite/

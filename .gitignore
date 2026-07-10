@@ -27,6 +27,14 @@ dist-ssr
 .env
 .env.local
 
+# Local agent/runtime artifacts
+.qwen/
+.codegraph/
+
+# Private presentation/planning artifacts
+AI_COMPETITION_PLAN.md
+ai-competition-ppt/
+
 # Merge / rebase leftovers
 *.orig
 *.rej

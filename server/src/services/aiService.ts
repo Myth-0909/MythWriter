@@ -479,18 +479,11 @@ export function detectDeleteCommand(content: string): boolean {
 
 // --- Database operations ---
 import prisma from "../lib/prisma";
-
-const DEFAULT_API_KEY = "sk-7d2a5b1c9e4f8a0b3c6d9e1f2a5b8c4d";
-const DEFAULT_API_BASE_URL = "http://172.16.76.112:8000/v1";
-const DEFAULT_AI_MODEL = "google/gemma-4-31B-it";
-
-function defaultBaseUrl(value?: string | null) {
-  return value?.trim() || DEFAULT_API_BASE_URL;
-}
-
-function defaultModel(value?: string | null) {
-  return value?.trim() || DEFAULT_AI_MODEL;
-}
+import {
+  defaultChatApiKey,
+  defaultChatBaseUrl,
+  defaultChatModel,
+} from "../lib/aiProviderDefaults";
 
 export async function getUserApiKey(userId: string): Promise<{
   apiKey: string | null;
@@ -503,9 +496,9 @@ export async function getUserApiKey(userId: string): Promise<{
     select: { apiKey: true, apiBaseUrl: true, aiModel: true, lang: true },
   });
   return {
-    apiKey: user?.apiKey || DEFAULT_API_KEY,
-    apiBaseUrl: defaultBaseUrl(user?.apiBaseUrl),
-    aiModel: defaultModel(user?.aiModel),
+    apiKey: defaultChatApiKey(user?.apiKey),
+    apiBaseUrl: defaultChatBaseUrl(user?.apiBaseUrl),
+    aiModel: defaultChatModel(user?.aiModel),
     lang: user?.lang || "zh",
   };
 }

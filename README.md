@@ -130,9 +130,9 @@ MythWriter/
 #### Prerequisites
 - Node.js >= 18
 - pnpm
-- MySQL 8+ running on localhost:3306
-- Redis is recommended for blacklist / rate-limit cache; the app can run without it
-- Milvus is optional for semantic RAG; non-vector features continue working when it is offline
+- MySQL 8+ is optional; development falls back to local SQLite when `DATABASE_URL` is omitted
+- Redis is optional for blacklist / rate-limit cache; the app can run without it
+- Milvus and embeddings are optional for semantic RAG; non-vector features continue working when they are not configured
 
 #### Setup
 
@@ -142,18 +142,12 @@ git clone https://github.com/Myth-0909/MythWriter.git
 cd MythWriter
 
 # 2. Configure environment
-# Update server/.env with your database, AI, and optional vector settings:
-# DATABASE_URL="mysql://root:yourpassword@127.0.0.1:3306/prowriter"
-# JWT_SECRET="replace-with-a-long-random-string"
-# DEEPSEEK_API_KEY="sk-your-deepseek-api-key"
-# EMBEDDING_API_KEY="sk-your-embedding-key"
-# EMBEDDING_BASE_URL="http://your-embedding-service/v1"
-# EMBEDDING_MODEL="Qwen/Qwen3-Embedding-8B"
-# MILVUS_ADDRESS="http://127.0.0.1:19530"
-# MILVUS_TIMEOUT_MS=3000
+# Optional: copy server/.env.example to server/.env and fill in your providers.
+# Without DATABASE_URL, local development uses SQLite at server/data/prowriter.db.
+cp server/.env.example server/.env
 
 # 3. Install dependencies
-cd server && npm install && npx prisma db push && cd ..
+cd server && npm install && npm run setup-local && cd ..
 cd document && pnpm install && cd ..
 
 # 4. Start both frontend and backend
@@ -343,9 +337,9 @@ MythWriter/
 #### 环境要求
 - Node.js >= 18
 - pnpm
-- MySQL 8+ 运行在 localhost:3306
-- 推荐安装 Redis 用于黑名单 / 限流缓存；未安装时应用可降级运行
-- Milvus 用于语义 RAG；离线时非向量功能仍可用
+- MySQL 8+ 可选；未配置 `DATABASE_URL` 时开发环境会回退到本地 SQLite
+- Redis 可选，用于黑名单 / 限流缓存；未安装时应用可降级运行
+- Milvus 和向量模型可选，用于语义 RAG；未配置时非向量功能仍可用
 
 #### 安装步骤
 
@@ -355,18 +349,12 @@ git clone https://github.com/Myth-0909/MythWriter.git
 cd MythWriter
 
 # 2. 配置环境变量
-# 创建 MySQL 用户或使用 root，然后更新 server/.env：
-# DATABASE_URL="mysql://root:yourpassword@127.0.0.1:3306/prowriter"
-# JWT_SECRET="replace-with-a-long-random-string"
-# DEEPSEEK_API_KEY="sk-your-deepseek-api-key"
-# EMBEDDING_API_KEY="sk-your-embedding-key"
-# EMBEDDING_BASE_URL="http://your-embedding-service/v1"
-# EMBEDDING_MODEL="Qwen/Qwen3-Embedding-8B"
-# MILVUS_ADDRESS="http://127.0.0.1:19530"
-# MILVUS_TIMEOUT_MS=3000
+# 可选：复制 server/.env.example 为 server/.env，并填写你的服务商配置。
+# 不配置 DATABASE_URL 时，本地开发会使用 server/data/prowriter.db。
+cp server/.env.example server/.env
 
 # 3. 安装依赖
-cd server && npm install && npx prisma db push && cd ..
+cd server && npm install && npm run setup-local && cd ..
 cd document && pnpm install && cd ..
 
 # 4. 启动前后端

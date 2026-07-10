@@ -9,6 +9,11 @@ import {
 } from "../lib/embedding";
 import { DEFAULT_FONT_FAMILY_KEY, normalizeFontFamilyKey } from "../lib/fontPreferences";
 import { t } from "../lib/i18n";
+import {
+  defaultChatApiKey,
+  defaultChatBaseUrl,
+  defaultChatModel,
+} from "../lib/aiProviderDefaults";
 
 const UPLOADS_DIR = path.join(__dirname, "../../uploads");
 
@@ -110,10 +115,6 @@ export async function uploadAvatar(userId: string, image: string): Promise<
   return { user, avatarUrl: `/uploads/${filename}` };
 }
 
-const DEFAULT_API_KEY = "sk-7d2a5b1c9e4f8a0b3c6d9e1f2a5b8c4d";
-const DEFAULT_API_BASE_URL = "http://172.16.76.112:8000/v1";
-const DEFAULT_AI_MODEL = "google/gemma-4-31B-it";
-
 type ApiKeyHistoryRecord = {
   id: string;
   apiKey: string;
@@ -208,11 +209,11 @@ function extractChatReplyFromText(rawText: string): string {
 }
 
 function defaultBaseUrl(value?: string | null) {
-  return value?.trim() || DEFAULT_API_BASE_URL;
+  return defaultChatBaseUrl(value);
 }
 
 function defaultModel(value?: string | null) {
-  return value?.trim() || DEFAULT_AI_MODEL;
+  return defaultChatModel(value);
 }
 
 function defaultEmbeddingBaseUrl(value?: string | null) {
@@ -237,23 +238,24 @@ export async function getApiKey(userId: string): Promise<{
   const baseUrl = defaultBaseUrl(user?.apiBaseUrl);
   const model = defaultModel(user?.aiModel);
 
-  if (user && (user.apiBaseUrl !== baseUrl || user.aiModel !== model || !user.apiKey)) {
+  if (user && (user.apiBaseUrl !== baseUrl || user.aiModel !== model)) {
     await prisma.user.update({
       where: { id: userId },
       data: {
-        ...(!user.apiKey && { apiKey: DEFAULT_API_KEY }),
         apiBaseUrl: baseUrl,
         aiModel: model,
       },
     });
   }
 
-  const key = user?.apiKey || DEFAULT_API_KEY;
-  await saveApiKeyHistory(userId, {
-    apiKey: key,
-    baseUrl,
-    model,
-  });
+  const key = defaultChatApiKey(user?.apiKey);
+  if (key) {
+    await saveApiKeyHistory(userId, {
+      apiKey: key,
+      baseUrl,
+      model,
+    });
+  }
 
   const histories = await listApiKeyHistories(userId);
   return {
@@ -274,9 +276,9 @@ export async function saveApiKey(userId: string, data: {
     where: { id: userId },
     select: { apiKey: true, apiBaseUrl: true, aiModel: true },
   });
-  const nextApiKey = data.apiKey !== undefined ? data.apiKey.trim() || DEFAULT_API_KEY : current?.apiKey || DEFAULT_API_KEY;
-  const nextBaseUrl = data.baseUrl !== undefined ? data.baseUrl.trim() || DEFAULT_API_BASE_URL : defaultBaseUrl(current?.apiBaseUrl);
-  const nextModel = data.model !== undefined ? data.model.trim() || DEFAULT_AI_MODEL : defaultModel(current?.aiModel);
+  const nextApiKey = data.apiKey !== undefined ? data.apiKey.trim() || null : current?.apiKey || null;
+  const nextBaseUrl = data.baseUrl !== undefined ? data.baseUrl.trim() || defaultBaseUrl() : defaultBaseUrl(current?.apiBaseUrl);
+  const nextModel = data.model !== undefined ? data.model.trim() || defaultModel() : defaultModel(current?.aiModel);
 
   await prisma.user.update({
     where: { id: userId },
@@ -286,11 +288,13 @@ export async function saveApiKey(userId: string, data: {
       aiModel: nextModel,
     },
   });
-  await saveApiKeyHistory(userId, {
-    apiKey: nextApiKey,
-    baseUrl: nextBaseUrl,
-    model: nextModel,
-  });
+  if (nextApiKey) {
+    await saveApiKeyHistory(userId, {
+      apiKey: nextApiKey,
+      baseUrl: nextBaseUrl,
+      model: nextModel,
+    });
+  }
 }
 
 function maskApiKey(key: string) {
@@ -446,15 +450,16 @@ export async function getApiKeySecret(userId: string): Promise<string> {
     where: { id: userId },
     select: { apiKey: true },
   });
-  return user?.apiKey || DEFAULT_API_KEY;
+  return defaultChatApiKey(user?.apiKey);
 }
 
 export async function fetchModels(baseUrl: string, apiKey?: string): Promise<string[]> {
+  const key = defaultChatApiKey(apiKey);
   const response = await fetch(buildModelsUrl(baseUrl), {
     method: "GET",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${(apiKey || DEFAULT_API_KEY).trim()}`,
+      ...(key && { Authorization: `Bearer ${key}` }),
     },
   });
 
@@ -482,14 +487,16 @@ export async function testChatModel(params: {
   model: string;
   prompt?: string;
 }): Promise<{ reply: string; model: string }> {
+  const key = defaultChatApiKey(params.apiKey);
+  const model = defaultChatModel(params.model);
   const response = await fetch(buildChatCompletionsUrl(params.baseUrl), {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${(params.apiKey || DEFAULT_API_KEY).trim()}`,
+      ...(key && { Authorization: `Bearer ${key}` }),
     },
     body: JSON.stringify({
-      model: params.model.trim() || DEFAULT_AI_MODEL,
+      model,
       messages: [
         { role: "user", content: params.prompt?.trim() || "你好！" },
       ],
@@ -506,7 +513,7 @@ export async function testChatModel(params: {
 
   const responseText = await response.text();
   const reply = extractChatReplyFromText(responseText);
-  let responseModel = params.model || DEFAULT_AI_MODEL;
+  let responseModel = model;
   try {
     const payload = JSON.parse(responseText);
     responseModel = String(payload.model || responseModel);

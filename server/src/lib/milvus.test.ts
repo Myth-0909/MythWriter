@@ -61,8 +61,8 @@ function createFakeClient() {
 
 describe("milvus store", () => {
   it("parses Milvus endpoints with or without a protocol", () => {
-    assert.deepEqual(parseMilvusEndpoint("http://172.16.0.44:19530"), {
-      host: "172.16.0.44",
+    assert.deepEqual(parseMilvusEndpoint("http://127.0.0.1:19530"), {
+      host: "127.0.0.1",
       port: 19530,
     });
     assert.deepEqual(parseMilvusEndpoint("localhost"), {

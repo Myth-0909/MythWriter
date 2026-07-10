@@ -73,5 +73,5 @@ cc_figma/
 
 ## Environment
 
-- `server/.env`: `DATABASE_URL`, `JWT_SECRET`, `PORT`, `DEEPSEEK_API_KEY`
+- `server/.env.example`: copy to `server/.env` for optional MySQL, Redis, chat-model, embedding, and Milvus settings
 - `.env` is git-ignored — never commit it

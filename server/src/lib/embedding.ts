@@ -1,7 +1,7 @@
 import prisma from "./prisma";
 
 export const DEFAULT_EMBEDDING_BASE_URL =
-  process.env.EMBEDDING_BASE_URL || "http://172.16.76.112:8001/v1";
+  process.env.EMBEDDING_BASE_URL?.trim() || "";
 export const DEFAULT_EMBEDDING_API_KEY =
   process.env.EMBEDDING_API_KEY?.trim() || "";
 export const DEFAULT_EMBEDDING_MODEL =

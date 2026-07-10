@@ -9,7 +9,7 @@ import {
 export const KNOWLEDGE_COLLECTION = "knowledge_vectors";
 export const DOCUMENT_CHUNKS_COLLECTION = "document_chunks";
 export const VECTOR_DIMENSION = Number(process.env.EMBEDDING_VECTOR_DIM || 8192);
-export const DEFAULT_MILVUS_ADDRESS = process.env.MILVUS_ADDRESS || "http://172.16.0.44:19530";
+export const DEFAULT_MILVUS_ADDRESS = process.env.MILVUS_ADDRESS?.trim() || "";
 
 type MilvusRow = Record<string, unknown>;
 
@@ -123,6 +123,9 @@ export function socketMilvusReachabilityProbe(endpoint: MilvusEndpoint, timeoutM
 async function ensureDefaultMilvusReachable(
   probe: MilvusReachabilityProbe = socketMilvusReachabilityProbe
 ) {
+  if (!DEFAULT_MILVUS_ADDRESS) {
+    throw new Error("Milvus address is not configured");
+  }
   const endpoint = parseMilvusEndpoint(DEFAULT_MILVUS_ADDRESS);
   const timeoutMs = Number(process.env.MILVUS_CONNECT_TIMEOUT_MS || process.env.MILVUS_TIMEOUT_MS || 3000);
   try {
