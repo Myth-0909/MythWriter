@@ -1,4 +1,5 @@
 import "dotenv/config";
+import { applyRuntimeConfigDefaults } from "./lib/runtimeConfig";
 import express from "express";
 import path from "path";
 import cors from "cors";
@@ -17,6 +18,8 @@ import { connectRedis } from "./lib/redis";
 import prisma from "./lib/prisma";
 import { getMilvusStatus } from "./lib/milvus";
 import { startWorkRecordSummaryScheduler } from "./services/workRecordSummaryService";
+
+applyRuntimeConfigDefaults();
 
 const app = express();
 const PORT = Number(process.env.PORT || 3000);

@@ -1,9 +1,35 @@
 import { PrismaClient as MySQLPrismaClient } from "@prisma/client";
+import { applyRuntimeConfigDefaults, ensureLocalDataDir } from "./runtimeConfig";
+
+applyRuntimeConfigDefaults();
 
 let realClient: any = null;
 let initPromise: Promise<any> | null = null;
 
+function isMissingGeneratedSqliteClient(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    "code" in error &&
+    (error as NodeJS.ErrnoException).code === "MODULE_NOT_FOUND" &&
+    error.message.includes("prisma-sqlite")
+  );
+}
+
+async function loadSQLitePrismaClient(): Promise<any> {
+  try {
+    return await import("./prisma-sqlite");
+  } catch (error) {
+    if (isMissingGeneratedSqliteClient(error)) {
+      return import("../../src/lib/prisma-sqlite");
+    }
+    throw error;
+  }
+}
+
 async function connectToMySQL(): Promise<any> {
+  if (!process.env.DATABASE_URL?.trim()) {
+    throw new Error("DATABASE_URL is not configured");
+  }
   const client = new MySQLPrismaClient({ log: ["warn", "error"] });
   await Promise.race([
     client.$connect(),
@@ -16,7 +42,8 @@ async function connectToMySQL(): Promise<any> {
 }
 
 async function connectToSQLite(): Promise<any> {
-  const { PrismaClient: SQLitePrismaClient } = await import("./prisma-sqlite");
+  ensureLocalDataDir();
+  const { PrismaClient: SQLitePrismaClient } = await loadSQLitePrismaClient();
   const client = new SQLitePrismaClient({ log: ["warn", "error"] });
   await client.$connect();
   console.log("[DB] Connected to SQLite (local fallback)");

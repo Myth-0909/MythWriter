@@ -1,8 +1,7 @@
 import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 import { redis } from "../lib/redis";
-
-export const DEFAULT_JWT_SECRET = "prowriter-jwt-secret-key-2024";
+import { DEFAULT_JWT_SECRET } from "../lib/runtimeConfig";
 
 export function resolveJwtSecret(secret = process.env.JWT_SECRET, nodeEnv = process.env.NODE_ENV): string {
   const trimmed = secret?.trim();

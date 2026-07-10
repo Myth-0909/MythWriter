@@ -27,13 +27,33 @@ model User {
   createdAt         DateTime   @default(now()) @map("created_at")
   updatedAt         DateTime   @updatedAt @map("updated_at")
 
-  documents     Document[]
-  conversations Conversation[]
-  feedbacks     ChatFeedback[]
-  activityLogs  ActivityLog[]
-  workRecords   WorkRecord[]
+  documents       Document[]
+  conversations   Conversation[]
+  feedbacks       ChatFeedback[]
+  activityLogs    ActivityLog[]
+  brainKnowledges AIBrainKnowledge[]
+  brainCategories AIBrainCategory[]
+  documentGroups  DocumentGroup[]
+  apiKeyHistories  ApiKeyConfigHistory[]
+  documentVersions DocumentVersion[]
+  workRecords      WorkRecord[]
 
   @@map("users")
+}
+
+model ApiKeyConfigHistory {
+  id         String   @id @default(uuid())
+  userId     String   @map("user_id")
+  apiKey     String   @map("api_key")
+  apiBaseUrl String   @map("api_base_url")
+  aiModel    String   @map("ai_model")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("api_key_config_histories")
 }
 
 model Document {
@@ -52,9 +72,33 @@ model Document {
   userId String @map("user_id")
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
+  groupId String?        @map("group_id")
+  group   DocumentGroup? @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  versions DocumentVersion[]
+
   @@index([userId])
   @@index([userId, isDeleted])
+  @@index([groupId])
   @@map("documents")
+}
+
+model DocumentVersion {
+  id         String   @id @default(uuid())
+  documentId String   @map("document_id")
+  userId     String   @map("user_id")
+  title      String
+  content    String
+  preview    String?
+  source     String   @default("manual")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([documentId])
+  @@index([userId])
+  @@index([documentId, createdAt])
+  @@map("document_versions")
 }
 
 enum DocumentCategory {
@@ -131,4 +175,52 @@ enum WorkRecordPeriod {
   daily
   weekly
   monthly
+}
+
+model DocumentGroup {
+  id        String     @id @default(uuid())
+  name      String
+  userId    String     @map("user_id")
+  createdAt DateTime   @default(now()) @map("created_at")
+  updatedAt DateTime   @updatedAt @map("updated_at")
+
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  documents Document[]
+
+  @@index([userId])
+  @@map("document_groups")
+}
+
+model AIBrainCategory {
+  id          String   @id @default(uuid())
+  name        String
+  color       String?
+  sortOrder   Int      @default(0) @map("sort_order")
+  userId      String   @map("user_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  knowledges  AIBrainKnowledge[]
+
+  @@index([userId])
+  @@map("ai_brain_categories")
+}
+
+model AIBrainKnowledge {
+  id          String   @id @default(uuid())
+  title       String
+  description String
+  category    String   @default("")
+  userId      String   @map("user_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  categoryRef AIBrainCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  categoryId  String?  @map("category_id")
+
+  @@index([userId])
+  @@index([categoryId])
+  @@map("ai_brain_knowledges")
 }

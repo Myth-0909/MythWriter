@@ -3,16 +3,18 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "NODE_USE_ENV_PROXY=1 tsx watch src/index.ts",
+    "dev": "tsx scripts/dev.ts",
+    "dev:watch": "tsx watch src/index.ts",
     "test": "node --import tsx --test \"src/**/*.test.ts\"",
     "build": "tsc",
-    "start": "NODE_USE_ENV_PROXY=1 node dist/index.js",
+    "start": "node scripts/start.js",
+    "setup-local": "tsx scripts/ensure-local-config.ts",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate dev",
     "db:studio": "prisma studio",
     "db:generate-sqlite": "prisma generate --schema=prisma/schema-sqlite.prisma",
-    "db:push-sqlite": "prisma db push --schema=prisma/schema-sqlite.prisma",
+    "db:push-sqlite": "tsx scripts/setup-sqlite.ts",
     "setup-sqlite": "tsx scripts/setup-sqlite.ts"
   },
   "dependencies": {

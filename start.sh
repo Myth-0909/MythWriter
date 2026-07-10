@@ -193,17 +193,15 @@ start_redis
 # 确保数据库就绪（生成 Prisma Client + 推送 SQLite schema）
 echo "[数据库] 初始化..."
 cd "$BACKEND_DIR"
-echo "[数据库]   生成 Prisma Client..."
-npx prisma generate 2>&1 | tail -1
-echo "[数据库]   生成 SQLite Client..."
-npx prisma generate --schema=prisma/schema-sqlite.prisma 2>&1 | tail -1
-echo "[数据库]   推送 SQLite 表结构..."
-npx prisma db push --schema=prisma/schema-sqlite.prisma 2>&1 | tail -1
+if ! npm run setup-local; then
+  echo "[数据库] 初始化失败，请检查 Node/npm 依赖是否安装完整"
+  exit 1
+fi
 echo "[数据库] 就绪"
 
 # 启动后端
 echo "[后端] 启动 API 服务 (port $BACKEND_PORT)..."
-cd "$BACKEND_DIR" && NODE_USE_ENV_PROXY="${NODE_USE_ENV_PROXY:-1}" HOST=0.0.0.0 npm run dev &
+cd "$BACKEND_DIR" && NODE_USE_ENV_PROXY="${NODE_USE_ENV_PROXY:-1}" HOST=0.0.0.0 npm run dev:watch &
 BACKEND_PID=$!
 
 # 启动前端
