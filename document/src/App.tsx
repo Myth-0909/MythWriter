@@ -5,6 +5,8 @@ import { PageTransition } from "@/components/PageTransition";
 import { Editor } from "@/components/Editor";
 import { DocumentList } from "@/components/DocumentList";
 import { DocumentCenterPage } from "@/pages/DocumentCenterPage";
+import { SpreadsheetCenterPage } from "@/pages/SpreadsheetCenterPage";
+import { SpreadsheetEditorPage } from "@/pages/SpreadsheetEditorPage";
 import { FavoritesPage } from "@/pages/FavoritesPage";
 import { WorkRecordsPage } from "@/pages/WorkRecordsPage";
 import { WorkRecordsListPage } from "@/pages/WorkRecordsListPage";
@@ -30,23 +32,29 @@ import { formatFullDateTime } from "@/lib/date";
 import { escapeHtml, sanitizeHtml } from "@/lib/html";
 import "./App.css";
 
-type Page = "editor" | "workbench" | "documents" | "favorites" | "records" | "record-history" | "share" | "login" | "trash" | "settings" | "model-config" | "brain" | "notfound";
+type Page = "editor" | "spreadsheet-editor" | "workbench" | "documents" | "spreadsheets" | "favorites" | "records" | "record-history" | "share" | "login" | "trash" | "settings" | "model-config" | "brain" | "notfound";
 
-const VALID_PAGES = new Set<string>(["workbench", "documents", "favorites", "records", "record-history", "trash", "settings", "model-config", "login", "brain"]);
+const SPREADSHEETS_HASH = "#/spreadsheets";
+const VALID_PAGES = new Set<string>(["workbench", "documents", "spreadsheets", "favorites", "records", "record-history", "trash", "settings", "model-config", "login", "brain"]);
 
-function pageFromHash(hash: string): { page: Page; editorId?: string } | null {
+function pageFromHash(hash: string): { page: Page; editorId?: string; spreadsheetId?: string } | null {
   const name = hash.replace(/^#\//, "");
   if (VALID_PAGES.has(name)) return { page: name as Page };
   if (name.startsWith("editor/")) {
     const id = name.slice(7); // "editor/".length === 7
     return { page: "editor", editorId: id || undefined };
   }
+  if (name.startsWith("spreadsheets/")) {
+    const id = name.slice(13); // "spreadsheets/".length === 13
+    return { page: "spreadsheet-editor", spreadsheetId: id || undefined };
+  }
   if (hash === "" || hash === "#" || hash === "#/") return null;
   return { page: "notfound" };
 }
 
-function hashFromPage(page: Page, editorDocId?: string): string {
+function hashFromPage(page: Page, editorDocId?: string, spreadsheetId?: string): string {
   if (page === "editor") return editorDocId ? `#/editor/${editorDocId}` : "#/workbench";
+  if (page === "spreadsheet-editor") return spreadsheetId ? `${SPREADSHEETS_HASH}/${spreadsheetId}` : SPREADSHEETS_HASH;
   if (page === "share" || page === "notfound") return window.location.hash || "#/workbench";
   return `#/${page}`;
 }
@@ -218,6 +226,7 @@ export default function App() {
   const [activeNav, setActiveNav] = useState<NavId>(() => {
     const fromHash = pageFromHash(window.location.hash);
     if (fromHash?.page === "editor") return "documents";
+    if (fromHash?.page === "spreadsheet-editor") return "spreadsheets";
     if (fromHash && fromHash.page !== "login" && fromHash.page !== "notfound") return fromHash.page as NavId;
     return "workbench";
   });
@@ -225,6 +234,10 @@ export default function App() {
   const [editorDocId, setEditorDocId] = useState<string>(() => {
     const fromHash = pageFromHash(window.location.hash);
     return fromHash?.page === "editor" ? fromHash.editorId || "" : "";
+  });
+  const [activeSpreadsheetId, setActiveSpreadsheetId] = useState<string>(() => {
+    const fromHash = pageFromHash(window.location.hash);
+    return fromHash?.page === "spreadsheet-editor" ? fromHash.spreadsheetId || "" : "";
   });
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
@@ -273,11 +286,11 @@ export default function App() {
   const navigateTo = useCallback((page: Page, navId?: NavId) => {
     setCurrentPage(page);
     if (navId) setActiveNav(navId);
-    const hash = hashFromPage(page, editorDocId);
+    const hash = hashFromPage(page, editorDocId, activeSpreadsheetId);
     if (hash !== window.location.hash) {
       window.location.hash = hash;
     }
-  }, [editorDocId]);
+  }, [activeSpreadsheetId, editorDocId]);
 
   // Listen for browser back/forward
   useEffect(() => {
@@ -288,6 +301,9 @@ export default function App() {
         if (fromHash.page === "editor" && fromHash.editorId) {
           setEditorDocId(fromHash.editorId);
           setActiveNav("documents");
+        } else if (fromHash.page === "spreadsheet-editor") {
+          setActiveSpreadsheetId(fromHash.spreadsheetId || "");
+          setActiveNav("spreadsheets");
         } else if (fromHash.page !== "login" && fromHash.page !== "notfound") {
           setActiveNav(fromHash.page as NavId);
         }
@@ -320,6 +336,13 @@ export default function App() {
     window.location.hash = `#/editor/${docId}`;
   };
 
+  const handleOpenSpreadsheet = (spreadsheetId: string) => {
+    setActiveSpreadsheetId(spreadsheetId);
+    setCurrentPage("spreadsheet-editor");
+    setActiveNav("spreadsheets");
+    window.location.hash = `${SPREADSHEETS_HASH}/${spreadsheetId}`;
+  };
+
   const handleLogout = () => setLogoutConfirm(true);
 
   const confirmLogout = () => {
@@ -327,6 +350,7 @@ export default function App() {
     setIsLoggedIn(false);
     setCurrentPage("login");
     setEditorDocId("");
+    setActiveSpreadsheetId("");
     window.location.hash = "#/login";
     toast(t("toast.logoutSuccess"), "success");
   };
@@ -473,6 +497,15 @@ export default function App() {
                 groups={groups}
                 activeGroupId={activeGroupId}
                 setActiveGroupId={setActiveGroupId}
+              />
+            )}
+            {currentPage === "spreadsheets" && (
+              <SpreadsheetCenterPage onOpenSpreadsheet={handleOpenSpreadsheet} />
+            )}
+            {currentPage === "spreadsheet-editor" && activeSpreadsheetId && (
+              <SpreadsheetEditorPage
+                spreadsheetId={activeSpreadsheetId}
+                onBack={() => navigateTo("spreadsheets", "spreadsheets")}
               />
             )}
             {currentPage === "favorites" && (

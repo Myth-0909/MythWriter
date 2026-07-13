@@ -10,6 +10,7 @@ import {
   History,
   LayoutDashboard,
   NotebookTabs,
+  Table2,
   Folder,
   Plus,
   type LucideIcon,
@@ -29,11 +30,11 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { LogoClickEffect } from "@/components/LogoClickEffect";
 
-export type NavId = "workbench" | "documents" | "favorites" | "records" | "record-history" | "trash" | "settings" | "brain" | "model-config";
+export type NavId = "workbench" | "documents" | "spreadsheets" | "favorites" | "records" | "record-history" | "trash" | "settings" | "brain" | "model-config";
 
 interface NavItem {
   id: NavId;
-  labelKey: "nav.workbench" | "nav.documents" | "nav.favorites" | "nav.records" | "nav.recordHistory" | "nav.trash" | "nav.settings" | "nav.brain" | "nav.modelConfig";
+  labelKey: "nav.workbench" | "nav.documents" | "nav.spreadsheets" | "nav.favorites" | "nav.records" | "nav.recordHistory" | "nav.trash" | "nav.settings" | "nav.brain" | "nav.modelConfig";
   icon: LucideIcon;
 }
 
@@ -45,6 +46,7 @@ interface DocumentGroup {
 const navItems: NavItem[] = [
   { id: "workbench", labelKey: "nav.workbench", icon: LayoutDashboard },
   { id: "documents", labelKey: "nav.documents", icon: FileText },
+  { id: "spreadsheets", labelKey: "nav.spreadsheets", icon: Table2 },
   { id: "favorites", labelKey: "nav.favorites", icon: Star },
   { id: "records", labelKey: "nav.records", icon: NotebookTabs },
   { id: "record-history", labelKey: "nav.recordHistory", icon: History },

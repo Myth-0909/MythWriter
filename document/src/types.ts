@@ -24,6 +24,45 @@ export interface DocumentVersion {
   createdAt: string;
 }
 
+export type SpreadsheetCellValue = string | number | boolean | null;
+
+export interface SpreadsheetMergeCell {
+  row: number;
+  col: number;
+  rowspan: number;
+  colspan: number;
+}
+
+export interface SpreadsheetSheet {
+  id: string;
+  name: string;
+  data: SpreadsheetCellValue[][];
+  merges?: SpreadsheetMergeCell[];
+  fixedRowsTop?: number;
+  fixedColumnsLeft?: number;
+  rowHeights?: number[];
+  colWidths?: number[];
+}
+
+export interface SpreadsheetWorkbook {
+  version: 1;
+  activeSheetId: string;
+  sheets: SpreadsheetSheet[];
+}
+
+export interface Spreadsheet {
+  id: string;
+  title: string;
+  data: SpreadsheetWorkbook;
+  preview?: string | null;
+  isDeleted: boolean;
+  deletedAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  userId?: string;
+  groupId?: string | null;
+}
+
 export type WorkRecordPeriod = "daily" | "weekly" | "monthly";
 
 export interface WorkRecord {

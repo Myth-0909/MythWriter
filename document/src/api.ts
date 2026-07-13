@@ -1,4 +1,4 @@
-import type { Document, DocumentVersion, WorkRecord, WorkRecordPeriod } from "@/types";
+import type { Document, DocumentVersion, Spreadsheet, SpreadsheetWorkbook, WorkRecord, WorkRecordPeriod } from "@/types";
 import { API_BASE } from "@/lib/apiBase";
 import type { FontFamilyKey } from "@/lib/fontCatalog";
 
@@ -302,6 +302,27 @@ export const api = {
 
   emptyTrash: () =>
     request<{ success: boolean }>("/documents/trash/empty", { method: "DELETE" }),
+
+  listSpreadsheets: () =>
+    request<{ spreadsheets: Spreadsheet[] }>("/spreadsheets"),
+
+  getSpreadsheet: (id: string) =>
+    request<{ spreadsheet: Spreadsheet }>(`/spreadsheets/${id}`),
+
+  createSpreadsheet: (data?: { title?: string; data?: SpreadsheetWorkbook; groupId?: string | null }) =>
+    request<{ spreadsheet: Spreadsheet }>("/spreadsheets", {
+      method: "POST",
+      body: JSON.stringify(data || {}),
+    }),
+
+  updateSpreadsheet: (id: string, data: { title?: string; data?: SpreadsheetWorkbook; groupId?: string | null }) =>
+    request<{ spreadsheet: Spreadsheet }>(`/spreadsheets/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    }),
+
+  deleteSpreadsheet: (id: string) =>
+    request<{ success: boolean }>(`/spreadsheets/${id}`, { method: "DELETE" }),
 
   forgotPassword: (data: { email: string }) =>
     request<{ message: string; code: string; expiresIn: string }>(

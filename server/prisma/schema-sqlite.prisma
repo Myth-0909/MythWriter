@@ -37,6 +37,7 @@ model User {
   apiKeyHistories  ApiKeyConfigHistory[]
   documentVersions DocumentVersion[]
   workRecords      WorkRecord[]
+  spreadsheets     Spreadsheet[]
 
   @@map("users")
 }
@@ -99,6 +100,28 @@ model DocumentVersion {
   @@index([userId])
   @@index([documentId, createdAt])
   @@map("document_versions")
+}
+
+model Spreadsheet {
+  id        String   @id @default(uuid())
+  title     String
+  data      Json
+  preview   String?
+  isDeleted Boolean  @default(false) @map("is_deleted")
+  deletedAt DateTime? @map("deleted_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  userId String @map("user_id")
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  groupId String?        @map("group_id")
+  group   DocumentGroup? @relation(fields: [groupId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([userId, isDeleted])
+  @@index([groupId])
+  @@map("spreadsheets")
 }
 
 enum DocumentCategory {
@@ -186,6 +209,7 @@ model DocumentGroup {
 
   user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   documents Document[]
+  spreadsheets Spreadsheet[]
 
   @@index([userId])
   @@map("document_groups")

@@ -1,0 +1,24 @@
+.zn-spreadsheet-grid {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.zn-spreadsheet-grid .handsontable {
+  color: #171717;
+  font-family: inherit;
+  font-size: 12px;
+}
+
+.zn-spreadsheet-grid .ht_master .wtHolder {
+  scrollbar-gutter: stable;
+}
+
+.dark .zn-spreadsheet-grid .handsontable {
+  color: #f4f4f5;
+}
+
+.dark .zn-spreadsheet-grid .handsontable .htCore th,
+.dark .zn-spreadsheet-grid .handsontable .htCore td {
+  border-color: rgba(63, 63, 70, 0.9);
+}

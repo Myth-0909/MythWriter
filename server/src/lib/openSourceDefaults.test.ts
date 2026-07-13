@@ -1,8 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { resolve } from "node:path";
 import { describe, it } from "node:test";
-import { fileURLToPath } from "node:url";
 import {
   DEFAULT_CHAT_API_BASE_URL,
   DEFAULT_CHAT_API_KEY,
@@ -11,7 +10,7 @@ import {
 import { DEFAULT_EMBEDDING_BASE_URL } from "./embedding";
 import { DEFAULT_MILVUS_ADDRESS } from "./milvus";
 
-const envExamplePath = resolve(dirname(fileURLToPath(import.meta.url)), "../../.env.example");
+const envExamplePath = resolve(__dirname, "../../.env.example");
 
 function assertPublicDefault(value: string) {
   assert.equal(/172\.16\.|192\.168\.|10\.\d+\./.test(value), false);

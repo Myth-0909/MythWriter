@@ -4,7 +4,7 @@ import {
   getLoadingPresentation,
   getPageTransitionProfile,
   getWorkbenchLayoutClasses,
-} from "../src/lib/displayExperience";
+} from "../src/lib/displayExperience.ts";
 
 describe("display experience helpers", () => {
   it("uses distinct page motion profiles for different product areas", () => {

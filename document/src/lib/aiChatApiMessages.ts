@@ -1,10 +1,10 @@
-import { buildToolMemoryContent } from "./aiActionState";
+import { buildToolMemoryContent } from "./aiActionState.ts";
 import {
   filterApiHistoryToolCalls,
   normalizeChatToolCallId,
   resolveStoredAssistantContent,
   shouldIncludeAssistantInPrompt,
-} from "./aiChatStream";
+} from "./aiChatStream.ts";
 
 export type ToolCallEvent = {
   index: number;

@@ -8,7 +8,7 @@ import {
   buildSearchStatus,
   getFavoriteToggleKey,
   hasProfileChanges,
-} from "../src/lib/interactionState";
+} from "../src/lib/interactionState.ts";
 
 describe("interaction state helpers", () => {
   it("describes document search results and empty search states", () => {

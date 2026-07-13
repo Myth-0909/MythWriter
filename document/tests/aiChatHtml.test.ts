@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { renderAiChatHtml } from "../src/lib/aiChatHtml";
+import { renderAiChatHtml } from "../src/lib/aiChatHtml.ts";
 
 describe("AI chat rich HTML rendering", () => {
   it("renders markdown replies as structured HTML", () => {

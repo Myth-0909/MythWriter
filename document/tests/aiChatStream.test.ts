@@ -5,8 +5,8 @@ import {
   filterApiHistoryToolCalls,
   resolveAssistantActionContent,
   shouldIncludeAssistantInPrompt,
-} from "../src/lib/aiChatStream";
-import { toApiMessages } from "../src/lib/aiChatApiMessages";
+} from "../src/lib/aiChatStream.ts";
+import { toApiMessages } from "../src/lib/aiChatApiMessages.ts";
 
 describe("AI chat stream UX helpers", () => {
   it("uses the settled assistant content for copy and feedback actions", () => {

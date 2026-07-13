@@ -5,7 +5,7 @@ import {
   resolveActionDisplayContent,
   resolveActionFailureContent,
   resolveActionSuccessContent,
-} from "../src/lib/aiActionState";
+} from "../src/lib/aiActionState.ts";
 
 describe("AI action state helpers", () => {
   const labels = {

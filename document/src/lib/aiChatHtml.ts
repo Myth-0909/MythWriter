@@ -1,5 +1,5 @@
-import { sanitizeHtml } from "./html";
-import { markdownToHtml } from "./markdown";
+import { sanitizeHtml } from "./html.ts";
+import { markdownToHtml } from "./markdown.ts";
 
 const directHtmlTags = new Set([
   "a", "b", "blockquote", "br", "code", "div", "em", "h1", "h2", "h3", "h4", "h5", "h6",
