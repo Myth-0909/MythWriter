@@ -33,10 +33,26 @@ export interface SpreadsheetMergeCell {
   colspan: number;
 }
 
+export type SpreadsheetCellColor = "default" | "red" | "green" | "blue" | "amber" | "gray";
+export type SpreadsheetHorizontalAlign = "left" | "center" | "right";
+
+export interface SpreadsheetCellStyle {
+  row: number;
+  col: number;
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  textColor?: SpreadsheetCellColor;
+  fillColor?: SpreadsheetCellColor;
+  horizontalAlign?: SpreadsheetHorizontalAlign;
+  wrap?: boolean;
+}
+
 export interface SpreadsheetSheet {
   id: string;
   name: string;
   data: SpreadsheetCellValue[][];
+  cellStyles?: SpreadsheetCellStyle[];
   merges?: SpreadsheetMergeCell[];
   fixedRowsTop?: number;
   fixedColumnsLeft?: number;

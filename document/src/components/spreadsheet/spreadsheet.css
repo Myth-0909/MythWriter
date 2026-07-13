@@ -22,3 +22,92 @@
 .dark .zn-spreadsheet-grid .handsontable .htCore td {
   border-color: rgba(63, 63, 70, 0.9);
 }
+
+.zn-spreadsheet-grid .handsontable td.zn-cell-bold {
+  font-weight: 700;
+}
+
+.zn-spreadsheet-grid .handsontable td.zn-cell-italic {
+  font-style: italic;
+}
+
+.zn-spreadsheet-grid .handsontable td.zn-cell-underline {
+  text-decoration: underline;
+}
+
+.zn-spreadsheet-grid .handsontable td.zn-cell-wrap {
+  white-space: normal;
+  line-height: 1.35;
+}
+
+.zn-spreadsheet-grid .handsontable td.zn-cell-align-left {
+  text-align: left;
+}
+
+.zn-spreadsheet-grid .handsontable td.zn-cell-align-center {
+  text-align: center;
+}
+
+.zn-spreadsheet-grid .handsontable td.zn-cell-align-right {
+  text-align: right;
+}
+
+.zn-spreadsheet-grid .handsontable td.zn-cell-text-red {
+  color: #dc2626;
+}
+
+.zn-spreadsheet-grid .handsontable td.zn-cell-text-green {
+  color: #059669;
+}
+
+.zn-spreadsheet-grid .handsontable td.zn-cell-text-blue {
+  color: #2563eb;
+}
+
+.zn-spreadsheet-grid .handsontable td.zn-cell-text-amber {
+  color: #b45309;
+}
+
+.zn-spreadsheet-grid .handsontable td.zn-cell-text-gray {
+  color: #52525b;
+}
+
+.zn-spreadsheet-grid .handsontable td.zn-cell-fill-red {
+  background-color: #fee2e2;
+}
+
+.zn-spreadsheet-grid .handsontable td.zn-cell-fill-green {
+  background-color: #d1fae5;
+}
+
+.zn-spreadsheet-grid .handsontable td.zn-cell-fill-blue {
+  background-color: #dbeafe;
+}
+
+.zn-spreadsheet-grid .handsontable td.zn-cell-fill-amber {
+  background-color: #fef3c7;
+}
+
+.zn-spreadsheet-grid .handsontable td.zn-cell-fill-gray {
+  background-color: #f4f4f5;
+}
+
+.dark .zn-spreadsheet-grid .handsontable td.zn-cell-fill-red {
+  background-color: rgba(127, 29, 29, 0.42);
+}
+
+.dark .zn-spreadsheet-grid .handsontable td.zn-cell-fill-green {
+  background-color: rgba(6, 78, 59, 0.42);
+}
+
+.dark .zn-spreadsheet-grid .handsontable td.zn-cell-fill-blue {
+  background-color: rgba(30, 58, 138, 0.42);
+}
+
+.dark .zn-spreadsheet-grid .handsontable td.zn-cell-fill-amber {
+  background-color: rgba(120, 53, 15, 0.42);
+}
+
+.dark .zn-spreadsheet-grid .handsontable td.zn-cell-fill-gray {
+  background-color: rgba(63, 63, 70, 0.55);
+}

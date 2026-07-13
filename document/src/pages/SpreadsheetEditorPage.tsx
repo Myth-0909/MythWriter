@@ -15,7 +15,7 @@ import {
   validateSpreadsheetWorkbook,
 } from "@/lib/spreadsheetWorkbook";
 import { workbookFromXlsxArrayBuffer, workbookToXlsxBlob } from "@/lib/spreadsheetImportExport";
-import type { Spreadsheet, SpreadsheetSheet, SpreadsheetWorkbook } from "@/types";
+import type { Spreadsheet, SpreadsheetCellColor, SpreadsheetHorizontalAlign, SpreadsheetSheet, SpreadsheetWorkbook } from "@/types";
 
 interface SpreadsheetEditorPageProps {
   spreadsheetId: string;
@@ -145,6 +145,70 @@ export function SpreadsheetEditorPage({ spreadsheetId, onBack }: SpreadsheetEdit
     updateActiveSheet({ ...activeSheet, fixedColumnsLeft: activeSheet.fixedColumnsLeft ? 0 : 1 });
   };
 
+  const handleToggleBold = () => {
+    gridRef.current?.applyCellStyle({}, { toggleKey: "bold" });
+  };
+
+  const handleToggleItalic = () => {
+    gridRef.current?.applyCellStyle({}, { toggleKey: "italic" });
+  };
+
+  const handleToggleUnderline = () => {
+    gridRef.current?.applyCellStyle({}, { toggleKey: "underline" });
+  };
+
+  const handleToggleWrap = () => {
+    gridRef.current?.applyCellStyle({}, { toggleKey: "wrap" });
+  };
+
+  const handleSetTextColor = (color: SpreadsheetCellColor) => {
+    gridRef.current?.applyCellStyle({ textColor: color });
+  };
+
+  const handleSetFillColor = (color: SpreadsheetCellColor) => {
+    gridRef.current?.applyCellStyle({ fillColor: color });
+  };
+
+  const handleSetHorizontalAlign = (horizontalAlign: SpreadsheetHorizontalAlign) => {
+    gridRef.current?.applyCellStyle({ horizontalAlign });
+  };
+
+  const handleInsertRowAbove = () => {
+    gridRef.current?.insertRowAbove();
+  };
+
+  const handleInsertRowBelow = () => {
+    gridRef.current?.insertRowBelow();
+  };
+
+  const handleInsertColumnLeft = () => {
+    gridRef.current?.insertColumnLeft();
+  };
+
+  const handleInsertColumnRight = () => {
+    gridRef.current?.insertColumnRight();
+  };
+
+  const handleDeleteSelectedRows = () => {
+    gridRef.current?.deleteSelectedRows();
+  };
+
+  const handleDeleteSelectedColumns = () => {
+    gridRef.current?.deleteSelectedColumns();
+  };
+
+  const handleClearSelectedCells = () => {
+    gridRef.current?.clearSelectedCells();
+  };
+
+  const handleSortAscending = () => {
+    gridRef.current?.sortSelectedColumn("asc");
+  };
+
+  const handleSortDescending = () => {
+    gridRef.current?.sortSelectedColumn("desc");
+  };
+
   const handleImportClick = () => {
     fileInputRef.current?.click();
   };
@@ -216,6 +280,22 @@ export function SpreadsheetEditorPage({ spreadsheetId, onBack }: SpreadsheetEdit
           onUnmerge={() => gridRef.current?.unmergeSelected()}
           onToggleFreezeTopRow={toggleFreezeTopRow}
           onToggleFreezeFirstColumn={toggleFreezeFirstColumn}
+          onToggleBold={handleToggleBold}
+          onToggleItalic={handleToggleItalic}
+          onToggleUnderline={handleToggleUnderline}
+          onToggleWrap={handleToggleWrap}
+          onSetTextColor={handleSetTextColor}
+          onSetFillColor={handleSetFillColor}
+          onSetHorizontalAlign={handleSetHorizontalAlign}
+          onInsertRowAbove={handleInsertRowAbove}
+          onInsertRowBelow={handleInsertRowBelow}
+          onInsertColumnLeft={handleInsertColumnLeft}
+          onInsertColumnRight={handleInsertColumnRight}
+          onDeleteSelectedRows={handleDeleteSelectedRows}
+          onDeleteSelectedColumns={handleDeleteSelectedColumns}
+          onClearSelectedCells={handleClearSelectedCells}
+          onSortAscending={handleSortAscending}
+          onSortDescending={handleSortDescending}
           isTopRowFrozen={!!activeSheet?.fixedRowsTop}
           isFirstColumnFrozen={!!activeSheet?.fixedColumnsLeft}
         />
