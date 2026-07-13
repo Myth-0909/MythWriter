@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import Shuffle from "@/components/Shuffle";
 import { Tooltip } from "@/components/ui/tooltip";
+import { Button } from "@/components/ui/button";
 import { useI18n } from "@/components/I18nProvider";
 import { BrandLogo } from "@/components/BrandLogo";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
@@ -36,6 +37,11 @@ interface NavItem {
   icon: LucideIcon;
 }
 
+interface DocumentGroup {
+  id: string;
+  name: string;
+}
+
 const navItems: NavItem[] = [
   { id: "workbench", labelKey: "nav.workbench", icon: LayoutDashboard },
   { id: "documents", labelKey: "nav.documents", icon: FileText },
@@ -52,7 +58,7 @@ interface SideNavBarProps {
   activeNav: NavId;
   onNavChange: (id: NavId) => void;
   collapsed?: boolean;
-  groups?: any[];
+  groups?: DocumentGroup[];
   activeGroupId?: string | null;
   onSelectGroup?: (groupId: string | null) => void;
   onAddGroup?: () => void;
@@ -120,6 +126,57 @@ export function SideNavBar({
     }
   };
 
+  const collapsedGroupPanel = (
+    <div
+      className="mt-1 flex flex-col items-center gap-1 border-t border-surface-200/70 pt-1 dark:border-surface-800"
+      aria-label={t("group.compactTitle")}
+    >
+      <Tooltip content={<span>{groups.length === 0 ? t("group.noGroups") : t("group.newGroup")}</span>} side="right" delay={150}>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          onClick={(e) => {
+            e.stopPropagation();
+            onAddGroup();
+          }}
+          aria-label={t("group.newGroup")}
+          className="mx-auto h-7 w-7 rounded-md border border-dashed border-brand-200 text-brand-500 hover:bg-brand-50 hover:text-brand-600 dark:border-brand-500/25 dark:text-brand-300 dark:hover:bg-brand-500/15 dark:hover:text-brand-100"
+        >
+          <Plus className="h-3.5 w-3.5" />
+        </Button>
+      </Tooltip>
+
+      {groups.length > 0 && (
+        <div className="flex max-h-[220px] flex-col items-center gap-1 overflow-y-auto custom-scrollbar">
+          {groups.map((group) => {
+            const isGroupActive = activeNav === "documents" && activeGroupId === group.id;
+            return (
+              <Tooltip key={group.id} content={<span>{group.name}</span>} side="right" delay={150}>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onSelectGroup(group.id);
+                  }}
+                  aria-label={group.name}
+                  className={cn(
+                    "mx-auto h-8 w-8 rounded-md border border-transparent p-0",
+                    isGroupActive
+                      ? "bg-surface-200 text-brand-600 dark:bg-surface-800 dark:text-brand-300 dark:ring-1 dark:ring-brand-400/25"
+                      : "text-surface-500 hover:bg-surface-100 hover:text-brand-600 dark:text-surface-400 dark:hover:bg-surface-800 dark:hover:text-brand-300"
+                  )}
+                >
+                  <Folder className="h-4 w-4" fill={isGroupActive ? "currentColor" : "none"} />
+                </Button>
+              </Tooltip>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <>
       <aside
@@ -165,7 +222,7 @@ export function SideNavBar({
         </div>
 
         {/* Navigation */}
-        <nav className={cn("flex-1 py-2", collapsed ? "px-2" : "px-3")}>
+        <nav className={cn("min-h-0 flex-1 overflow-y-auto py-2 custom-scrollbar", collapsed ? "px-2" : "px-3")}>
           <ul className="flex flex-col gap-1">
             {navItems.map((item) => {
               const isActive = item.id === activeNav;
@@ -183,7 +240,8 @@ export function SideNavBar({
                     }}
                   />
                   {/* Under documents item, show the group sub-menu */}
-                  {item.id === "documents" && !collapsed && (
+                  {item.id === "documents" && (
+                    collapsed ? collapsedGroupPanel : (
                     <div className="pl-6 pr-2 py-1 flex flex-col gap-1">
                       {/* Section Header */}
                       <div className="flex items-center justify-between px-2 py-1 text-[11px] font-bold text-surface-400 dark:text-surface-500 tracking-wider uppercase">
@@ -282,6 +340,7 @@ export function SideNavBar({
                         </div>
                       )}
                     </div>
+                    )
                   )}
                 </li>
               );

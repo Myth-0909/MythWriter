@@ -102,6 +102,7 @@ const translations = {
   
   // Document Groups
   "group.title": { zh: "文档分组", en: "Document Groups" },
+  "group.compactTitle": { zh: "折叠侧栏中的文档分组", en: "Document groups in collapsed sidebar" },
   "group.all": { zh: "全部文档", en: "All Documents" },
   "group.ungrouped": { zh: "未分组文档", en: "Ungrouped Documents" },
   "group.newGroup": { zh: "新建分组", en: "New Group" },
