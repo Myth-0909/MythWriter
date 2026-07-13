@@ -52,6 +52,22 @@
   text-align: right;
 }
 
+.zn-spreadsheet-grid .handsontable td.zn-cell-align-justify {
+  text-align: justify;
+}
+
+.zn-spreadsheet-grid .handsontable td.zn-cell-valign-top {
+  vertical-align: top;
+}
+
+.zn-spreadsheet-grid .handsontable td.zn-cell-valign-middle {
+  vertical-align: middle;
+}
+
+.zn-spreadsheet-grid .handsontable td.zn-cell-valign-bottom {
+  vertical-align: bottom;
+}
+
 .zn-spreadsheet-grid .handsontable td.zn-cell-text-red {
   color: #dc2626;
 }

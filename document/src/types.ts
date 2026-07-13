@@ -34,7 +34,8 @@ export interface SpreadsheetMergeCell {
 }
 
 export type SpreadsheetCellColor = "default" | "red" | "green" | "blue" | "amber" | "gray";
-export type SpreadsheetHorizontalAlign = "left" | "center" | "right";
+export type SpreadsheetHorizontalAlign = "left" | "center" | "right" | "justify";
+export type SpreadsheetVerticalAlign = "top" | "middle" | "bottom";
 
 export interface SpreadsheetCellStyle {
   row: number;
@@ -45,6 +46,7 @@ export interface SpreadsheetCellStyle {
   textColor?: SpreadsheetCellColor;
   fillColor?: SpreadsheetCellColor;
   horizontalAlign?: SpreadsheetHorizontalAlign;
+  verticalAlign?: SpreadsheetVerticalAlign;
   wrap?: boolean;
 }
 

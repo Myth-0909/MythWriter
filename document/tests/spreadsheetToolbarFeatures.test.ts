@@ -89,4 +89,25 @@ describe("spreadsheet toolbar feature coverage", () => {
     assert.match(gridSource, /const \{ lang \} = useI18n\(\)/);
     assert.match(gridSource, /language=\{lang === "zh" \? "zh-CN" : "en-US"\}/);
   });
+
+  it("synchronizes Handsontable context-menu edits into workbook state", () => {
+    const gridSource = readFileSync(new URL("../src/components/spreadsheet/SpreadsheetGrid.tsx", import.meta.url), "utf8");
+    const typesSource = readFileSync(new URL("../src/types.ts", import.meta.url), "utf8");
+    const workbookSource = readFileSync(new URL("../src/lib/spreadsheetWorkbook.ts", import.meta.url), "utf8");
+    const serverWorkbookSource = readFileSync(new URL("../../server/src/services/spreadsheetWorkbook.ts", import.meta.url), "utf8");
+    const spreadsheetCss = readFileSync(new URL("../src/components/spreadsheet/spreadsheet.css", import.meta.url), "utf8");
+
+    assert.match(gridSource, /function readCellStyleOverridesFromHot/);
+    assert.match(gridSource, /afterSetCellMeta/);
+    assert.match(gridSource, /afterCreateRow/);
+    assert.match(gridSource, /afterRemoveRow/);
+    assert.match(gridSource, /afterCreateCol/);
+    assert.match(gridSource, /afterRemoveCol/);
+    assert.match(gridSource, /htCenter/);
+    assert.match(gridSource, /verticalAlign/);
+    assert.match(typesSource, /verticalAlign\?: SpreadsheetVerticalAlign/);
+    assert.match(workbookSource, /export type SpreadsheetVerticalAlign/);
+    assert.match(serverWorkbookSource, /export type SpreadsheetVerticalAlign/);
+    assert.match(spreadsheetCss, /zn-cell-valign-middle/);
+  });
 });

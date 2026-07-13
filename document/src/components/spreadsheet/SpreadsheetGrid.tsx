@@ -9,8 +9,10 @@ import type {
   SpreadsheetCellColor,
   SpreadsheetCellStyle,
   SpreadsheetCellValue,
+  SpreadsheetHorizontalAlign,
   SpreadsheetMergeCell,
   SpreadsheetSheet,
+  SpreadsheetVerticalAlign,
 } from "@/types";
 import { applySpreadsheetCellChanges, type SpreadsheetCellChange } from "@/lib/spreadsheetPerformance";
 import "handsontable/styles/handsontable.min.css";
@@ -100,6 +102,29 @@ function normalizeColor(value: SpreadsheetCellColor | undefined) {
   return value === "default" ? undefined : value;
 }
 
+function horizontalAlignFromClassName(className: string): SpreadsheetHorizontalAlign | undefined {
+  if (className.includes("htCenter")) return "center";
+  if (className.includes("htRight")) return "right";
+  if (className.includes("htJustify")) return "justify";
+  if (className.includes("htLeft")) return "left";
+  return undefined;
+}
+
+function verticalAlignFromClassName(className: string): SpreadsheetVerticalAlign | undefined {
+  if (className.includes("htMiddle")) return "middle";
+  if (className.includes("htBottom")) return "bottom";
+  if (className.includes("htTop")) return "top";
+  return undefined;
+}
+
+function hasHandsontableAlignmentClass(className: string) {
+  return /\bht(?:Left|Center|Right|Justify|Top|Middle|Bottom)\b/.test(className);
+}
+
+function isContextMenuSource(source: unknown) {
+  return typeof source === "string" && source.startsWith("ContextMenu.");
+}
+
 function normalizeCellStyle(style: SpreadsheetCellStyle): SpreadsheetCellStyle | null {
   const next: SpreadsheetCellStyle = {
     row: style.row,
@@ -110,6 +135,7 @@ function normalizeCellStyle(style: SpreadsheetCellStyle): SpreadsheetCellStyle |
     ...(normalizeColor(style.textColor) ? { textColor: normalizeColor(style.textColor) } : {}),
     ...(normalizeColor(style.fillColor) ? { fillColor: normalizeColor(style.fillColor) } : {}),
     ...(style.horizontalAlign ? { horizontalAlign: style.horizontalAlign } : {}),
+    ...(style.verticalAlign ? { verticalAlign: style.verticalAlign } : {}),
     ...(style.wrap ? { wrap: true } : {}),
   };
 
@@ -207,8 +233,44 @@ function buildCellClassName(style: SpreadsheetCellStyle | undefined) {
     style.textColor && `zn-cell-text-${style.textColor}`,
     style.fillColor && `zn-cell-fill-${style.fillColor}`,
     style.horizontalAlign && `zn-cell-align-${style.horizontalAlign}`,
+    style.verticalAlign && `zn-cell-valign-${style.verticalAlign}`,
   ].filter(Boolean);
   return classes.length > 0 ? classes.join(" ") : undefined;
+}
+
+function readCellStyleOverridesFromHot(
+  hot: Handsontable,
+  baseStyles: SpreadsheetCellStyle[] | undefined,
+  classNameOverrides?: Map<string, string>
+): SpreadsheetCellStyle[] {
+  const styles = new Map<string, SpreadsheetCellStyle>();
+  for (const style of baseStyles || []) {
+    styles.set(cellKey(style.row, style.col), style);
+  }
+
+  for (let row = 0; row < hot.countRows(); row += 1) {
+    for (let col = 0; col < hot.countCols(); col += 1) {
+      const key = cellKey(row, col);
+      const className = classNameOverrides?.get(key) ?? String(hot.getCellMeta(row, col).className || "");
+      if (!hasHandsontableAlignmentClass(className)) continue;
+
+      const current = styles.get(key) || { row, col };
+      const next: SpreadsheetCellStyle = { ...current };
+      const horizontalAlign = horizontalAlignFromClassName(className);
+      const verticalAlign = verticalAlignFromClassName(className);
+      if (horizontalAlign) next.horizontalAlign = horizontalAlign;
+      if (verticalAlign) next.verticalAlign = verticalAlign;
+
+      const normalized = normalizeCellStyle(next);
+      if (normalized) {
+        styles.set(key, normalized);
+      } else {
+        styles.delete(key);
+      }
+    }
+  }
+
+  return Array.from(styles.values());
 }
 
 export const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
@@ -217,6 +279,8 @@ export const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGrid
     const hotRef = useRef<HotTableRef>(null);
     const latestSheetRef = useRef(sheet);
     const lastSelectionRef = useRef<SelectionTuple | null>(null);
+    const contextMenuStyleSyncTimerRef = useRef<number | null>(null);
+    const contextMenuClassNameByCoordRef = useRef(new Map<string, string>());
     const formulaEngine = useMemo(
       () => HyperFormula.buildEmpty({ licenseKey: "internal-use-in-handsontable" }),
       []
@@ -232,6 +296,12 @@ export const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGrid
     useEffect(() => {
       latestSheetRef.current = sheet;
     }, [sheet]);
+
+    useEffect(() => () => {
+      if (contextMenuStyleSyncTimerRef.current !== null) {
+        window.clearTimeout(contextMenuStyleSyncTimerRef.current);
+      }
+    }, []);
 
     const emitSheetChange = (nextSheet: SpreadsheetSheet, options?: SheetChangeOptions) => {
       latestSheetRef.current = nextSheet;
@@ -249,6 +319,24 @@ export const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGrid
         merges: readMerges(hot),
         ...overrides,
       }, options);
+    };
+
+    const scheduleCellMetaStyleSync = () => {
+      if (contextMenuStyleSyncTimerRef.current !== null) {
+        window.clearTimeout(contextMenuStyleSyncTimerRef.current);
+      }
+
+      contextMenuStyleSyncTimerRef.current = window.setTimeout(() => {
+        contextMenuStyleSyncTimerRef.current = null;
+        const hot = hotRef.current?.hotInstance;
+        if (!hot) return;
+        const classNameOverrides = new Map(contextMenuClassNameByCoordRef.current);
+        contextMenuClassNameByCoordRef.current.clear();
+        syncFromHot({
+          cellStyles: readCellStyleOverridesFromHot(hot, latestSheetRef.current.cellStyles, classNameOverrides),
+        });
+        hot.render();
+      }, 0);
     };
 
     useImperativeHandle(ref, () => ({
@@ -416,6 +504,30 @@ export const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGrid
             const result = applySpreadsheetCellChanges(latestSheetRef.current, changes as SpreadsheetCellChange[]);
             if (!result.changed) return;
             emitSheetChange(result.sheet, { render: false });
+          }}
+          afterSetCellMeta={(row: number, column: number, key: string, value: unknown) => {
+            if (row < 0 || column < 0 || key !== "className") return;
+            const className = String(value || "");
+            if (hasHandsontableAlignmentClass(className)) {
+              contextMenuClassNameByCoordRef.current.set(cellKey(row, column), className);
+            }
+            scheduleCellMetaStyleSync();
+          }}
+          afterCreateRow={(index: number, amount: number, source?: string) => {
+            if (!isContextMenuSource(source)) return;
+            syncFromHot({ cellStyles: shiftStylesForInsert(latestSheetRef.current.cellStyles, "row", index, amount) });
+          }}
+          afterRemoveRow={(index: number, amount: number, _physicalRows: number[], source?: string) => {
+            if (!isContextMenuSource(source)) return;
+            syncFromHot({ cellStyles: shiftStylesForDelete(latestSheetRef.current.cellStyles, "row", index, amount) });
+          }}
+          afterCreateCol={(index: number, amount: number, source?: string) => {
+            if (!isContextMenuSource(source)) return;
+            syncFromHot({ cellStyles: shiftStylesForInsert(latestSheetRef.current.cellStyles, "col", index, amount) });
+          }}
+          afterRemoveCol={(index: number, amount: number, _physicalColumns: number[], source?: string) => {
+            if (!isContextMenuSource(source)) return;
+            syncFromHot({ cellStyles: shiftStylesForDelete(latestSheetRef.current.cellStyles, "col", index, amount) });
           }}
           afterSelectionEnd={(row: number, column: number, row2: number, column2: number) => {
             if ([row, column, row2, column2].every((value) => Number.isInteger(value) && value >= 0)) {

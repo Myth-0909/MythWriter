@@ -8,7 +8,8 @@ export interface SpreadsheetMergeCell {
 }
 
 export type SpreadsheetCellColor = "default" | "red" | "green" | "blue" | "amber" | "gray";
-export type SpreadsheetHorizontalAlign = "left" | "center" | "right";
+export type SpreadsheetHorizontalAlign = "left" | "center" | "right" | "justify";
+export type SpreadsheetVerticalAlign = "top" | "middle" | "bottom";
 
 export interface SpreadsheetCellStyle {
   row: number;
@@ -19,6 +20,7 @@ export interface SpreadsheetCellStyle {
   textColor?: SpreadsheetCellColor;
   fillColor?: SpreadsheetCellColor;
   horizontalAlign?: SpreadsheetHorizontalAlign;
+  verticalAlign?: SpreadsheetVerticalAlign;
   wrap?: boolean;
 }
 
@@ -103,7 +105,11 @@ function isCellColor(value: unknown): value is SpreadsheetCellColor {
 }
 
 function isHorizontalAlign(value: unknown): value is SpreadsheetHorizontalAlign {
-  return value === undefined || ["left", "center", "right"].includes(String(value));
+  return value === undefined || ["left", "center", "right", "justify"].includes(String(value));
+}
+
+function isVerticalAlign(value: unknown): value is SpreadsheetVerticalAlign {
+  return value === undefined || ["top", "middle", "bottom"].includes(String(value));
 }
 
 function isCellStyle(value: unknown): value is SpreadsheetCellStyle {
@@ -118,6 +124,7 @@ function isCellStyle(value: unknown): value is SpreadsheetCellStyle {
     isCellColor(style.textColor) &&
     isCellColor(style.fillColor) &&
     isHorizontalAlign(style.horizontalAlign) &&
+    isVerticalAlign(style.verticalAlign) &&
     (style.wrap === undefined || typeof style.wrap === "boolean")
   );
 }

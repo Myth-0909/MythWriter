@@ -67,6 +67,7 @@ function styleSignature(style: SpreadsheetCellStyle | undefined) {
     textColor: style.textColor || "default",
     fillColor: style.fillColor || "default",
     horizontalAlign: style.horizontalAlign || "left",
+    verticalAlign: style.verticalAlign || "top",
     wrap: !!style.wrap,
   });
 }
@@ -185,6 +186,10 @@ function cellClassName(style: SpreadsheetCellStyle | undefined, changed: boolean
     style?.wrap ? "whitespace-pre-wrap" : "truncate whitespace-nowrap",
     style?.horizontalAlign === "center" && "text-center",
     style?.horizontalAlign === "right" && "text-right",
+    style?.horizontalAlign === "justify" && "text-justify",
+    style?.verticalAlign === "top" && "align-top",
+    style?.verticalAlign === "middle" && "align-middle",
+    style?.verticalAlign === "bottom" && "align-bottom",
     textColorClasses[style?.textColor || "default"],
     fillColorClasses[style?.fillColor || "default"],
     changed && "ring-1 ring-inset ring-emerald-400 dark:ring-emerald-500"
