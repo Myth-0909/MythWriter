@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "react";
 import { ArrowLeft, FileSpreadsheet } from "lucide-react";
 import { api } from "@/api";
 import { SheetTabs } from "@/components/spreadsheet/SheetTabs";
-import { SpreadsheetGrid, type SpreadsheetGridHandle } from "@/components/spreadsheet/SpreadsheetGrid";
+import { SpreadsheetGrid, type SheetChangeOptions, type SpreadsheetGridHandle } from "@/components/spreadsheet/SpreadsheetGrid";
 import { SpreadsheetToolbar, type SpreadsheetSaveStatus } from "@/components/spreadsheet/SpreadsheetToolbar";
 import { useI18n } from "@/components/I18nProvider";
 import { useToast } from "@/components/Toast";
@@ -32,42 +32,67 @@ export function SpreadsheetEditorPage({ spreadsheetId, onBack }: SpreadsheetEdit
   const gridRef = useRef<SpreadsheetGridHandle>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const changeVersionRef = useRef(0);
-  const [spreadsheet, setSpreadsheet] = useState<Spreadsheet | null>(null);
+  const spreadsheetRef = useRef<Spreadsheet | null>(null);
+  const workbookRef = useRef<SpreadsheetWorkbook | null>(null);
+  const titleRef = useRef("");
+  const saveTimerRef = useRef<number | null>(null);
+  const saveWorkbookRef = useRef<() => Promise<void>>(async () => {});
   const [workbook, setWorkbook] = useState<SpreadsheetWorkbook | null>(null);
   const [title, setTitle] = useState("");
   const [loading, setLoading] = useState(true);
   const [dirty, setDirty] = useState(false);
   const [status, setStatus] = useState<SpreadsheetSaveStatus>("saved");
 
-  const activeSheet = useMemo(() => {
-    if (!workbook) return null;
-    return workbook.sheets.find((sheet) => sheet.id === workbook.activeSheetId) || workbook.sheets[0] || null;
-  }, [workbook]);
+  const visibleWorkbook = workbookRef.current || workbook;
+  const activeSheet = visibleWorkbook
+    ? visibleWorkbook.sheets.find((sheet) => sheet.id === visibleWorkbook.activeSheetId) || visibleWorkbook.sheets[0] || null
+    : null;
 
-  const markUnsaved = () => {
+  const scheduleAutoSave = useCallback(() => {
+    if (saveTimerRef.current !== null) {
+      window.clearTimeout(saveTimerRef.current);
+    }
+    saveTimerRef.current = window.setTimeout(() => {
+      saveTimerRef.current = null;
+      void saveWorkbookRef.current();
+    }, 1200);
+  }, []);
+
+  const markUnsaved = useCallback(() => {
     changeVersionRef.current += 1;
     setDirty(true);
     setStatus("unsaved");
-  };
+    scheduleAutoSave();
+  }, [scheduleAutoSave]);
 
-  const replaceWorkbook = (nextWorkbook: SpreadsheetWorkbook) => {
-    setWorkbook(nextWorkbook);
+  const replaceWorkbook = useCallback((nextWorkbook: SpreadsheetWorkbook, options?: SheetChangeOptions) => {
+    workbookRef.current = nextWorkbook;
+    if (options?.render !== false) {
+      setWorkbook(nextWorkbook);
+    }
     markUnsaved();
-  };
+  }, [markUnsaved]);
 
-  const updateActiveSheet = (sheet: SpreadsheetSheet) => {
-    if (!workbook) return;
+  const updateActiveSheet = useCallback((sheet: SpreadsheetSheet, options?: SheetChangeOptions) => {
+    const currentWorkbook = workbookRef.current || workbook;
+    if (!currentWorkbook) return;
     replaceWorkbook({
-      ...workbook,
-      sheets: workbook.sheets.map((item) => (item.id === sheet.id ? sheet : item)),
-    });
-  };
+      ...currentWorkbook,
+      sheets: currentWorkbook.sheets.map((item) => (item.id === sheet.id ? sheet : item)),
+    }, options);
+  }, [replaceWorkbook, workbook]);
 
   const applyLoadedSpreadsheet = useCallback((nextSpreadsheet: Spreadsheet) => {
     const nextWorkbook = validateSpreadsheetWorkbook(nextSpreadsheet.data)
       ? nextSpreadsheet.data
       : createDefaultWorkbook(t("sheets.defaultSheetName"));
-    setSpreadsheet(nextSpreadsheet);
+    if (saveTimerRef.current !== null) {
+      window.clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+    spreadsheetRef.current = nextSpreadsheet;
+    workbookRef.current = nextWorkbook;
+    titleRef.current = nextSpreadsheet.title;
     setWorkbook(nextWorkbook);
     setTitle(nextSpreadsheet.title);
     setDirty(false);
@@ -87,17 +112,21 @@ export function SpreadsheetEditorPage({ spreadsheetId, onBack }: SpreadsheetEdit
   }, [applyLoadedSpreadsheet, spreadsheetId, t, toast]);
 
   const saveWorkbook = useCallback(async () => {
-    if (!spreadsheet || !workbook) return;
+    const currentSpreadsheet = spreadsheetRef.current;
+    const currentWorkbook = workbookRef.current;
+    if (!currentSpreadsheet || !currentWorkbook) return;
     const version = changeVersionRef.current;
     setStatus("saving");
     try {
-      const res = await api.updateSpreadsheet(spreadsheet.id, {
-        title: title.trim() || t("sheets.defaultName"),
-        data: workbook,
+      const res = await api.updateSpreadsheet(currentSpreadsheet.id, {
+        title: titleRef.current.trim() || t("sheets.defaultName"),
+        data: currentWorkbook,
       });
-      setSpreadsheet(res.spreadsheet);
-      setTitle(res.spreadsheet.title);
+      spreadsheetRef.current = res.spreadsheet;
       if (version === changeVersionRef.current) {
+        setWorkbook(currentWorkbook);
+        setTitle(res.spreadsheet.title);
+        titleRef.current = res.spreadsheet.title;
         setDirty(false);
         setStatus("saved");
       }
@@ -105,7 +134,11 @@ export function SpreadsheetEditorPage({ spreadsheetId, onBack }: SpreadsheetEdit
       setStatus("error");
       toast(error.message || t("sheets.saveFailed"), "error");
     }
-  }, [spreadsheet, t, title, toast, workbook]);
+  }, [t, toast]);
+
+  useEffect(() => {
+    saveWorkbookRef.current = saveWorkbook;
+  }, [saveWorkbook]);
 
   useEffect(() => {
     loadSpreadsheet();
@@ -125,32 +158,35 @@ export function SpreadsheetEditorPage({ spreadsheetId, onBack }: SpreadsheetEdit
     return () => window.removeEventListener("spreadsheet:updated", handler);
   }, [applyLoadedSpreadsheet, loadSpreadsheet, spreadsheetId]);
 
-  useEffect(() => {
-    if (!dirty || !spreadsheet || !workbook) return;
-    const timer = window.setTimeout(() => {
-      void saveWorkbook();
-    }, 1200);
-    return () => window.clearTimeout(timer);
-  }, [dirty, saveWorkbook, spreadsheet, workbook]);
+  useEffect(() => () => {
+    if (saveTimerRef.current !== null) {
+      window.clearTimeout(saveTimerRef.current);
+    }
+  }, []);
 
   const handleTitleChange = (event: ChangeEvent<HTMLInputElement>) => {
-    setTitle(event.target.value);
+    const nextTitle = event.target.value;
+    titleRef.current = nextTitle;
+    setTitle(nextTitle);
     markUnsaved();
   };
 
   const handleSelectSheet = (sheetId: string) => {
-    if (!workbook || workbook.activeSheetId === sheetId) return;
-    replaceWorkbook({ ...workbook, activeSheetId: sheetId });
+    const currentWorkbook = workbookRef.current || workbook;
+    if (!currentWorkbook || currentWorkbook.activeSheetId === sheetId) return;
+    replaceWorkbook({ ...currentWorkbook, activeSheetId: sheetId });
   };
 
   const handleAddSheet = () => {
-    if (!workbook) return;
-    replaceWorkbook(addSpreadsheetSheet(workbook, `${t("sheets.untitled")} ${workbook.sheets.length + 1}`));
+    const currentWorkbook = workbookRef.current || workbook;
+    if (!currentWorkbook) return;
+    replaceWorkbook(addSpreadsheetSheet(currentWorkbook, `${t("sheets.untitled")} ${currentWorkbook.sheets.length + 1}`));
   };
 
   const handleDeleteSheet = (sheetId: string) => {
-    if (!workbook) return;
-    replaceWorkbook(deleteSpreadsheetSheet(workbook, sheetId));
+    const currentWorkbook = workbookRef.current || workbook;
+    if (!currentWorkbook) return;
+    replaceWorkbook(deleteSpreadsheetSheet(currentWorkbook, sheetId));
   };
 
   const toggleFreezeTopRow = () => {
@@ -246,8 +282,9 @@ export function SpreadsheetEditorPage({ spreadsheetId, onBack }: SpreadsheetEdit
   };
 
   const handleExport = () => {
-    if (!workbook) return;
-    const blob = workbookToXlsxBlob(workbook);
+    const currentWorkbook = workbookRef.current || workbook;
+    if (!currentWorkbook) return;
+    const blob = workbookToXlsxBlob(currentWorkbook);
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
@@ -288,7 +325,7 @@ export function SpreadsheetEditorPage({ spreadsheetId, onBack }: SpreadsheetEdit
 
         <SpreadsheetToolbar
           status={status}
-          canSave={!!workbook && (dirty || status === "error")}
+          canSave={!!visibleWorkbook && (dirty || status === "error")}
           onSave={() => void saveWorkbook()}
           onImport={handleImportClick}
           onExport={handleExport}
@@ -328,10 +365,10 @@ export function SpreadsheetEditorPage({ spreadsheetId, onBack }: SpreadsheetEdit
           )}
         </section>
 
-        {workbook && (
+        {visibleWorkbook && (
           <SheetTabs
-            sheets={workbook.sheets}
-            activeSheetId={workbook.activeSheetId}
+            sheets={visibleWorkbook.sheets}
+            activeSheetId={visibleWorkbook.activeSheetId}
             onSelectSheet={handleSelectSheet}
             onAddSheet={handleAddSheet}
             onDeleteSheet={handleDeleteSheet}

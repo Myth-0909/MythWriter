@@ -1,4 +1,4 @@
-import { forwardRef, useImperativeHandle, useMemo, useRef } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef } from "react";
 import { HotTable, type HotTableRef } from "@handsontable/react-wrapper";
 import { registerAllModules } from "handsontable/registry";
 import HyperFormula from "hyperformula";
@@ -10,6 +10,7 @@ import type {
   SpreadsheetMergeCell,
   SpreadsheetSheet,
 } from "@/types";
+import { applySpreadsheetCellChanges, type SpreadsheetCellChange } from "@/lib/spreadsheetPerformance";
 import "handsontable/styles/handsontable.min.css";
 import "handsontable/styles/ht-theme-main.min.css";
 import "./spreadsheet.css";
@@ -43,9 +44,13 @@ export interface SpreadsheetGridHandle {
   sortSelectedColumn: (direction: "asc" | "desc") => void;
 }
 
+export type SheetChangeOptions = {
+  render?: boolean;
+};
+
 interface SpreadsheetGridProps {
   sheet: SpreadsheetSheet;
-  onSheetChange: (sheet: SpreadsheetSheet) => void;
+  onSheetChange: (sheet: SpreadsheetSheet, options?: SheetChangeOptions) => void;
 }
 
 interface CellCoord {
@@ -193,6 +198,7 @@ function buildCellClassName(style: SpreadsheetCellStyle | undefined) {
 export const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
   ({ sheet, onSheetChange }, ref) => {
     const hotRef = useRef<HotTableRef>(null);
+    const latestSheetRef = useRef(sheet);
     const formulaEngine = useMemo(
       () => HyperFormula.buildEmpty({ licenseKey: "internal-use-in-handsontable" }),
       []
@@ -205,16 +211,26 @@ export const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGrid
       return map;
     }, [sheet.cellStyles]);
 
-    const syncFromHot = (overrides: Partial<SpreadsheetSheet> = {}) => {
+    useEffect(() => {
+      latestSheetRef.current = sheet;
+    }, [sheet]);
+
+    const emitSheetChange = (nextSheet: SpreadsheetSheet, options?: SheetChangeOptions) => {
+      latestSheetRef.current = nextSheet;
+      onSheetChange(nextSheet, options);
+    };
+
+    const syncFromHot = (overrides: Partial<SpreadsheetSheet> = {}, options?: SheetChangeOptions) => {
       const hot = hotRef.current?.hotInstance;
       if (!hot) return;
-      onSheetChange({
-        ...sheet,
+      const currentSheet = latestSheetRef.current;
+      emitSheetChange({
+        ...currentSheet,
         data: readData(hot),
-        cellStyles: sheet.cellStyles || [],
+        cellStyles: currentSheet.cellStyles || [],
         merges: readMerges(hot),
         ...overrides,
-      });
+      }, options);
     };
 
     useImperativeHandle(ref, () => ({
@@ -251,7 +267,8 @@ export const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGrid
         if (selectedCells.length === 0) return;
 
         const styles = new Map<string, SpreadsheetCellStyle>();
-        for (const style of sheet.cellStyles || []) {
+        const currentSheet = latestSheetRef.current;
+        for (const style of currentSheet.cellStyles || []) {
           styles.set(cellKey(style.row, style.col), style);
         }
 
@@ -282,7 +299,7 @@ export const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGrid
         const bounds = getSelectedBounds(hot);
         const index = bounds?.startRow ?? 0;
         (hot as any).alter("insert_row_above", index, 1);
-        syncFromHot({ cellStyles: shiftStylesForInsert(sheet.cellStyles, "row", index) });
+        syncFromHot({ cellStyles: shiftStylesForInsert(latestSheetRef.current.cellStyles, "row", index) });
       },
       insertRowBelow: () => {
         const hot = hotRef.current?.hotInstance;
@@ -290,7 +307,7 @@ export const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGrid
         const bounds = getSelectedBounds(hot);
         const index = bounds ? bounds.endRow + 1 : hot.countRows();
         (hot as any).alter("insert_row_above", index, 1);
-        syncFromHot({ cellStyles: shiftStylesForInsert(sheet.cellStyles, "row", index) });
+        syncFromHot({ cellStyles: shiftStylesForInsert(latestSheetRef.current.cellStyles, "row", index) });
       },
       insertColumnLeft: () => {
         const hot = hotRef.current?.hotInstance;
@@ -298,7 +315,7 @@ export const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGrid
         const bounds = getSelectedBounds(hot);
         const index = bounds?.startCol ?? 0;
         (hot as any).alter("insert_col_start", index, 1);
-        syncFromHot({ cellStyles: shiftStylesForInsert(sheet.cellStyles, "col", index) });
+        syncFromHot({ cellStyles: shiftStylesForInsert(latestSheetRef.current.cellStyles, "col", index) });
       },
       insertColumnRight: () => {
         const hot = hotRef.current?.hotInstance;
@@ -306,7 +323,7 @@ export const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGrid
         const bounds = getSelectedBounds(hot);
         const index = bounds ? bounds.endCol + 1 : hot.countCols();
         (hot as any).alter("insert_col_start", index, 1);
-        syncFromHot({ cellStyles: shiftStylesForInsert(sheet.cellStyles, "col", index) });
+        syncFromHot({ cellStyles: shiftStylesForInsert(latestSheetRef.current.cellStyles, "col", index) });
       },
       deleteSelectedRows: () => {
         const hot = hotRef.current?.hotInstance;
@@ -315,7 +332,7 @@ export const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGrid
         if (!bounds) return;
         const amount = bounds.endRow - bounds.startRow + 1;
         (hot as any).alter("remove_row", bounds.startRow, amount);
-        syncFromHot({ cellStyles: shiftStylesForDelete(sheet.cellStyles, "row", bounds.startRow, amount) });
+        syncFromHot({ cellStyles: shiftStylesForDelete(latestSheetRef.current.cellStyles, "row", bounds.startRow, amount) });
       },
       deleteSelectedColumns: () => {
         const hot = hotRef.current?.hotInstance;
@@ -324,7 +341,7 @@ export const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGrid
         if (!bounds) return;
         const amount = bounds.endCol - bounds.startCol + 1;
         (hot as any).alter("remove_col", bounds.startCol, amount);
-        syncFromHot({ cellStyles: shiftStylesForDelete(sheet.cellStyles, "col", bounds.startCol, amount) });
+        syncFromHot({ cellStyles: shiftStylesForDelete(latestSheetRef.current.cellStyles, "col", bounds.startCol, amount) });
       },
       clearSelectedCells: () => {
         const hot = hotRef.current?.hotInstance;
@@ -375,17 +392,19 @@ export const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGrid
           width="100%"
           height="100%"
           className="ht-theme-main"
-          afterChange={(_changes: unknown, source: string) => {
-            if (source === "loadData") return;
-            syncFromHot();
+          afterChange={(changes: unknown, source: string) => {
+            if (source === "loadData" || source === "toolbar-clear" || !Array.isArray(changes)) return;
+            const result = applySpreadsheetCellChanges(latestSheetRef.current, changes as SpreadsheetCellChange[]);
+            if (!result.changed) return;
+            emitSheetChange(result.sheet, { render: false });
           }}
           afterMergeCells={() => syncFromHot()}
           afterUnmergeCells={() => syncFromHot()}
           afterColumnResize={(newSize: number, column: number) => {
-            syncFromHot({ colWidths: updateIndexedValue(sheet.colWidths, column, newSize) });
+            syncFromHot({ colWidths: updateIndexedValue(latestSheetRef.current.colWidths, column, newSize) });
           }}
           afterRowResize={(newSize: number, row: number) => {
-            syncFromHot({ rowHeights: updateIndexedValue(sheet.rowHeights, row, newSize) });
+            syncFromHot({ rowHeights: updateIndexedValue(latestSheetRef.current.rowHeights, row, newSize) });
           }}
         />
       </div>
