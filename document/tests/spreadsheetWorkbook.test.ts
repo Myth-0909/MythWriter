@@ -6,6 +6,8 @@ import {
   createDefaultWorkbook,
   createSpreadsheetSheet,
   deleteSpreadsheetSheet,
+  duplicateSpreadsheetSheet,
+  moveSpreadsheetSheet,
   renameSpreadsheetSheet,
   validateSpreadsheetWorkbook,
 } from "../src/lib/spreadsheetWorkbook.ts";
@@ -43,6 +45,20 @@ describe("spreadsheet workbook helpers", () => {
     const workbook = { version: 1 as const, activeSheetId: sheet.id, sheets: [sheet] };
 
     assert.equal(buildSpreadsheetPreview(workbook), "Chapter Words Opening 1200");
+  });
+
+  it("duplicates and reorders sheets without mutating the original workbook", () => {
+    const workbook = addSpreadsheetSheet(createDefaultWorkbook("Main"), "Data");
+    workbook.sheets[1].data = [["角色", "进度"]];
+
+    const duplicated = duplicateSpreadsheetSheet(workbook, workbook.sheets[1].id, "Data Copy");
+    const moved = moveSpreadsheetSheet(duplicated, duplicated.activeSheetId, -1);
+
+    assert.equal(workbook.sheets.length, 2);
+    assert.equal(duplicated.sheets.length, 3);
+    assert.equal(duplicated.sheets[2].name, "Data Copy");
+    assert.deepEqual(duplicated.sheets[2].data, [["角色", "进度"]]);
+    assert.equal(moved.sheets[1].name, "Data Copy");
   });
 
   it("rejects malformed workbooks", () => {

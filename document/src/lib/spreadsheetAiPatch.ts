@@ -5,6 +5,11 @@ export type SpreadsheetPatchOperation =
   | { type: "set_cell"; sheetId?: string; sheetName?: string; row: number; col: number; value: SpreadsheetCellValue }
   | { type: "set_range"; sheetId?: string; sheetName?: string; startRow: number; startCol: number; values: SpreadsheetCellValue[][] }
   | { type: "append_row"; sheetId?: string; sheetName?: string; values: SpreadsheetCellValue[] }
+  | { type: "set_style"; sheetId?: string; sheetName?: string; startRow: number; startCol: number; endRow: number; endCol: number; style: Partial<Omit<SpreadsheetCellStyle, "row" | "col">> }
+  | { type: "merge_cells"; sheetId?: string; sheetName?: string; row: number; col: number; rowspan: number; colspan: number }
+  | { type: "unmerge_cells"; sheetId?: string; sheetName?: string; row: number; col: number }
+  | { type: "freeze_panes"; sheetId?: string; sheetName?: string; fixedRowsTop?: number; fixedColumnsLeft?: number }
+  | { type: "sort_range"; sheetId?: string; sheetName?: string; startRow: number; endRow: number; sortCol: number; direction?: "asc" | "desc" }
   | { type: "rename_sheet"; sheetId?: string; sheetName?: string; name: string }
   | { type: "create_sheet"; name?: string; data?: SpreadsheetCellValue[][] }
   | { type: "delete_sheet"; sheetId?: string; sheetName?: string }
@@ -98,6 +103,10 @@ function operationLabel(operation: SpreadsheetPatchOperation, sheet: Spreadsheet
   if (operation.type === "set_cell") return `${sheet.name}!R${operation.row + 1}C${operation.col + 1}`;
   if (operation.type === "set_range") return `${sheet.name}!R${operation.startRow + 1}C${operation.startCol + 1}`;
   if (operation.type === "append_row") return `${sheet.name} append row`;
+  if (operation.type === "set_style") return `${sheet.name}!R${operation.startRow + 1}C${operation.startCol + 1}`;
+  if (operation.type === "merge_cells" || operation.type === "unmerge_cells") return `${sheet.name}!R${operation.row + 1}C${operation.col + 1}`;
+  if (operation.type === "freeze_panes") return `${sheet.name} freeze panes`;
+  if (operation.type === "sort_range") return `${sheet.name} sort column ${operation.sortCol + 1}`;
   if (operation.type === "rename_sheet") return `${sheet.name} -> ${operation.name}`;
   if (operation.type === "create_sheet") return operation.name || sheet.name;
   if (operation.type === "delete_sheet") return sheet.name;
@@ -214,6 +223,82 @@ function deleteColumns(sheet: SpreadsheetSheet, index: number, count: number): b
   return true;
 }
 
+function normalizeStylePatch(value: unknown): Partial<Omit<SpreadsheetCellStyle, "row" | "col">> | null {
+  if (!value || typeof value !== "object") return null;
+  const source = value as Partial<Omit<SpreadsheetCellStyle, "row" | "col">>;
+  const patch: Partial<Omit<SpreadsheetCellStyle, "row" | "col">> = {};
+  if (typeof source.bold === "boolean") patch.bold = source.bold;
+  if (typeof source.italic === "boolean") patch.italic = source.italic;
+  if (typeof source.underline === "boolean") patch.underline = source.underline;
+  if (typeof source.wrap === "boolean") patch.wrap = source.wrap;
+  if (typeof source.border === "boolean") patch.border = source.border;
+  if (["default", "red", "green", "blue", "amber", "gray"].includes(String(source.textColor))) patch.textColor = source.textColor;
+  if (["default", "red", "green", "blue", "amber", "gray"].includes(String(source.fillColor))) patch.fillColor = source.fillColor;
+  if (["left", "center", "right", "justify"].includes(String(source.horizontalAlign))) patch.horizontalAlign = source.horizontalAlign;
+  if (["top", "middle", "bottom"].includes(String(source.verticalAlign))) patch.verticalAlign = source.verticalAlign;
+  if (["general", "number", "currency", "percent", "date"].includes(String(source.numberFormat))) patch.numberFormat = source.numberFormat;
+  if (["small", "normal", "large"].includes(String(source.fontSize))) patch.fontSize = source.fontSize;
+  return Object.keys(patch).length > 0 ? patch : null;
+}
+
+function applyStyleRange(
+  sheet: SpreadsheetSheet,
+  startRow: number,
+  startCol: number,
+  endRow: number,
+  endCol: number,
+  patch: Partial<Omit<SpreadsheetCellStyle, "row" | "col">>
+) {
+  const styles = new Map<string, SpreadsheetCellStyle>();
+  for (const style of sheet.cellStyles || []) {
+    styles.set(`${style.row}:${style.col}`, { ...style });
+  }
+
+  for (let row = startRow; row <= endRow; row += 1) {
+    for (let col = startCol; col <= endCol; col += 1) {
+      ensureCell(sheet.data, row, col);
+      const key = `${row}:${col}`;
+      styles.set(key, { ...(styles.get(key) || { row, col }), ...patch });
+    }
+  }
+
+  sheet.cellStyles = Array.from(styles.values());
+}
+
+function mergeCells(sheet: SpreadsheetSheet, row: number, col: number, rowspan: number, colspan: number) {
+  sheet.merges = (sheet.merges || []).filter((merge) => merge.row !== row || merge.col !== col);
+  sheet.merges.push({ row, col, rowspan, colspan });
+}
+
+function unmergeCell(sheet: SpreadsheetSheet, row: number, col: number): boolean {
+  const before = sheet.merges?.length || 0;
+  sheet.merges = (sheet.merges || []).filter((merge) => {
+    const rowEnd = merge.row + merge.rowspan - 1;
+    const colEnd = merge.col + merge.colspan - 1;
+    return row < merge.row || row > rowEnd || col < merge.col || col > colEnd;
+  });
+  return before !== sheet.merges.length;
+}
+
+function compareCellValues(left: SpreadsheetCellValue, right: SpreadsheetCellValue, direction: "asc" | "desc") {
+  const leftNumber = typeof left === "number" ? left : Number(left);
+  const rightNumber = typeof right === "number" ? right : Number(right);
+  const numeric = Number.isFinite(leftNumber) && Number.isFinite(rightNumber)
+    ? leftNumber - rightNumber
+    : String(left ?? "").localeCompare(String(right ?? ""), "zh-CN", { numeric: true });
+  return direction === "desc" ? -numeric : numeric;
+}
+
+function sortRange(sheet: SpreadsheetSheet, startRow: number, endRow: number, sortCol: number, direction: "asc" | "desc") {
+  if (sheet.data.length === 0 || startRow >= sheet.data.length) return false;
+  const rowStart = Math.min(startRow, endRow);
+  const rowEnd = Math.min(sheet.data.length - 1, Math.max(startRow, endRow));
+  const rows = sheet.data.slice(rowStart, rowEnd + 1);
+  rows.sort((left, right) => compareCellValues(left[sortCol] ?? null, right[sortCol] ?? null, direction));
+  sheet.data.splice(rowStart, rows.length, ...rows);
+  return true;
+}
+
 export function applySpreadsheetPatch(workbook: SpreadsheetWorkbook, patch: SpreadsheetPatchAction): SpreadsheetPatchResult {
   const nextWorkbook = cloneWorkbook(workbook);
   const operations = Array.isArray(patch.operations) ? patch.operations : [];
@@ -284,6 +369,67 @@ export function applySpreadsheetPatch(workbook: SpreadsheetWorkbook, patch: Spre
       const values = operation.values.map(normalizeCellValue);
       ensureCell(sheet.data, row, Math.max(0, values.length - 1));
       sheet.data[row] = values;
+      appliedCount += 1;
+      summary.push(operationLabel(operation, sheet));
+      continue;
+    }
+
+    if (operation.type === "set_style") {
+      const startRow = normalizeIndex(operation.startRow);
+      const startCol = normalizeIndex(operation.startCol);
+      const endRow = normalizeIndex(operation.endRow);
+      const endCol = normalizeIndex(operation.endCol);
+      const style = normalizeStylePatch(operation.style);
+      if (startRow === null || startCol === null || endRow === null || endCol === null || !style) continue;
+      applyStyleRange(
+        sheet,
+        Math.min(startRow, endRow),
+        Math.min(startCol, endCol),
+        Math.max(startRow, endRow),
+        Math.max(startCol, endCol),
+        style
+      );
+      appliedCount += 1;
+      summary.push(operationLabel(operation, sheet));
+      continue;
+    }
+
+    if (operation.type === "merge_cells") {
+      const row = normalizeIndex(operation.row);
+      const col = normalizeIndex(operation.col);
+      const rowspan = normalizeCount(operation.rowspan);
+      const colspan = normalizeCount(operation.colspan);
+      if (row === null || col === null) continue;
+      mergeCells(sheet, row, col, rowspan, colspan);
+      appliedCount += 1;
+      summary.push(operationLabel(operation, sheet));
+      continue;
+    }
+
+    if (operation.type === "unmerge_cells") {
+      const row = normalizeIndex(operation.row);
+      const col = normalizeIndex(operation.col);
+      if (row === null || col === null) continue;
+      if (!unmergeCell(sheet, row, col)) continue;
+      appliedCount += 1;
+      summary.push(operationLabel(operation, sheet));
+      continue;
+    }
+
+    if (operation.type === "freeze_panes") {
+      sheet.fixedRowsTop = normalizeIndex(operation.fixedRowsTop) ?? 0;
+      sheet.fixedColumnsLeft = normalizeIndex(operation.fixedColumnsLeft) ?? 0;
+      appliedCount += 1;
+      summary.push(operationLabel(operation, sheet));
+      continue;
+    }
+
+    if (operation.type === "sort_range") {
+      const startRow = normalizeIndex(operation.startRow);
+      const endRow = normalizeIndex(operation.endRow);
+      const sortCol = normalizeIndex(operation.sortCol);
+      if (startRow === null || endRow === null || sortCol === null) continue;
+      if (!sortRange(sheet, startRow, endRow, sortCol, operation.direction === "desc" ? "desc" : "asc")) continue;
       appliedCount += 1;
       summary.push(operationLabel(operation, sheet));
       continue;

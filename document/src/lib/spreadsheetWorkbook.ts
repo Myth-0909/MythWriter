@@ -10,6 +10,8 @@ export interface SpreadsheetMergeCell {
 export type SpreadsheetCellColor = "default" | "red" | "green" | "blue" | "amber" | "gray";
 export type SpreadsheetHorizontalAlign = "left" | "center" | "right" | "justify";
 export type SpreadsheetVerticalAlign = "top" | "middle" | "bottom";
+export type SpreadsheetNumberFormat = "general" | "number" | "currency" | "percent" | "date";
+export type SpreadsheetFontSize = "small" | "normal" | "large";
 
 export interface SpreadsheetCellStyle {
   row: number;
@@ -21,6 +23,9 @@ export interface SpreadsheetCellStyle {
   fillColor?: SpreadsheetCellColor;
   horizontalAlign?: SpreadsheetHorizontalAlign;
   verticalAlign?: SpreadsheetVerticalAlign;
+  numberFormat?: SpreadsheetNumberFormat;
+  fontSize?: SpreadsheetFontSize;
+  border?: boolean;
   wrap?: boolean;
 }
 
@@ -112,6 +117,14 @@ function isVerticalAlign(value: unknown): value is SpreadsheetVerticalAlign {
   return value === undefined || ["top", "middle", "bottom"].includes(String(value));
 }
 
+function isNumberFormat(value: unknown): value is SpreadsheetNumberFormat {
+  return value === undefined || ["general", "number", "currency", "percent", "date"].includes(String(value));
+}
+
+function isFontSize(value: unknown): value is SpreadsheetFontSize {
+  return value === undefined || ["small", "normal", "large"].includes(String(value));
+}
+
 function isCellStyle(value: unknown): value is SpreadsheetCellStyle {
   if (!value || typeof value !== "object") return false;
   const style = value as Record<string, unknown>;
@@ -125,6 +138,9 @@ function isCellStyle(value: unknown): value is SpreadsheetCellStyle {
     isCellColor(style.fillColor) &&
     isHorizontalAlign(style.horizontalAlign) &&
     isVerticalAlign(style.verticalAlign) &&
+    isNumberFormat(style.numberFormat) &&
+    isFontSize(style.fontSize) &&
+    (style.border === undefined || typeof style.border === "boolean") &&
     (style.wrap === undefined || typeof style.wrap === "boolean")
   );
 }
@@ -200,4 +216,38 @@ export function deleteSpreadsheetSheet(workbook: SpreadsheetWorkbook, sheetId: s
     activeSheetId: workbook.activeSheetId === sheetId ? sheets[0].id : workbook.activeSheetId,
     sheets,
   };
+}
+
+export function duplicateSpreadsheetSheet(workbook: SpreadsheetWorkbook, sheetId: string, name?: string): SpreadsheetWorkbook {
+  const source = workbook.sheets.find((sheet) => sheet.id === sheetId);
+  if (!source) return workbook;
+
+  const copy: SpreadsheetSheet = {
+    ...source,
+    id: createId("sheet"),
+    name: normalizeName(name, `${source.name} Copy`),
+    data: source.data.map((row) => [...row]),
+    cellStyles: source.cellStyles?.map((style) => ({ ...style })) || [],
+    merges: source.merges?.map((merge) => ({ ...merge })) || [],
+    rowHeights: source.rowHeights ? [...source.rowHeights] : [],
+    colWidths: source.colWidths ? [...source.colWidths] : [],
+  };
+
+  return {
+    ...workbook,
+    activeSheetId: copy.id,
+    sheets: [...workbook.sheets, copy],
+  };
+}
+
+export function moveSpreadsheetSheet(workbook: SpreadsheetWorkbook, sheetId: string, direction: -1 | 1): SpreadsheetWorkbook {
+  const index = workbook.sheets.findIndex((sheet) => sheet.id === sheetId);
+  if (index < 0) return workbook;
+  const nextIndex = index + direction;
+  if (nextIndex < 0 || nextIndex >= workbook.sheets.length) return workbook;
+
+  const sheets = [...workbook.sheets];
+  const [sheet] = sheets.splice(index, 1);
+  sheets.splice(nextIndex, 0, sheet);
+  return { ...workbook, sheets };
 }

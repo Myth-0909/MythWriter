@@ -84,4 +84,48 @@ describe("AI spreadsheet patch helper", () => {
     assert.equal(result.summary, "");
     assert.deepEqual(result.workbook.sheets[0].data, workbook().sheets[0].data);
   });
+
+  it("applies formatting, merge, freeze, and sort operations for AI edits", () => {
+    const original = workbook();
+
+    const result = applySpreadsheetPatch(original, {
+      operations: [
+        { type: "insert_rows", sheetName: "角色", index: 2, values: [["小貂", "涅槃境", 66]] },
+        {
+          type: "set_style",
+          sheetName: "角色",
+          startRow: 0,
+          startCol: 0,
+          endRow: 0,
+          endCol: 2,
+          style: { bold: true, fillColor: "green", horizontalAlign: "center" },
+        },
+        { type: "merge_cells", sheetName: "角色", row: 0, col: 0, rowspan: 1, colspan: 3 },
+        { type: "freeze_panes", sheetName: "角色", fixedRowsTop: 1, fixedColumnsLeft: 1 },
+        { type: "sort_range", sheetName: "角色", startRow: 1, endRow: 2, sortCol: 2, direction: "asc" },
+      ],
+    });
+
+    const sheet = result.workbook.sheets[0];
+    assert.deepEqual(sheet.data[1], ["小貂", "涅槃境", 66]);
+    assert.deepEqual(sheet.data[2], ["林动", "元丹境", 88]);
+    assert.equal(sheet.fixedRowsTop, 1);
+    assert.equal(sheet.fixedColumnsLeft, 1);
+    assert.deepEqual(sheet.merges, [{ row: 0, col: 0, rowspan: 1, colspan: 3 }]);
+    assert.equal(sheet.cellStyles?.filter((style) => style.bold && style.fillColor === "green").length, 3);
+    assert.equal(result.appliedCount, 5);
+  });
+
+  it("removes AI-created merges through unmerge operations", () => {
+    const merged = applySpreadsheetPatch(workbook(), {
+      operations: [{ type: "merge_cells", sheetName: "角色", row: 0, col: 0, rowspan: 1, colspan: 3 }],
+    }).workbook;
+
+    const result = applySpreadsheetPatch(merged, {
+      operations: [{ type: "unmerge_cells", sheetName: "角色", row: 0, col: 0 }],
+    });
+
+    assert.deepEqual(result.workbook.sheets[0].merges, []);
+    assert.equal(result.appliedCount, 1);
+  });
 });

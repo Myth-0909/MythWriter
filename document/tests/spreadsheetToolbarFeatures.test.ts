@@ -110,4 +110,71 @@ describe("spreadsheet toolbar feature coverage", () => {
     assert.match(serverWorkbookSource, /export type SpreadsheetVerticalAlign/);
     assert.match(spreadsheetCss, /zn-cell-valign-middle/);
   });
+
+  it("exposes filter controls through the spreadsheet toolbar", () => {
+    const toolbarSource = readFileSync(new URL("../src/components/spreadsheet/SpreadsheetToolbar.tsx", import.meta.url), "utf8");
+    const gridSource = readFileSync(new URL("../src/components/spreadsheet/SpreadsheetGrid.tsx", import.meta.url), "utf8");
+    const editorSource = readFileSync(new URL("../src/pages/SpreadsheetEditorPage.tsx", import.meta.url), "utf8");
+    const i18nSource = readFileSync(new URL("../src/components/I18nProvider.tsx", import.meta.url), "utf8");
+
+    assert.match(toolbarSource, /onOpenFilterMenu/);
+    assert.match(toolbarSource, /onClearFilters/);
+    assert.match(toolbarSource, /sheets\.openFilterMenu/);
+    assert.match(gridSource, /openFilterMenu/);
+    assert.match(gridSource, /clearFilters/);
+    assert.match(editorSource, /gridRef\.current\?\.openFilterMenu/);
+    assert.match(editorSource, /gridRef\.current\?\.clearFilters/);
+    assert.match(i18nSource, /sheets\.clearFilters/);
+  });
+
+  it("exposes number formats and extended cell formatting controls", () => {
+    const toolbarSource = readFileSync(new URL("../src/components/spreadsheet/SpreadsheetToolbar.tsx", import.meta.url), "utf8");
+    const gridSource = readFileSync(new URL("../src/components/spreadsheet/SpreadsheetGrid.tsx", import.meta.url), "utf8");
+    const typesSource = readFileSync(new URL("../src/types.ts", import.meta.url), "utf8");
+    const spreadsheetCss = readFileSync(new URL("../src/components/spreadsheet/spreadsheet.css", import.meta.url), "utf8");
+    const i18nSource = readFileSync(new URL("../src/components/I18nProvider.tsx", import.meta.url), "utf8");
+
+    assert.match(typesSource, /SpreadsheetNumberFormat/);
+    assert.match(typesSource, /fontSize\?: SpreadsheetFontSize/);
+    assert.match(toolbarSource, /onSetNumberFormat/);
+    assert.match(toolbarSource, /onSetVerticalAlign/);
+    assert.match(toolbarSource, /onClearFormat/);
+    assert.match(toolbarSource, /sheets\.numberFormatCurrency/);
+    assert.match(gridSource, /formatSpreadsheetCellDisplay/);
+    assert.match(gridSource, /clearSelectedFormats/);
+    assert.match(spreadsheetCss, /zn-cell-border/);
+    assert.match(i18nSource, /sheets\.clearFormat/);
+  });
+
+  it("exposes column auto-fit and size reset controls", () => {
+    const toolbarSource = readFileSync(new URL("../src/components/spreadsheet/SpreadsheetToolbar.tsx", import.meta.url), "utf8");
+    const gridSource = readFileSync(new URL("../src/components/spreadsheet/SpreadsheetGrid.tsx", import.meta.url), "utf8");
+    const editorSource = readFileSync(new URL("../src/pages/SpreadsheetEditorPage.tsx", import.meta.url), "utf8");
+    const i18nSource = readFileSync(new URL("../src/components/I18nProvider.tsx", import.meta.url), "utf8");
+
+    assert.match(toolbarSource, /onAutoFitColumns/);
+    assert.match(toolbarSource, /onResetColumnWidths/);
+    assert.match(toolbarSource, /onResetRowHeights/);
+    assert.match(gridSource, /autoFitSelectedColumns/);
+    assert.match(gridSource, /resetSelectedColumnWidths/);
+    assert.match(gridSource, /resetSelectedRowHeights/);
+    assert.match(editorSource, /gridRef\.current\?\.autoFitSelectedColumns/);
+    assert.match(i18nSource, /sheets\.autoFitColumns/);
+  });
+
+  it("exposes csv import/export and import busy state", () => {
+    const toolbarSource = readFileSync(new URL("../src/components/spreadsheet/SpreadsheetToolbar.tsx", import.meta.url), "utf8");
+    const editorSource = readFileSync(new URL("../src/pages/SpreadsheetEditorPage.tsx", import.meta.url), "utf8");
+    const importExportSource = readFileSync(new URL("../src/lib/spreadsheetImportExport.ts", import.meta.url), "utf8");
+    const i18nSource = readFileSync(new URL("../src/components/I18nProvider.tsx", import.meta.url), "utf8");
+
+    assert.match(toolbarSource, /onImportCsv/);
+    assert.match(toolbarSource, /onExportCsv/);
+    assert.match(editorSource, /importing/);
+    assert.match(editorSource, /workbookFromCsvText/);
+    assert.match(editorSource, /workbookToCsvText/);
+    assert.match(importExportSource, /CSV_MIME/);
+    assert.match(i18nSource, /sheets\.importCsv/);
+    assert.match(i18nSource, /sheets\.importing/);
+  });
 });

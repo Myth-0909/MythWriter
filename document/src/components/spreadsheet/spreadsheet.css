@@ -68,6 +68,26 @@
   vertical-align: bottom;
 }
 
+.zn-spreadsheet-grid .handsontable td.zn-cell-font-small {
+  font-size: 11px;
+}
+
+.zn-spreadsheet-grid .handsontable td.zn-cell-font-normal {
+  font-size: 12px;
+}
+
+.zn-spreadsheet-grid .handsontable td.zn-cell-font-large {
+  font-size: 14px;
+}
+
+.zn-spreadsheet-grid .handsontable td.zn-cell-border {
+  box-shadow: inset 0 0 0 1px rgba(39, 39, 42, 0.45);
+}
+
+.dark .zn-spreadsheet-grid .handsontable td.zn-cell-border {
+  box-shadow: inset 0 0 0 1px rgba(212, 212, 216, 0.45);
+}
+
 .zn-spreadsheet-grid .handsontable td.zn-cell-text-red {
   color: #dc2626;
 }

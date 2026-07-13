@@ -1,21 +1,48 @@
-import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { ArrowLeft, FileSpreadsheet } from "lucide-react";
 import { api } from "@/api";
+import { SpreadsheetFindReplace } from "@/components/spreadsheet/SpreadsheetFindReplace";
+import { SpreadsheetFormulaBar, type SpreadsheetFormulaBarState } from "@/components/spreadsheet/SpreadsheetFormulaBar";
 import { SheetTabs } from "@/components/spreadsheet/SheetTabs";
-import { SpreadsheetGrid, type SheetChangeOptions, type SpreadsheetGridHandle } from "@/components/spreadsheet/SpreadsheetGrid";
+import { SpreadsheetGrid, type SheetChangeOptions, type SpreadsheetActiveCellState, type SpreadsheetGridHandle } from "@/components/spreadsheet/SpreadsheetGrid";
+import { SpreadsheetStatusBar } from "@/components/spreadsheet/SpreadsheetStatusBar";
 import { SpreadsheetToolbar, type SpreadsheetSaveStatus } from "@/components/spreadsheet/SpreadsheetToolbar";
 import { useI18n } from "@/components/I18nProvider";
 import { useToast } from "@/components/Toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
+  findSpreadsheetMatches,
+  replaceAllSpreadsheetMatches,
+  replaceSpreadsheetMatch,
+} from "@/lib/spreadsheetFindReplace";
+import type { SpreadsheetSelectionSummary } from "@/lib/spreadsheetSelectionStats";
+import {
   addSpreadsheetSheet,
   createDefaultWorkbook,
   deleteSpreadsheetSheet,
+  duplicateSpreadsheetSheet,
+  moveSpreadsheetSheet,
   validateSpreadsheetWorkbook,
+  renameSpreadsheetSheet,
 } from "@/lib/spreadsheetWorkbook";
-import { workbookFromXlsxArrayBuffer, workbookToXlsxBlob } from "@/lib/spreadsheetImportExport";
-import type { Spreadsheet, SpreadsheetCellColor, SpreadsheetHorizontalAlign, SpreadsheetSheet, SpreadsheetWorkbook } from "@/types";
+import {
+  CSV_MIME,
+  workbookFromCsvText,
+  workbookFromXlsxArrayBuffer,
+  workbookToCsvText,
+  workbookToXlsxBlob,
+} from "@/lib/spreadsheetImportExport";
+import type {
+  Spreadsheet,
+  SpreadsheetCellColor,
+  SpreadsheetFontSize,
+  SpreadsheetHorizontalAlign,
+  SpreadsheetNumberFormat,
+  SpreadsheetSheet,
+  SpreadsheetVerticalAlign,
+  SpreadsheetWorkbook,
+} from "@/types";
 
 interface SpreadsheetEditorPageProps {
   spreadsheetId: string;
@@ -31,6 +58,7 @@ export function SpreadsheetEditorPage({ spreadsheetId, onBack }: SpreadsheetEdit
   const { toast } = useToast();
   const gridRef = useRef<SpreadsheetGridHandle>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const csvInputRef = useRef<HTMLInputElement>(null);
   const changeVersionRef = useRef(0);
   const spreadsheetRef = useRef<Spreadsheet | null>(null);
   const workbookRef = useRef<SpreadsheetWorkbook | null>(null);
@@ -40,12 +68,26 @@ export function SpreadsheetEditorPage({ spreadsheetId, onBack }: SpreadsheetEdit
   const [workbook, setWorkbook] = useState<SpreadsheetWorkbook | null>(null);
   const [title, setTitle] = useState("");
   const [loading, setLoading] = useState(true);
+  const [importing, setImporting] = useState(false);
   const [status, setStatus] = useState<SpreadsheetSaveStatus>("saved");
+  const [formulaBarState, setFormulaBarState] = useState<SpreadsheetFormulaBarState>({
+    cellLabel: "A1",
+    value: "",
+  });
+  const [findReplaceOpen, setFindReplaceOpen] = useState(false);
+  const [findQuery, setFindQuery] = useState("");
+  const [replaceValue, setReplaceValue] = useState("");
+  const [activeFindIndex, setActiveFindIndex] = useState(0);
+  const [selectionSummary, setSelectionSummary] = useState<SpreadsheetSelectionSummary | null>(null);
 
   const visibleWorkbook = workbookRef.current || workbook;
   const activeSheet = visibleWorkbook
     ? visibleWorkbook.sheets.find((sheet) => sheet.id === visibleWorkbook.activeSheetId) || visibleWorkbook.sheets[0] || null
     : null;
+  const findMatches = useMemo(
+    () => (activeSheet ? findSpreadsheetMatches(activeSheet, findQuery) : []),
+    [activeSheet, findQuery]
+  );
 
   const scheduleAutoSave = useCallback(() => {
     if (saveTimerRef.current !== null) {
@@ -79,6 +121,45 @@ export function SpreadsheetEditorPage({ spreadsheetId, onBack }: SpreadsheetEdit
       sheets: currentWorkbook.sheets.map((item) => (item.id === sheet.id ? sheet : item)),
     }, options);
   }, [replaceWorkbook, workbook]);
+
+  const handleActiveCellChange = useCallback((state: SpreadsheetActiveCellState) => {
+    setFormulaBarState({
+      cellLabel: state.cellLabel,
+      value: state.value,
+    });
+  }, []);
+
+  const handleNavigateToCell = useCallback((address: string) => {
+    return gridRef.current?.navigateToCell(address) ?? false;
+  }, []);
+
+  const handleCommitFormulaValue = useCallback((value: string) => {
+    gridRef.current?.setActiveCellValue(value);
+  }, []);
+
+  const handlePreviousFindMatch = useCallback(() => {
+    if (findMatches.length === 0) return;
+    setActiveFindIndex((index) => (index <= 0 ? findMatches.length - 1 : index - 1));
+  }, [findMatches.length]);
+
+  const handleNextFindMatch = useCallback(() => {
+    if (findMatches.length === 0) return;
+    setActiveFindIndex((index) => (index + 1) % findMatches.length);
+  }, [findMatches.length]);
+
+  const handleReplaceCurrent = useCallback(() => {
+    if (!activeSheet || findMatches.length === 0) return;
+    const match = findMatches[Math.min(activeFindIndex, findMatches.length - 1)];
+    updateActiveSheet(replaceSpreadsheetMatch(activeSheet, match, replaceValue));
+  }, [activeFindIndex, activeSheet, findMatches, replaceValue, updateActiveSheet]);
+
+  const handleReplaceAll = useCallback(() => {
+    if (!activeSheet || findMatches.length === 0) return;
+    const result = replaceAllSpreadsheetMatches(activeSheet, findQuery, replaceValue);
+    if (result.count === 0) return;
+    updateActiveSheet(result.sheet);
+    toast(t("sheets.replacedCount").replace("{count}", String(result.count)), "success");
+  }, [activeSheet, findMatches.length, findQuery, replaceValue, t, toast, updateActiveSheet]);
 
   const applyLoadedSpreadsheet = useCallback((nextSpreadsheet: Spreadsheet) => {
     const nextWorkbook = validateSpreadsheetWorkbook(nextSpreadsheet.data)
@@ -160,6 +241,21 @@ export function SpreadsheetEditorPage({ spreadsheetId, onBack }: SpreadsheetEdit
     }
   }, []);
 
+  useEffect(() => {
+    setFormulaBarState({ cellLabel: "A1", value: "" });
+    setSelectionSummary(null);
+  }, [activeSheet?.id]);
+
+  useEffect(() => {
+    setActiveFindIndex(0);
+  }, [activeSheet?.id, findQuery]);
+
+  useEffect(() => {
+    if (!findReplaceOpen || findMatches.length === 0) return;
+    const match = findMatches[Math.min(activeFindIndex, findMatches.length - 1)];
+    gridRef.current?.navigateToCell(match.cellLabel);
+  }, [activeFindIndex, findMatches, findReplaceOpen]);
+
   const handleTitleChange = (event: ChangeEvent<HTMLInputElement>) => {
     const nextTitle = event.target.value;
     titleRef.current = nextTitle;
@@ -183,6 +279,26 @@ export function SpreadsheetEditorPage({ spreadsheetId, onBack }: SpreadsheetEdit
     const currentWorkbook = workbookRef.current || workbook;
     if (!currentWorkbook) return;
     replaceWorkbook(deleteSpreadsheetSheet(currentWorkbook, sheetId));
+  };
+
+  const handleRenameSheet = (sheetId: string, name: string) => {
+    const currentWorkbook = workbookRef.current || workbook;
+    if (!currentWorkbook) return;
+    replaceWorkbook(renameSpreadsheetSheet(currentWorkbook, sheetId, name));
+  };
+
+  const handleDuplicateSheet = (sheetId: string) => {
+    const currentWorkbook = workbookRef.current || workbook;
+    if (!currentWorkbook) return;
+    const sheet = currentWorkbook.sheets.find((item) => item.id === sheetId);
+    const copyName = sheet ? `${sheet.name} ${t("sheets.sheetCopySuffix")}` : undefined;
+    replaceWorkbook(duplicateSpreadsheetSheet(currentWorkbook, sheetId, copyName));
+  };
+
+  const handleMoveSheet = (sheetId: string, direction: -1 | 1) => {
+    const currentWorkbook = workbookRef.current || workbook;
+    if (!currentWorkbook) return;
+    replaceWorkbook(moveSpreadsheetSheet(currentWorkbook, sheetId, direction));
   };
 
   const toggleFreezeTopRow = () => {
@@ -223,6 +339,22 @@ export function SpreadsheetEditorPage({ spreadsheetId, onBack }: SpreadsheetEdit
     gridRef.current?.applyCellStyle({ horizontalAlign });
   };
 
+  const handleSetVerticalAlign = (verticalAlign: SpreadsheetVerticalAlign) => {
+    gridRef.current?.applyCellStyle({ verticalAlign });
+  };
+
+  const handleSetNumberFormat = (numberFormat: SpreadsheetNumberFormat) => {
+    gridRef.current?.applyCellStyle({ numberFormat });
+  };
+
+  const handleSetFontSize = (fontSize: SpreadsheetFontSize) => {
+    gridRef.current?.applyCellStyle({ fontSize });
+  };
+
+  const handleToggleBorder = () => {
+    gridRef.current?.applyCellStyle({}, { toggleKey: "border" });
+  };
+
   const handleInsertRowAbove = () => {
     gridRef.current?.insertRowAbove();
   };
@@ -260,7 +392,13 @@ export function SpreadsheetEditorPage({ spreadsheetId, onBack }: SpreadsheetEdit
   };
 
   const handleImportClick = () => {
+    if (importing) return;
     fileInputRef.current?.click();
+  };
+
+  const handleImportCsvClick = () => {
+    if (importing) return;
+    csvInputRef.current?.click();
   };
 
   const handleImportFile = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -268,12 +406,32 @@ export function SpreadsheetEditorPage({ spreadsheetId, onBack }: SpreadsheetEdit
     event.target.value = "";
     if (!file) return;
 
+    setImporting(true);
     try {
       const importedWorkbook = workbookFromXlsxArrayBuffer(await file.arrayBuffer());
       replaceWorkbook(importedWorkbook);
       toast(t("sheets.importSuccess"), "success");
     } catch (error: any) {
       toast(error.message || t("sheets.importFailed"), "error");
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const handleImportCsvFile = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+
+    setImporting(true);
+    try {
+      const sheetName = file.name.replace(/\.[^/.]+$/, "") || t("sheets.defaultSheetName");
+      replaceWorkbook(workbookFromCsvText(await file.text(), sheetName));
+      toast(t("sheets.importSuccess"), "success");
+    } catch (error: any) {
+      toast(error.message || t("sheets.importFailed"), "error");
+    } finally {
+      setImporting(false);
     }
   };
 
@@ -285,6 +443,21 @@ export function SpreadsheetEditorPage({ spreadsheetId, onBack }: SpreadsheetEdit
     const link = document.createElement("a");
     link.href = url;
     link.download = `${safeFilename(title || t("sheets.defaultName"))}.xlsx`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    toast(t("sheets.downloaded"), "success");
+  };
+
+  const handleExportCsv = () => {
+    const currentWorkbook = workbookRef.current || workbook;
+    if (!currentWorkbook) return;
+    const blob = new Blob([`\uFEFF${workbookToCsvText(currentWorkbook)}`], { type: CSV_MIME });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${safeFilename(title || t("sheets.defaultName"))}.csv`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -317,12 +490,27 @@ export function SpreadsheetEditorPage({ spreadsheetId, onBack }: SpreadsheetEdit
             tabIndex={-1}
             aria-hidden="true"
           />
+          <Input
+            ref={csvInputRef}
+            type="file"
+            accept=".csv,text/csv"
+            onChange={handleImportCsvFile}
+            className="hidden"
+            tabIndex={-1}
+            aria-hidden="true"
+          />
         </header>
 
         <SpreadsheetToolbar
           status={status}
           onImport={handleImportClick}
           onExport={handleExport}
+          onImportCsv={handleImportCsvClick}
+          onExportCsv={handleExportCsv}
+          importing={importing}
+          onToggleFindReplace={() => setFindReplaceOpen((open) => !open)}
+          onOpenFilterMenu={() => gridRef.current?.openFilterMenu()}
+          onClearFilters={() => gridRef.current?.clearFilters()}
           onUndo={() => gridRef.current?.undo()}
           onRedo={() => gridRef.current?.redo()}
           onMerge={() => gridRef.current?.mergeSelected()}
@@ -336,6 +524,11 @@ export function SpreadsheetEditorPage({ spreadsheetId, onBack }: SpreadsheetEdit
           onSetTextColor={handleSetTextColor}
           onSetFillColor={handleSetFillColor}
           onSetHorizontalAlign={handleSetHorizontalAlign}
+          onSetVerticalAlign={handleSetVerticalAlign}
+          onSetNumberFormat={handleSetNumberFormat}
+          onSetFontSize={handleSetFontSize}
+          onToggleBorder={handleToggleBorder}
+          onClearFormat={() => gridRef.current?.clearSelectedFormats()}
           onInsertRowAbove={handleInsertRowAbove}
           onInsertRowBelow={handleInsertRowBelow}
           onInsertColumnLeft={handleInsertColumnLeft}
@@ -343,11 +536,36 @@ export function SpreadsheetEditorPage({ spreadsheetId, onBack }: SpreadsheetEdit
           onDeleteSelectedRows={handleDeleteSelectedRows}
           onDeleteSelectedColumns={handleDeleteSelectedColumns}
           onClearSelectedCells={handleClearSelectedCells}
+          onAutoFitColumns={() => gridRef.current?.autoFitSelectedColumns()}
+          onResetColumnWidths={() => gridRef.current?.resetSelectedColumnWidths()}
+          onResetRowHeights={() => gridRef.current?.resetSelectedRowHeights()}
           onSortAscending={handleSortAscending}
           onSortDescending={handleSortDescending}
           isTopRowFrozen={!!activeSheet?.fixedRowsTop}
           isFirstColumnFrozen={!!activeSheet?.fixedColumnsLeft}
+          isFindReplaceOpen={findReplaceOpen}
         />
+
+        <SpreadsheetFormulaBar
+          state={formulaBarState}
+          onNavigateToCell={handleNavigateToCell}
+          onCommitFormulaValue={handleCommitFormulaValue}
+        />
+
+        {findReplaceOpen && (
+          <SpreadsheetFindReplace
+            query={findQuery}
+            replacement={replaceValue}
+            matches={findMatches}
+            activeIndex={activeFindIndex}
+            onQueryChange={setFindQuery}
+            onReplacementChange={setReplaceValue}
+            onPrevious={handlePreviousFindMatch}
+            onNext={handleNextFindMatch}
+            onReplaceCurrent={handleReplaceCurrent}
+            onReplaceAll={handleReplaceAll}
+          />
+        )}
 
         <section className="min-h-0 flex-1 bg-white dark:bg-surface-950">
           {loading || !activeSheet ? (
@@ -355,9 +573,17 @@ export function SpreadsheetEditorPage({ spreadsheetId, onBack }: SpreadsheetEdit
               {t("sheets.loading")}
             </div>
           ) : (
-            <SpreadsheetGrid ref={gridRef} sheet={activeSheet} onSheetChange={updateActiveSheet} />
+            <SpreadsheetGrid
+              ref={gridRef}
+              sheet={activeSheet}
+              onSheetChange={updateActiveSheet}
+              onActiveCellChange={handleActiveCellChange}
+              onSelectionSummaryChange={setSelectionSummary}
+            />
           )}
         </section>
+
+        <SpreadsheetStatusBar summary={selectionSummary} />
 
         {visibleWorkbook && (
           <SheetTabs
@@ -366,6 +592,9 @@ export function SpreadsheetEditorPage({ spreadsheetId, onBack }: SpreadsheetEdit
             onSelectSheet={handleSelectSheet}
             onAddSheet={handleAddSheet}
             onDeleteSheet={handleDeleteSheet}
+            onRenameSheet={handleRenameSheet}
+            onDuplicateSheet={handleDuplicateSheet}
+            onMoveSheet={handleMoveSheet}
           />
         )}
       </div>

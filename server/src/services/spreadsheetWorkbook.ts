@@ -12,6 +12,8 @@ export interface SpreadsheetMergeCell {
 export type SpreadsheetCellColor = "default" | "red" | "green" | "blue" | "amber" | "gray";
 export type SpreadsheetHorizontalAlign = "left" | "center" | "right" | "justify";
 export type SpreadsheetVerticalAlign = "top" | "middle" | "bottom";
+export type SpreadsheetNumberFormat = "general" | "number" | "currency" | "percent" | "date";
+export type SpreadsheetFontSize = "small" | "normal" | "large";
 
 export interface SpreadsheetCellStyle {
   row: number;
@@ -23,6 +25,9 @@ export interface SpreadsheetCellStyle {
   fillColor?: SpreadsheetCellColor;
   horizontalAlign?: SpreadsheetHorizontalAlign;
   verticalAlign?: SpreadsheetVerticalAlign;
+  numberFormat?: SpreadsheetNumberFormat;
+  fontSize?: SpreadsheetFontSize;
+  border?: boolean;
   wrap?: boolean;
 }
 
@@ -121,6 +126,14 @@ function isVerticalAlign(value: unknown): value is SpreadsheetVerticalAlign {
   return value === undefined || ["top", "middle", "bottom"].includes(String(value));
 }
 
+function isNumberFormat(value: unknown): value is SpreadsheetNumberFormat {
+  return value === undefined || ["general", "number", "currency", "percent", "date"].includes(String(value));
+}
+
+function isFontSize(value: unknown): value is SpreadsheetFontSize {
+  return value === undefined || ["small", "normal", "large"].includes(String(value));
+}
+
 function isCellStyle(value: unknown): value is SpreadsheetCellStyle {
   if (!value || typeof value !== "object") return false;
   const style = value as Record<string, unknown>;
@@ -134,6 +147,9 @@ function isCellStyle(value: unknown): value is SpreadsheetCellStyle {
     isCellColor(style.fillColor) &&
     isHorizontalAlign(style.horizontalAlign) &&
     isVerticalAlign(style.verticalAlign) &&
+    isNumberFormat(style.numberFormat) &&
+    isFontSize(style.fontSize) &&
+    (style.border === undefined || typeof style.border === "boolean") &&
     (style.wrap === undefined || typeof style.wrap === "boolean")
   );
 }

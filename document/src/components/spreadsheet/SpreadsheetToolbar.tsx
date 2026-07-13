@@ -1,5 +1,6 @@
 import {
   AlignCenter,
+  AlignJustify,
   AlignLeft,
   AlignRight,
   ArrowDownAZ,
@@ -9,10 +10,12 @@ import {
   Download,
   Eraser,
   Italic,
+  ListFilter,
   Merge,
   PaintBucket,
   Redo2,
   Rows3,
+  Search,
   SplitSquareHorizontal,
   TableProperties,
   Trash2,
@@ -35,7 +38,13 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Tooltip } from "@/components/ui/tooltip";
-import type { SpreadsheetCellColor, SpreadsheetHorizontalAlign } from "@/types";
+import type {
+  SpreadsheetCellColor,
+  SpreadsheetFontSize,
+  SpreadsheetHorizontalAlign,
+  SpreadsheetNumberFormat,
+  SpreadsheetVerticalAlign,
+} from "@/types";
 
 export type SpreadsheetSaveStatus = "saved" | "saving" | "unsaved" | "error";
 
@@ -43,6 +52,12 @@ interface SpreadsheetToolbarProps {
   status: SpreadsheetSaveStatus;
   onImport: () => void;
   onExport: () => void;
+  onImportCsv: () => void;
+  onExportCsv: () => void;
+  importing?: boolean;
+  onToggleFindReplace: () => void;
+  onOpenFilterMenu: () => void;
+  onClearFilters: () => void;
   onUndo: () => void;
   onRedo: () => void;
   onMerge: () => void;
@@ -56,6 +71,11 @@ interface SpreadsheetToolbarProps {
   onSetTextColor: (color: SpreadsheetCellColor) => void;
   onSetFillColor: (color: SpreadsheetCellColor) => void;
   onSetHorizontalAlign: (align: SpreadsheetHorizontalAlign) => void;
+  onSetVerticalAlign: (align: SpreadsheetVerticalAlign) => void;
+  onSetNumberFormat: (format: SpreadsheetNumberFormat) => void;
+  onSetFontSize: (size: SpreadsheetFontSize) => void;
+  onToggleBorder: () => void;
+  onClearFormat: () => void;
   onInsertRowAbove: () => void;
   onInsertRowBelow: () => void;
   onInsertColumnLeft: () => void;
@@ -63,10 +83,14 @@ interface SpreadsheetToolbarProps {
   onDeleteSelectedRows: () => void;
   onDeleteSelectedColumns: () => void;
   onClearSelectedCells: () => void;
+  onAutoFitColumns: () => void;
+  onResetColumnWidths: () => void;
+  onResetRowHeights: () => void;
   onSortAscending: () => void;
   onSortDescending: () => void;
   isTopRowFrozen: boolean;
   isFirstColumnFrozen: boolean;
+  isFindReplaceOpen: boolean;
 }
 
 const statusKeys: Record<SpreadsheetSaveStatus, "sheets.saved" | "sheets.saving" | "sheets.unsaved" | "sheets.saveFailed"> = {
@@ -134,6 +158,12 @@ export function SpreadsheetToolbar({
   status,
   onImport,
   onExport,
+  onImportCsv,
+  onExportCsv,
+  importing = false,
+  onToggleFindReplace,
+  onOpenFilterMenu,
+  onClearFilters,
   onUndo,
   onRedo,
   onMerge,
@@ -147,6 +177,11 @@ export function SpreadsheetToolbar({
   onSetTextColor,
   onSetFillColor,
   onSetHorizontalAlign,
+  onSetVerticalAlign,
+  onSetNumberFormat,
+  onSetFontSize,
+  onToggleBorder,
+  onClearFormat,
   onInsertRowAbove,
   onInsertRowBelow,
   onInsertColumnLeft,
@@ -154,10 +189,14 @@ export function SpreadsheetToolbar({
   onDeleteSelectedRows,
   onDeleteSelectedColumns,
   onClearSelectedCells,
+  onAutoFitColumns,
+  onResetColumnWidths,
+  onResetRowHeights,
   onSortAscending,
   onSortDescending,
   isTopRowFrozen,
   isFirstColumnFrozen,
+  isFindReplaceOpen,
 }: SpreadsheetToolbarProps) {
   const { t } = useI18n();
   const statusClassName = cn(
@@ -200,6 +239,38 @@ export function SpreadsheetToolbar({
         className="flex min-h-12 items-center gap-2 overflow-x-auto border-b border-surface-200 px-3 py-1.5 dark:border-surface-800"
       >
         <div className="ml-auto flex shrink-0 items-center gap-2">
+          <Button
+            type="button"
+            variant={isFindReplaceOpen ? "secondary" : "outline"}
+            size="sm"
+            onMouseDown={preserveSpreadsheetSelection}
+            onClick={onToggleFindReplace}
+            className="shrink-0 gap-2"
+          >
+            <Search className="h-4 w-4" />
+            {t("sheets.findReplace")}
+          </Button>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button type="button" variant="outline" size="sm" onMouseDown={preserveSpreadsheetSelection} className="shrink-0 gap-2">
+                <ListFilter className="h-4 w-4" />
+                {t("sheets.filters")}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="min-w-[200px]">
+              <DropdownMenuLabel>{t("sheets.filters")}</DropdownMenuLabel>
+              <DropdownMenuItem onSelect={onOpenFilterMenu}>
+                <ListFilter className="h-4 w-4" />
+                {t("sheets.openFilterMenu")}
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={onClearFilters}>
+                <Eraser className="h-4 w-4" />
+                {t("sheets.clearFilters")}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button type="button" variant="outline" size="sm" onMouseDown={preserveSpreadsheetSelection} className="shrink-0 gap-2">
@@ -238,6 +309,19 @@ export function SpreadsheetToolbar({
                 <Eraser className="h-4 w-4" />
                 {t("sheets.clearCells")}
               </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={onAutoFitColumns}>
+                <Columns3 className="h-4 w-4" />
+                {t("sheets.autoFitColumns")}
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={onResetColumnWidths}>
+                <Columns3 className="h-4 w-4" />
+                {t("sheets.resetColumnWidths")}
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={onResetRowHeights}>
+                <Rows3 className="h-4 w-4" />
+                {t("sheets.resetRowHeights")}
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
 
@@ -260,14 +344,43 @@ export function SpreadsheetToolbar({
             </DropdownMenuContent>
           </DropdownMenu>
 
-          <Button type="button" variant="outline" size="sm" onMouseDown={preserveSpreadsheetSelection} onClick={onImport} className="gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={importing}
+            onMouseDown={preserveSpreadsheetSelection}
+            onClick={onImport}
+            className="gap-2"
+          >
             <Upload className="h-4 w-4" />
             {t("sheets.importXlsx")}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={importing}
+            onMouseDown={preserveSpreadsheetSelection}
+            onClick={onImportCsv}
+            className="gap-2"
+          >
+            <Upload className="h-4 w-4" />
+            {t("sheets.importCsv")}
           </Button>
           <Button type="button" variant="outline" size="sm" onMouseDown={preserveSpreadsheetSelection} onClick={onExport} className="gap-2">
             <Download className="h-4 w-4" />
             {t("sheets.exportXlsx")}
           </Button>
+          <Button type="button" variant="outline" size="sm" onMouseDown={preserveSpreadsheetSelection} onClick={onExportCsv} className="gap-2">
+            <Download className="h-4 w-4" />
+            {t("sheets.exportCsv")}
+          </Button>
+          {importing && (
+            <span className="shrink-0 text-[11px] font-medium text-brand-600 dark:text-brand-300">
+              {t("sheets.importing")}
+            </span>
+          )}
           <span className={statusClassName}>
             {t(statusKeys[status])}
           </span>
@@ -303,6 +416,33 @@ export function SpreadsheetToolbar({
         {colorMenu(t("sheets.textColor"), <Type className="h-4 w-4" />, onSetTextColor)}
         {colorMenu(t("sheets.fillColor"), <PaintBucket className="h-4 w-4" />, onSetFillColor)}
 
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button type="button" variant="ghost" size="icon" onMouseDown={preserveSpreadsheetSelection} aria-label={t("sheets.formatMenu")}>
+              <Type className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="min-w-[220px]">
+            <DropdownMenuLabel>{t("sheets.formatMenu")}</DropdownMenuLabel>
+            <DropdownMenuItem onSelect={() => onSetNumberFormat("general")}>{t("sheets.numberFormatGeneral")}</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => onSetNumberFormat("number")}>{t("sheets.numberFormatNumber")}</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => onSetNumberFormat("currency")}>{t("sheets.numberFormatCurrency")}</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => onSetNumberFormat("percent")}>{t("sheets.numberFormatPercent")}</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => onSetNumberFormat("date")}>{t("sheets.numberFormatDate")}</DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={() => onSetFontSize("small")}>{t("sheets.fontSizeSmall")}</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => onSetFontSize("normal")}>{t("sheets.fontSizeNormal")}</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => onSetFontSize("large")}>{t("sheets.fontSizeLarge")}</DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={() => onSetVerticalAlign("top")}>{t("sheets.alignTop")}</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => onSetVerticalAlign("middle")}>{t("sheets.alignMiddle")}</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => onSetVerticalAlign("bottom")}>{t("sheets.alignBottom")}</DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={onToggleBorder}>{t("sheets.toggleBorder")}</DropdownMenuItem>
+            <DropdownMenuItem onSelect={onClearFormat}>{t("sheets.clearFormat")}</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+
         <ToolbarSeparator />
 
         <ToolbarIconButton label={t("sheets.alignLeft")} onClick={() => onSetHorizontalAlign("left")}>
@@ -313,6 +453,9 @@ export function SpreadsheetToolbar({
         </ToolbarIconButton>
         <ToolbarIconButton label={t("sheets.alignRight")} onClick={() => onSetHorizontalAlign("right")}>
           <AlignRight className="h-4 w-4" />
+        </ToolbarIconButton>
+        <ToolbarIconButton label={t("sheets.alignJustify")} onClick={() => onSetHorizontalAlign("justify")}>
+          <AlignJustify className="h-4 w-4" />
         </ToolbarIconButton>
 
         <ToolbarSeparator />

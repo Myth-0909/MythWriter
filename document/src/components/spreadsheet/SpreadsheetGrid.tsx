@@ -15,6 +15,11 @@ import type {
   SpreadsheetVerticalAlign,
 } from "@/types";
 import { applySpreadsheetCellChanges, type SpreadsheetCellChange } from "@/lib/spreadsheetPerformance";
+import { formatSpreadsheetCellDisplay } from "@/lib/spreadsheetFormatting";
+import {
+  buildSpreadsheetSelectionSummary,
+  type SpreadsheetSelectionSummary,
+} from "@/lib/spreadsheetSelectionStats";
 import "handsontable/styles/handsontable.min.css";
 import "handsontable/styles/ht-theme-main.min.css";
 import "./spreadsheet.css";
@@ -32,11 +37,24 @@ function ensureHandsontableModules() {
 ensureHandsontableModules();
 
 type CellStylePatch = Partial<Omit<SpreadsheetCellStyle, "row" | "col">>;
-type ToggleCellStyleKey = "bold" | "italic" | "underline" | "wrap";
+type ToggleCellStyleKey = "bold" | "italic" | "underline" | "wrap" | "border";
+
+export interface SpreadsheetActiveCellState {
+  row: number;
+  col: number;
+  cellLabel: string;
+  value: string;
+}
 
 export interface SpreadsheetGridHandle {
   undo: () => void;
   redo: () => void;
+  getActiveCellState: () => SpreadsheetActiveCellState | null;
+  navigateToCell: (address: string) => boolean;
+  setActiveCellValue: (value: string) => void;
+  openFilterMenu: () => void;
+  clearFilters: () => void;
+  clearSelectedFormats: () => void;
   mergeSelected: () => void;
   unmergeSelected: () => void;
   applyCellStyle: (patch: CellStylePatch, options?: { toggleKey?: ToggleCellStyleKey }) => void;
@@ -47,6 +65,9 @@ export interface SpreadsheetGridHandle {
   deleteSelectedRows: () => void;
   deleteSelectedColumns: () => void;
   clearSelectedCells: () => void;
+  autoFitSelectedColumns: () => void;
+  resetSelectedColumnWidths: () => void;
+  resetSelectedRowHeights: () => void;
   sortSelectedColumn: (direction: "asc" | "desc") => void;
 }
 
@@ -57,6 +78,8 @@ export type SheetChangeOptions = {
 interface SpreadsheetGridProps {
   sheet: SpreadsheetSheet;
   onSheetChange: (sheet: SpreadsheetSheet, options?: SheetChangeOptions) => void;
+  onActiveCellChange?: (state: SpreadsheetActiveCellState) => void;
+  onSelectionSummaryChange?: (summary: SpreadsheetSelectionSummary) => void;
 }
 
 interface CellCoord {
@@ -79,8 +102,60 @@ function updateIndexedValue(values: number[] | undefined, index: number, value: 
   return next;
 }
 
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
 function cellKey(row: number, col: number) {
   return `${row}:${col}`;
+}
+
+function columnLabel(index: number) {
+  let label = "";
+  let cursor = index;
+  do {
+    label = String.fromCharCode(65 + (cursor % 26)) + label;
+    cursor = Math.floor(cursor / 26) - 1;
+  } while (cursor >= 0);
+  return label;
+}
+
+function parseCellAddress(value: string): CellCoord | null {
+  const match = value.trim().match(/^([A-Z]+)([1-9]\d*)$/i);
+  if (!match) return null;
+  const columnLetters = match[1].toUpperCase();
+  let col = 0;
+  for (const letter of columnLetters) {
+    col = col * 26 + letter.charCodeAt(0) - 64;
+  }
+  return { row: Number(match[2]) - 1, col: col - 1 };
+}
+
+function readCellRawValue(hot: Handsontable, row: number, col: number): SpreadsheetCellValue {
+  const rawValue = (hot as any).getSourceDataAtCell?.(row, col);
+  if (rawValue !== undefined) return rawValue as SpreadsheetCellValue;
+  return (hot.getDataAtCell(row, col) ?? null) as SpreadsheetCellValue;
+}
+
+function formulaBarText(value: SpreadsheetCellValue) {
+  return value === null || value === undefined ? "" : String(value);
+}
+
+function readActiveCellState(hot: Handsontable, fallback?: SelectionTuple | null): SpreadsheetActiveCellState | null {
+  const rowCount = hot.countRows();
+  const colCount = hot.countCols();
+  if (rowCount <= 0 || colCount <= 0) return null;
+
+  const selected = (hot.getSelectedLast() as SelectionTuple | null) || fallback;
+  const row = selected && selected[0] >= 0 ? Math.min(rowCount - 1, selected[0]) : 0;
+  const col = selected && selected[1] >= 0 ? Math.min(colCount - 1, selected[1]) : 0;
+
+  return {
+    row,
+    col,
+    cellLabel: `${columnLabel(col)}${row + 1}`,
+    value: formulaBarText(readCellRawValue(hot, row, col)),
+  };
 }
 
 function readMerges(hot: Handsontable | null | undefined): SpreadsheetMergeCell[] {
@@ -136,6 +211,9 @@ function normalizeCellStyle(style: SpreadsheetCellStyle): SpreadsheetCellStyle |
     ...(normalizeColor(style.fillColor) ? { fillColor: normalizeColor(style.fillColor) } : {}),
     ...(style.horizontalAlign ? { horizontalAlign: style.horizontalAlign } : {}),
     ...(style.verticalAlign ? { verticalAlign: style.verticalAlign } : {}),
+    ...(style.numberFormat ? { numberFormat: style.numberFormat } : {}),
+    ...(style.fontSize ? { fontSize: style.fontSize } : {}),
+    ...(style.border ? { border: true } : {}),
     ...(style.wrap ? { wrap: true } : {}),
   };
 
@@ -234,6 +312,8 @@ function buildCellClassName(style: SpreadsheetCellStyle | undefined) {
     style.fillColor && `zn-cell-fill-${style.fillColor}`,
     style.horizontalAlign && `zn-cell-align-${style.horizontalAlign}`,
     style.verticalAlign && `zn-cell-valign-${style.verticalAlign}`,
+    style.fontSize && `zn-cell-font-${style.fontSize}`,
+    style.border && "zn-cell-border",
   ].filter(Boolean);
   return classes.length > 0 ? classes.join(" ") : undefined;
 }
@@ -274,7 +354,7 @@ function readCellStyleOverridesFromHot(
 }
 
 export const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
-  ({ sheet, onSheetChange }, ref) => {
+  ({ sheet, onSheetChange, onActiveCellChange, onSelectionSummaryChange }, ref) => {
     const { lang } = useI18n();
     const hotRef = useRef<HotTableRef>(null);
     const latestSheetRef = useRef(sheet);
@@ -339,7 +419,76 @@ export const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGrid
       }, 0);
     };
 
+    const notifyActiveCellChange = () => {
+      const hot = hotRef.current?.hotInstance;
+      if (!hot) return;
+      const state = readActiveCellState(hot, lastSelectionRef.current);
+      if (state) onActiveCellChange?.(state);
+    };
+
+    const notifySelectionSummaryChange = () => {
+      const hot = hotRef.current?.hotInstance;
+      if (!hot) return;
+      const bounds = getSelectedBounds(hot, lastSelectionRef.current);
+      if (bounds) {
+        onSelectionSummaryChange?.(buildSpreadsheetSelectionSummary(latestSheetRef.current, bounds));
+      }
+    };
+
     useImperativeHandle(ref, () => ({
+      getActiveCellState: () => {
+        const hot = hotRef.current?.hotInstance;
+        return hot ? readActiveCellState(hot, lastSelectionRef.current) : null;
+      },
+      navigateToCell: (address) => {
+        const hot = hotRef.current?.hotInstance;
+        if (!hot) return false;
+        const coord = parseCellAddress(address);
+        if (!coord || coord.row >= hot.countRows() || coord.col >= hot.countCols()) return false;
+        hot.selectCell(coord.row, coord.col);
+        hot.scrollViewportTo(coord.row, coord.col);
+        lastSelectionRef.current = [coord.row, coord.col, coord.row, coord.col];
+        notifyActiveCellChange();
+        return true;
+      },
+      setActiveCellValue: (value) => {
+        const hot = hotRef.current?.hotInstance;
+        if (!hot) return;
+        const state = readActiveCellState(hot, lastSelectionRef.current);
+        if (!state) return;
+        hot.setDataAtCell(state.row, state.col, value === "" ? null : value, "formula-bar");
+        notifyActiveCellChange();
+      },
+      openFilterMenu: () => {
+        const hot = hotRef.current?.hotInstance;
+        if (!hot) return;
+        const bounds = getSelectedBounds(hot, lastSelectionRef.current);
+        const row = bounds?.startRow ?? 0;
+        const col = bounds?.startCol ?? 0;
+        hot.selectCell(row, col);
+        const cell = hot.getCell(row, col, true);
+        const rect = cell?.getBoundingClientRect() || hot.rootElement.getBoundingClientRect();
+        const plugin = hot.getPlugin("dropdownMenu") as any;
+        plugin?.open?.({ top: rect.top, left: rect.left });
+      },
+      clearFilters: () => {
+        const hot = hotRef.current?.hotInstance;
+        if (!hot) return;
+        const plugin = hot.getPlugin("filters") as any;
+        plugin?.clearConditions?.();
+        plugin?.filter?.();
+        hot.render();
+      },
+      clearSelectedFormats: () => {
+        const hot = hotRef.current?.hotInstance;
+        if (!hot) return;
+        const selectedCells = getSelectedCells(hot, lastSelectionRef.current);
+        if (selectedCells.length === 0) return;
+        const removeKeys = new Set(selectedCells.map((coord) => cellKey(coord.row, coord.col)));
+        const nextStyles = (latestSheetRef.current.cellStyles || []).filter((style) => !removeKeys.has(cellKey(style.row, style.col)));
+        syncFromHot({ cellStyles: nextStyles });
+        hot.render();
+      },
       undo: () => {
         const plugin = hotRef.current?.hotInstance?.getPlugin("undoRedo") as any;
         plugin?.undo?.();
@@ -457,6 +606,43 @@ export const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGrid
         }
         syncFromHot();
       },
+      autoFitSelectedColumns: () => {
+        const hot = hotRef.current?.hotInstance;
+        if (!hot) return;
+        const bounds = getSelectedBounds(hot, lastSelectionRef.current);
+        if (!bounds) return;
+        const nextWidths = [...(latestSheetRef.current.colWidths || [])];
+        for (let col = bounds.startCol; col <= bounds.endCol; col += 1) {
+          let maxLength = columnLabel(col).length;
+          for (const row of latestSheetRef.current.data) {
+            maxLength = Math.max(maxLength, String(row[col] ?? "").length);
+          }
+          nextWidths[col] = clamp(maxLength * 9 + 36, 80, 320);
+        }
+        syncFromHot({ colWidths: nextWidths });
+      },
+      resetSelectedColumnWidths: () => {
+        const hot = hotRef.current?.hotInstance;
+        if (!hot) return;
+        const bounds = getSelectedBounds(hot, lastSelectionRef.current);
+        if (!bounds) return;
+        const nextWidths = [...(latestSheetRef.current.colWidths || [])];
+        for (let col = bounds.startCol; col <= bounds.endCol; col += 1) {
+          nextWidths[col] = 100;
+        }
+        syncFromHot({ colWidths: nextWidths });
+      },
+      resetSelectedRowHeights: () => {
+        const hot = hotRef.current?.hotInstance;
+        if (!hot) return;
+        const bounds = getSelectedBounds(hot, lastSelectionRef.current);
+        if (!bounds) return;
+        const nextHeights = [...(latestSheetRef.current.rowHeights || [])];
+        for (let row = bounds.startRow; row <= bounds.endRow; row += 1) {
+          nextHeights[row] = 24;
+        }
+        syncFromHot({ rowHeights: nextHeights });
+      },
       sortSelectedColumn: (direction) => {
         const hot = hotRef.current?.hotInstance;
         if (!hot) return;
@@ -491,19 +677,32 @@ export const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGrid
           colWidths={sheet.colWidths}
           rowHeights={sheet.rowHeights}
           formulas={{ engine: formulaEngine, sheetName: sheet.name }}
-          cells={(row: number, col: number) => ({
-            className: buildCellClassName(cellStyleByCoord.get(cellKey(row, col))),
-          })}
+          cells={(row: number, col: number) => {
+            const style = cellStyleByCoord.get(cellKey(row, col));
+            return {
+              className: buildCellClassName(style),
+              renderer: (_instance: Handsontable, td: HTMLTableCellElement, _row: number, _col: number, _prop: string | number, value: SpreadsheetCellValue) => {
+                td.textContent = formatSpreadsheetCellDisplay(value, style?.numberFormat);
+                return td;
+              },
+            };
+          }}
           licenseKey="non-commercial-and-evaluation"
           stretchH="all"
           width="100%"
           height="100%"
           className="ht-theme-main"
+          afterInit={() => {
+            notifyActiveCellChange();
+            notifySelectionSummaryChange();
+          }}
           afterChange={(changes: unknown, source: string) => {
             if (source === "loadData" || source === "toolbar-clear" || !Array.isArray(changes)) return;
             const result = applySpreadsheetCellChanges(latestSheetRef.current, changes as SpreadsheetCellChange[]);
             if (!result.changed) return;
             emitSheetChange(result.sheet, { render: false });
+            notifyActiveCellChange();
+            notifySelectionSummaryChange();
           }}
           afterSetCellMeta={(row: number, column: number, key: string, value: unknown) => {
             if (row < 0 || column < 0 || key !== "className") return;
@@ -532,6 +731,8 @@ export const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGrid
           afterSelectionEnd={(row: number, column: number, row2: number, column2: number) => {
             if ([row, column, row2, column2].every((value) => Number.isInteger(value) && value >= 0)) {
               lastSelectionRef.current = [row, column, row2, column2];
+              notifyActiveCellChange();
+              notifySelectionSummaryChange();
             }
           }}
           afterMergeCells={() => syncFromHot()}

@@ -3,6 +3,7 @@ import type { SpreadsheetCellValue, SpreadsheetWorkbook } from "./spreadsheetWor
 import { createSpreadsheetSheet } from "./spreadsheetWorkbook.ts";
 
 export const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+export const CSV_MIME = "text/csv;charset=utf-8";
 
 function safeSheetName(name: string, index: number) {
   const cleaned = name.replace(/[:\\/?*[\]]/g, " ").trim();
@@ -17,6 +18,66 @@ function trimEmptyRows(data: SpreadsheetCellValue[][]) {
     lastRow -= 1;
   }
   return data.slice(0, lastRow + 1);
+}
+
+function csvCell(value: SpreadsheetCellValue) {
+  const text = value === null || value === undefined ? "" : String(value);
+  if (!/[",\n\r]/.test(text)) return text;
+  return `"${text.replace(/"/g, "\"\"")}"`;
+}
+
+function parseCsvRows(text: string): SpreadsheetCellValue[][] {
+  const rows: SpreadsheetCellValue[][] = [];
+  let row: SpreadsheetCellValue[] = [];
+  let cell = "";
+  let quoted = false;
+
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    const next = text[index + 1];
+    if (quoted) {
+      if (char === "\"" && next === "\"") {
+        cell += "\"";
+        index += 1;
+      } else if (char === "\"") {
+        quoted = false;
+      } else {
+        cell += char;
+      }
+      continue;
+    }
+
+    if (char === "\"") {
+      quoted = true;
+    } else if (char === ",") {
+      row.push(cell);
+      cell = "";
+    } else if (char === "\n") {
+      row.push(cell);
+      rows.push(row);
+      row = [];
+      cell = "";
+    } else if (char !== "\r") {
+      cell += char;
+    }
+  }
+
+  row.push(cell);
+  if (row.length > 1 || row[0] !== "") rows.push(row);
+  return rows;
+}
+
+export function workbookToCsvText(workbook: SpreadsheetWorkbook): string {
+  const sheet = workbook.sheets.find((item) => item.id === workbook.activeSheetId) || workbook.sheets[0];
+  return trimEmptyRows(sheet?.data || [])
+    .map((row) => row.map(csvCell).join(","))
+    .join("\n");
+}
+
+export function workbookFromCsvText(text: string, sheetName?: string): SpreadsheetWorkbook {
+  const sheet = createSpreadsheetSheet(sheetName || "CSV");
+  sheet.data = parseCsvRows(text);
+  return { version: 1, activeSheetId: sheet.id, sheets: [sheet] };
 }
 
 export function workbookToXlsxBlob(workbook: SpreadsheetWorkbook): Blob {

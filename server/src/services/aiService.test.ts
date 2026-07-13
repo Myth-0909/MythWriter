@@ -90,6 +90,14 @@ describe("ai assistant branding", () => {
     assert.match(prompt, /insert_columns/);
     assert.match(prompt, /delete_columns/);
     assert.match(prompt, /clear_range/);
+    assert.match(prompt, /set_style/);
+    assert.match(prompt, /numberFormat/);
+    assert.match(prompt, /fontSize/);
+    assert.match(prompt, /border/);
+    assert.match(prompt, /merge_cells/);
+    assert.match(prompt, /unmerge_cells/);
+    assert.match(prompt, /freeze_panes/);
+    assert.match(prompt, /sort_range/);
     assert.match(prompt, /用户确认/);
   });
 
