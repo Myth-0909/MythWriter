@@ -51,4 +51,20 @@ describe("spreadsheet toolbar feature coverage", () => {
     assert.match(i18nSource, /"sheets\.insertRowAbove"/);
     assert.match(i18nSource, /"sheets\.clearCells"/);
   });
+
+  it("keeps spreadsheet selection when toolbar controls are clicked and animates tooltips", () => {
+    const toolbarSource = readFileSync(new URL("../src/components/spreadsheet/SpreadsheetToolbar.tsx", import.meta.url), "utf8");
+    const gridSource = readFileSync(new URL("../src/components/spreadsheet/SpreadsheetGrid.tsx", import.meta.url), "utf8");
+    const tooltipSource = readFileSync(new URL("../src/components/ui/tooltip.tsx", import.meta.url), "utf8");
+    const appCss = readFileSync(new URL("../src/App.css", import.meta.url), "utf8");
+
+    assert.match(toolbarSource, /function preserveSpreadsheetSelection/);
+    assert.match(toolbarSource, /onMouseDown=\{preserveSpreadsheetSelection\}/);
+    assert.match(gridSource, /lastSelectionRef/);
+    assert.match(gridSource, /afterSelectionEnd/);
+    assert.match(tooltipSource, /zn-tooltip-content/);
+    assert.match(tooltipSource, /delay = 120/);
+    assert.match(appCss, /@keyframes znTooltipIn/);
+    assert.match(appCss, /\.zn-tooltip-content\[data-state="delayed-open"\]/);
+  });
 });

@@ -269,6 +269,28 @@ body.dark {
   }
 }
 
+@keyframes znTooltipIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes znTooltipOut {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(2px) scale(0.98);
+  }
+}
+
 /* Icon hover: gentle scale + rotate */
 @keyframes iconPopIn {
   0% { transform: scale(1) rotate(0deg); }
@@ -424,6 +446,10 @@ body.dark {
   animation: fadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
+.zn-tooltip-content {
+  transform-origin: var(--radix-tooltip-content-transform-origin);
+}
+
 .zn-manuscript-line,
 .zn-cursor-line {
   transform-origin: left center;
@@ -537,6 +563,17 @@ body.dark {
   .page-transition-shell [data-page-motion]:nth-child(3) {
     animation-delay: 95ms;
   }
+
+  .zn-tooltip-content[data-state="delayed-open"],
+  .zn-tooltip-content[data-state="instant-open"] {
+    animation: znTooltipIn 0.16s cubic-bezier(0.16, 1, 0.3, 1) both;
+    will-change: transform, opacity;
+  }
+
+  .zn-tooltip-content[data-state="closed"] {
+    animation: znTooltipOut 0.1s cubic-bezier(0.4, 0, 0.2, 1) both;
+    will-change: transform, opacity;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -553,7 +590,8 @@ body.dark {
   .zn-atmosphere-pulse,
   .zn-atmosphere-pulse-delayed,
   .zn-star-node,
-  .page-transition-shell [data-page-motion] {
+  .page-transition-shell [data-page-motion],
+  .zn-tooltip-content {
     animation: none !important;
   }
 

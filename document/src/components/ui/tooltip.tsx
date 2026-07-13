@@ -17,7 +17,7 @@ const TooltipContent = React.forwardRef<
       ref={ref}
       sideOffset={sideOffset}
       className={cn(
-        "z-50 overflow-hidden rounded-md bg-surface-900 px-3 py-1.5 text-xs text-white animate-in fade-in-0 zoom-in-95",
+        "zn-tooltip-content z-50 overflow-hidden rounded-md bg-surface-900 px-3 py-1.5 text-xs text-white shadow-lg shadow-surface-950/15",
         className
       )}
       {...props}
@@ -30,7 +30,7 @@ function Tooltip({
   children,
   content,
   side = "top",
-  delay = 0,
+  delay = 120,
 }: {
   children: React.ReactNode;
   content: React.ReactNode;

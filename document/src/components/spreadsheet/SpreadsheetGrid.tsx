@@ -65,6 +65,8 @@ interface SelectionBounds {
   endCol: number;
 }
 
+type SelectionTuple = [number, number, number, number];
+
 function updateIndexedValue(values: number[] | undefined, index: number, value: number) {
   const next = [...(values || [])];
   next[index] = value;
@@ -110,8 +112,8 @@ function normalizeCellStyle(style: SpreadsheetCellStyle): SpreadsheetCellStyle |
   return Object.keys(next).length > 2 ? next : null;
 }
 
-function getSelectedBounds(hot: Handsontable): SelectionBounds | null {
-  const selected = hot.getSelectedLast();
+function getSelectedBounds(hot: Handsontable, fallback?: SelectionTuple | null): SelectionBounds | null {
+  const selected = (hot.getSelectedLast() as SelectionTuple | null) || fallback;
   if (!selected) return null;
   const rowCount = hot.countRows();
   const colCount = hot.countCols();
@@ -126,7 +128,7 @@ function getSelectedBounds(hot: Handsontable): SelectionBounds | null {
   return { startRow, endRow, startCol, endCol };
 }
 
-function getSelectedCells(hot: Handsontable): CellCoord[] {
+function getSelectedCells(hot: Handsontable, fallback?: SelectionTuple | null): CellCoord[] {
   const ranges = hot.getSelectedRange() || [];
   const rowCount = hot.countRows();
   const colCount = hot.countCols();
@@ -135,14 +137,9 @@ function getSelectedCells(hot: Handsontable): CellCoord[] {
   const cells: CellCoord[] = [];
   const seen = new Set<string>();
 
-  for (const range of ranges as any[]) {
-    const startRow = Math.max(0, Math.min(range.from.row, range.to.row));
-    const endRow = Math.min(rowCount - 1, Math.max(range.from.row, range.to.row));
-    const startCol = Math.max(0, Math.min(range.from.col, range.to.col));
-    const endCol = Math.min(colCount - 1, Math.max(range.from.col, range.to.col));
-
-    for (let row = startRow; row <= endRow; row += 1) {
-      for (let col = startCol; col <= endCol; col += 1) {
+  const pushBounds = (bounds: SelectionBounds) => {
+    for (let row = bounds.startRow; row <= bounds.endRow; row += 1) {
+      for (let col = bounds.startCol; col <= bounds.endCol; col += 1) {
         const key = cellKey(row, col);
         if (!seen.has(key)) {
           seen.add(key);
@@ -150,6 +147,21 @@ function getSelectedCells(hot: Handsontable): CellCoord[] {
         }
       }
     }
+  };
+
+  if (ranges.length === 0 && fallback) {
+    const bounds = getSelectedBounds(hot, fallback);
+    if (bounds) pushBounds(bounds);
+    return cells;
+  }
+
+  for (const range of ranges as any[]) {
+    pushBounds({
+      startRow: Math.max(0, Math.min(range.from.row, range.to.row)),
+      endRow: Math.min(rowCount - 1, Math.max(range.from.row, range.to.row)),
+      startCol: Math.max(0, Math.min(range.from.col, range.to.col)),
+      endCol: Math.min(colCount - 1, Math.max(range.from.col, range.to.col)),
+    });
   }
 
   return cells;
@@ -199,6 +211,7 @@ export const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGrid
   ({ sheet, onSheetChange }, ref) => {
     const hotRef = useRef<HotTableRef>(null);
     const latestSheetRef = useRef(sheet);
+    const lastSelectionRef = useRef<SelectionTuple | null>(null);
     const formulaEngine = useMemo(
       () => HyperFormula.buildEmpty({ licenseKey: "internal-use-in-handsontable" }),
       []
@@ -263,7 +276,7 @@ export const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGrid
       applyCellStyle: (patch, options) => {
         const hot = hotRef.current?.hotInstance;
         if (!hot) return;
-        const selectedCells = getSelectedCells(hot);
+        const selectedCells = getSelectedCells(hot, lastSelectionRef.current);
         if (selectedCells.length === 0) return;
 
         const styles = new Map<string, SpreadsheetCellStyle>();
@@ -296,7 +309,7 @@ export const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGrid
       insertRowAbove: () => {
         const hot = hotRef.current?.hotInstance;
         if (!hot) return;
-        const bounds = getSelectedBounds(hot);
+        const bounds = getSelectedBounds(hot, lastSelectionRef.current);
         const index = bounds?.startRow ?? 0;
         (hot as any).alter("insert_row_above", index, 1);
         syncFromHot({ cellStyles: shiftStylesForInsert(latestSheetRef.current.cellStyles, "row", index) });
@@ -304,7 +317,7 @@ export const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGrid
       insertRowBelow: () => {
         const hot = hotRef.current?.hotInstance;
         if (!hot) return;
-        const bounds = getSelectedBounds(hot);
+        const bounds = getSelectedBounds(hot, lastSelectionRef.current);
         const index = bounds ? bounds.endRow + 1 : hot.countRows();
         (hot as any).alter("insert_row_above", index, 1);
         syncFromHot({ cellStyles: shiftStylesForInsert(latestSheetRef.current.cellStyles, "row", index) });
@@ -312,7 +325,7 @@ export const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGrid
       insertColumnLeft: () => {
         const hot = hotRef.current?.hotInstance;
         if (!hot) return;
-        const bounds = getSelectedBounds(hot);
+        const bounds = getSelectedBounds(hot, lastSelectionRef.current);
         const index = bounds?.startCol ?? 0;
         (hot as any).alter("insert_col_start", index, 1);
         syncFromHot({ cellStyles: shiftStylesForInsert(latestSheetRef.current.cellStyles, "col", index) });
@@ -320,7 +333,7 @@ export const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGrid
       insertColumnRight: () => {
         const hot = hotRef.current?.hotInstance;
         if (!hot) return;
-        const bounds = getSelectedBounds(hot);
+        const bounds = getSelectedBounds(hot, lastSelectionRef.current);
         const index = bounds ? bounds.endCol + 1 : hot.countCols();
         (hot as any).alter("insert_col_start", index, 1);
         syncFromHot({ cellStyles: shiftStylesForInsert(latestSheetRef.current.cellStyles, "col", index) });
@@ -328,7 +341,7 @@ export const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGrid
       deleteSelectedRows: () => {
         const hot = hotRef.current?.hotInstance;
         if (!hot) return;
-        const bounds = getSelectedBounds(hot);
+        const bounds = getSelectedBounds(hot, lastSelectionRef.current);
         if (!bounds) return;
         const amount = bounds.endRow - bounds.startRow + 1;
         (hot as any).alter("remove_row", bounds.startRow, amount);
@@ -337,7 +350,7 @@ export const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGrid
       deleteSelectedColumns: () => {
         const hot = hotRef.current?.hotInstance;
         if (!hot) return;
-        const bounds = getSelectedBounds(hot);
+        const bounds = getSelectedBounds(hot, lastSelectionRef.current);
         if (!bounds) return;
         const amount = bounds.endCol - bounds.startCol + 1;
         (hot as any).alter("remove_col", bounds.startCol, amount);
@@ -346,7 +359,7 @@ export const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGrid
       clearSelectedCells: () => {
         const hot = hotRef.current?.hotInstance;
         if (!hot) return;
-        for (const coord of getSelectedCells(hot)) {
+        for (const coord of getSelectedCells(hot, lastSelectionRef.current)) {
           hot.setDataAtCell(coord.row, coord.col, null, "toolbar-clear");
         }
         syncFromHot();
@@ -354,7 +367,7 @@ export const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGrid
       sortSelectedColumn: (direction) => {
         const hot = hotRef.current?.hotInstance;
         if (!hot) return;
-        const bounds = getSelectedBounds(hot);
+        const bounds = getSelectedBounds(hot, lastSelectionRef.current);
         if (!bounds) return;
         const plugin = hot.getPlugin("columnSorting") as any;
         plugin?.sort?.({ column: bounds.startCol, sortOrder: direction });
@@ -397,6 +410,11 @@ export const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGrid
             const result = applySpreadsheetCellChanges(latestSheetRef.current, changes as SpreadsheetCellChange[]);
             if (!result.changed) return;
             emitSheetChange(result.sheet, { render: false });
+          }}
+          afterSelectionEnd={(row: number, column: number, row2: number, column2: number) => {
+            if ([row, column, row2, column2].every((value) => Number.isInteger(value) && value >= 0)) {
+              lastSelectionRef.current = [row, column, row2, column2];
+            }
           }}
           afterMergeCells={() => syncFromHot()}
           afterUnmergeCells={() => syncFromHot()}

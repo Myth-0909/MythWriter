@@ -23,7 +23,7 @@ import {
   Upload,
   WrapText,
 } from "lucide-react";
-import type { ReactNode } from "react";
+import type { MouseEvent, ReactNode } from "react";
 import { useI18n } from "@/components/I18nProvider";
 import { Button } from "@/components/ui/button";
 import {
@@ -97,6 +97,10 @@ const colorSwatches: Array<{
   { color: "gray", labelKey: "sheets.colorGray", className: "bg-zinc-500 border-zinc-500" },
 ];
 
+function preserveSpreadsheetSelection(event: MouseEvent<HTMLButtonElement>) {
+  event.preventDefault();
+}
+
 function ToolbarIconButton({
   label,
   active = false,
@@ -114,6 +118,7 @@ function ToolbarIconButton({
         type="button"
         variant={active ? "secondary" : "ghost"}
         size="icon"
+        onMouseDown={preserveSpreadsheetSelection}
         onClick={onClick}
         aria-label={label}
       >
@@ -168,7 +173,7 @@ export function SpreadsheetToolbar({
     <DropdownMenu>
       <Tooltip content={label}>
         <DropdownMenuTrigger asChild>
-          <Button type="button" variant="ghost" size="icon" aria-label={label}>
+          <Button type="button" variant="ghost" size="icon" onMouseDown={preserveSpreadsheetSelection} aria-label={label}>
             {icon}
           </Button>
         </DropdownMenuTrigger>
@@ -187,7 +192,7 @@ export function SpreadsheetToolbar({
 
   return (
     <div className="flex min-h-12 shrink-0 items-center gap-1 overflow-x-auto border-b border-surface-200 bg-surface-50 px-3 py-1.5 dark:border-surface-800 dark:bg-surface-900">
-      <Button type="button" size="sm" onClick={onSave} disabled={!canSave} className="shrink-0 gap-2">
+      <Button type="button" size="sm" onMouseDown={preserveSpreadsheetSelection} onClick={onSave} disabled={!canSave} className="shrink-0 gap-2">
         <Save className="h-4 w-4" />
         {t("sheets.saveNow")}
       </Button>
@@ -248,7 +253,7 @@ export function SpreadsheetToolbar({
 
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button type="button" variant="outline" size="sm" className="shrink-0 gap-2">
+          <Button type="button" variant="outline" size="sm" onMouseDown={preserveSpreadsheetSelection} className="shrink-0 gap-2">
             <TableProperties className="h-4 w-4" />
             {t("sheets.structureMenu")}
           </Button>
@@ -289,7 +294,7 @@ export function SpreadsheetToolbar({
 
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button type="button" variant="outline" size="sm" className="shrink-0 gap-2">
+          <Button type="button" variant="outline" size="sm" onMouseDown={preserveSpreadsheetSelection} className="shrink-0 gap-2">
             <ArrowUpAZ className="h-4 w-4" />
             {t("sheets.sortMenu")}
           </Button>
@@ -307,11 +312,11 @@ export function SpreadsheetToolbar({
       </DropdownMenu>
 
       <div className="ml-auto flex shrink-0 items-center gap-2">
-        <Button type="button" variant="outline" size="sm" onClick={onImport} className="gap-2">
+        <Button type="button" variant="outline" size="sm" onMouseDown={preserveSpreadsheetSelection} onClick={onImport} className="gap-2">
           <Upload className="h-4 w-4" />
           {t("sheets.importXlsx")}
         </Button>
-        <Button type="button" variant="outline" size="sm" onClick={onExport} className="gap-2">
+        <Button type="button" variant="outline" size="sm" onMouseDown={preserveSpreadsheetSelection} onClick={onExport} className="gap-2">
           <Download className="h-4 w-4" />
           {t("sheets.exportXlsx")}
         </Button>
