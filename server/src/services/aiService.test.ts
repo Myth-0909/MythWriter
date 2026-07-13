@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { buildSystemPrompt, resolveAssistantActionReply } from "./aiService";
+import { buildSystemPrompt, detectDeleteCommand, resolveAssistantActionReply } from "./aiService";
 
 describe("ai assistant branding", () => {
   it("identifies the assistant as XiaoAn in the system prompt", () => {
@@ -84,6 +84,12 @@ describe("ai assistant branding", () => {
     assert.match(prompt, /spreadsheet_patch/);
     assert.match(prompt, /set_cell/);
     assert.match(prompt, /append_row/);
+    assert.match(prompt, /create_sheet/);
+    assert.match(prompt, /insert_rows/);
+    assert.match(prompt, /delete_rows/);
+    assert.match(prompt, /insert_columns/);
+    assert.match(prompt, /delete_columns/);
+    assert.match(prompt, /clear_range/);
     assert.match(prompt, /用户确认/);
   });
 
@@ -115,5 +121,12 @@ describe("ai assistant branding", () => {
         { type: "append_row", sheetName: "角色", values: ["绫清竹", "造化境", 72] },
       ],
     });
+  });
+
+  it("does not block spreadsheet row or column delete requests that still require preview confirmation", () => {
+    assert.equal(detectDeleteCommand("帮我删除当前表格第 2 行"), false);
+    assert.equal(detectDeleteCommand("clear the selected spreadsheet column"), false);
+    assert.equal(detectDeleteCommand("delete this document"), true);
+    assert.equal(detectDeleteCommand("清空我的全部数据"), true);
   });
 });

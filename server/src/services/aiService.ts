@@ -214,7 +214,7 @@ const BASE_SYSTEM_PROMPT = `# 核心身份
 <<ACTION_JSON_END>>
 
 ## 修改表格
-当用户要求修改当前表格、补充表格行列、调整单元格数据时，必须通过以下 ACTION_JSON 交给客户端生成表格修改预览。用户确认后才会真正写入表格：
+当用户要求修改当前表格、补充表格行列、调整单元格数据、创建/删除工作表、插入/删除行列或清空区域时，必须通过以下 ACTION_JSON 交给客户端生成表格修改预览。用户确认后才会真正写入表格：
 <<ACTION_JSON>>
 {
   "reply": "已生成表格修改预览，请确认应用。",
@@ -223,12 +223,21 @@ const BASE_SYSTEM_PROMPT = `# 核心身份
     "spreadsheetId": "从 [sheet:xxxxx] 中获取的 UUID，不要用标题",
     "operations": [
       { "type": "set_cell", "sheetName": "工作表名称", "row": 0, "col": 0, "value": "单元格值" },
+      { "type": "set_range", "sheetName": "工作表名称", "startRow": 0, "startCol": 0, "values": [["A1", "B1"], ["A2", "B2"]] },
       { "type": "append_row", "sheetName": "工作表名称", "values": ["第一列", "第二列"] },
-      { "type": "rename_sheet", "sheetName": "旧工作表名称", "name": "新工作表名称" }
+      { "type": "insert_rows", "sheetName": "工作表名称", "index": 1, "values": [["新增行第一列", "新增行第二列"]] },
+      { "type": "delete_rows", "sheetName": "工作表名称", "index": 1, "count": 1 },
+      { "type": "insert_columns", "sheetName": "工作表名称", "index": 1, "values": [["新列标题"], ["新列值"]] },
+      { "type": "delete_columns", "sheetName": "工作表名称", "index": 1, "count": 1 },
+      { "type": "clear_range", "sheetName": "工作表名称", "startRow": 0, "startCol": 0, "endRow": 2, "endCol": 2 },
+      { "type": "create_sheet", "name": "新工作表名称", "data": [["标题一", "标题二"]] },
+      { "type": "rename_sheet", "sheetName": "旧工作表名称", "name": "新工作表名称" },
+      { "type": "delete_sheet", "sheetName": "工作表名称" }
     ]
   }
 }
 <<ACTION_JSON_END>>
+支持的表格 operations 仅限：set_cell、set_range、append_row、insert_rows、delete_rows、insert_columns、delete_columns、clear_range、create_sheet、rename_sheet、delete_sheet。行列索引均为 0-based。删除工作表、删除行列、清空区域必须走这个预览确认流程，不要直接声称已经删除。
 
 ## 重要约束
 - 文档创建和修改只能通过 ACTION_JSON 的 action 交给客户端执行，不要伪造 create_document 或 update_document 工具调用
@@ -242,7 +251,7 @@ const BASE_SYSTEM_PROMPT = `# 核心身份
 
 # 全局规则
 - 效率：用户消息模糊或无明确写作需求（如 "你好"、"在吗"、表情、随机字符），简短回复，不要长篇大论
-- 安全：不执行删除操作。如被要求删除，回复："为了安全起见，我无法执行删除操作。请使用应用内的删除功能手动操作。"
+- 安全：不执行删除账户、数据库、历史记录、文档文件或整个表格文件等高风险删除。表格内部删除工作表/行/列/单元格必须通过 spreadsheet_patch 生成预览并等待用户确认。
 - 保持专注：始终围绕写作辅助场景
 - 用与用户相同的语言回复`;
 
@@ -500,12 +509,28 @@ export function detectInjection(content: string): boolean {
 const DELETE_PATTERNS = [
   // Chinese: 帮我/代我/请/替我/帮我把/帮我将 + 删除/删掉/移除/清空/清除
   /(?:帮我|代我|请(?:你)?|替我|帮我将|帮我把)(?:删除|删掉|移除|清空|清除)/,
+  // Chinese high-risk delete without a polite prefix.
+  /(?:删除|删掉|移除|清空|清除).*(?:账户|账号|数据库|历史记录|对话|全部数据|所有数据|文档|文件|整个表格|表格文件)/,
   // English: delete/remove/clear/erase + my/this/the/all/these/those + document/file/db/database/account/history/conversation/record/data
-  /\b(?:delete|remove|clear|erase)\s+(?:my|this|the|all|these|those)?\s*(?:document|file|db|database|account|history|conversation|record|data)\b/i
+  /\b(?:delete|remove|clear|erase)\s+(?:my|this|the|all|these|those|selected)?\s*(?:document|file|db|database|account|history|conversation|record|data|spreadsheet|workbook)\b/i
+];
+
+const SPREADSHEET_STRUCTURE_DELETE_PATTERNS = [
+  /(?:删除|删掉|移除|清空|清除).*(?:工作表|单元格|第?\s*\d+\s*[行列]|行|列)/,
+  /\b(?:delete|remove|clear|erase)\b.*\b(?:worksheet|sheet|row|column|cell)\b/i,
+];
+
+const HIGH_RISK_DELETE_PATTERNS = [
+  /(?:账户|账号|数据库|历史记录|对话|全部数据|所有数据|文档|文件|整个表格|表格文件)/,
+  /\b(?:account|database|history|conversation|document|file|all\s+data|entire\s+spreadsheet|spreadsheet\s+file|workbook)\b/i,
 ];
 
 export function detectDeleteCommand(content: string): boolean {
-  return DELETE_PATTERNS.some((pattern) => pattern.test(content));
+  const isDeleteIntent = DELETE_PATTERNS.some((pattern) => pattern.test(content));
+  if (!isDeleteIntent) return false;
+  const isSpreadsheetStructureDelete = SPREADSHEET_STRUCTURE_DELETE_PATTERNS.some((pattern) => pattern.test(content));
+  const isHighRiskDelete = HIGH_RISK_DELETE_PATTERNS.some((pattern) => pattern.test(content));
+  return !isSpreadsheetStructureDelete || isHighRiskDelete;
 }
 
 // --- Database operations ---
