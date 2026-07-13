@@ -35,6 +35,7 @@ import {
   resolveActionSuccessContent,
 } from "@/lib/aiActionState";
 import { Tooltip } from "@/components/ui/tooltip";
+import { SpreadsheetPatchPreview } from "@/components/spreadsheet/SpreadsheetPatchPreview";
 import type { DocumentVersion, Spreadsheet, SpreadsheetWorkbook } from "@/types";
 import type { OverlayScrollbarsComponentRef } from "overlayscrollbars-react";
 import gsap from "gsap";
@@ -128,6 +129,7 @@ type PendingDocumentUpdate = {
 type PendingSpreadsheetPatch = {
   spreadsheetId: string;
   title: string;
+  previousWorkbook: SpreadsheetWorkbook;
   nextWorkbook: SpreadsheetWorkbook;
   summary: string;
   operationCount: number;
@@ -1291,6 +1293,7 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
           setPendingSpreadsheetPatch({
             spreadsheetId: targetSpreadsheet.id,
             title: targetSpreadsheet.title,
+            previousWorkbook: targetSpreadsheet.data,
             nextWorkbook: result.workbook,
             summary: result.summary || t("ai.spreadsheetPatchSummaryFallback").replace("{count}", String(result.appliedCount)),
             operationCount: result.appliedCount,
@@ -2656,33 +2659,49 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
           </div>
 
           {pendingUpdate && (
-          <div className="flex min-h-[200px] flex-1 flex-col overflow-hidden">
-            <div className="grid shrink-0 grid-cols-[96px_1fr] border-b border-surface-200 bg-surface-50 text-xs font-semibold text-surface-500 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-400">
-              <div className="border-r border-surface-200 px-4 py-2 dark:border-surface-700">{t("ai.diffOld")} / {t("ai.diffNew")}</div>
-              <div className="px-4 py-2">{pendingUpdate.stats.unchanged} {t("ai.diffUnchanged")}</div>
-            </div>
-
-            <Scrollbar className="flex-1">
-              <div className="divide-y divide-surface-100 dark:divide-surface-800">
-                {(pendingUpdate?.diffLines || []).map((line, index) => (
-                  <div
-                    key={`${line.type}-${index}`}
-                    className={cn(
-                      "grid grid-cols-[96px_1fr] text-sm leading-relaxed",
-                      line.type === "added" && "bg-emerald-50/70 text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100",
-                      line.type === "removed" && "bg-red-50/70 text-red-900 dark:bg-red-950/40 dark:text-red-100",
-                      line.type === "unchanged" && "text-surface-600 dark:text-surface-300"
-                    )}
-                  >
-                    <div className="select-none border-r border-surface-100 px-4 py-2 font-mono text-xs dark:border-surface-800">
-                      {line.type === "added" ? `+ ${t("ai.diffNew")}` : line.type === "removed" ? `- ${t("ai.diffOld")}` : " "}
-                    </div>
-                    <div className="whitespace-pre-wrap px-4 py-2">{line.text}</div>
+            <div className="grid min-h-[320px] flex-1 grid-cols-1 overflow-hidden lg:grid-cols-[minmax(0,1fr)_minmax(300px,0.95fr)]">
+              <section className="flex min-h-0 flex-col overflow-hidden border-b border-surface-200 dark:border-surface-700 lg:border-b-0 lg:border-r">
+                <div className="grid shrink-0 grid-cols-[96px_1fr] border-b border-surface-200 bg-surface-50 text-xs font-semibold text-surface-500 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-400">
+                  <div className="border-r border-surface-200 px-4 py-2 dark:border-surface-700">{t("ai.diffOld")} / {t("ai.diffNew")}</div>
+                  <div className="px-4 py-2">
+                    {t("ai.diffTextChanges")} · {pendingUpdate.stats.unchanged} {t("ai.diffUnchanged")}
                   </div>
-                ))}
-              </div>
-            </Scrollbar>
-          </div>
+                </div>
+
+                <Scrollbar className="flex-1">
+                  <div className="divide-y divide-surface-100 dark:divide-surface-800">
+                    {(pendingUpdate?.diffLines || []).map((line, index) => (
+                      <div
+                        key={`${line.type}-${index}`}
+                        className={cn(
+                          "grid grid-cols-[96px_1fr] text-sm leading-relaxed",
+                          line.type === "added" && "bg-emerald-50/70 text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100",
+                          line.type === "removed" && "bg-red-50/70 text-red-900 dark:bg-red-950/40 dark:text-red-100",
+                          line.type === "unchanged" && "text-surface-600 dark:text-surface-300"
+                        )}
+                      >
+                        <div className="select-none border-r border-surface-100 px-4 py-2 font-mono text-xs dark:border-surface-800">
+                          {line.type === "added" ? `+ ${t("ai.diffNew")}` : line.type === "removed" ? `- ${t("ai.diffOld")}` : " "}
+                        </div>
+                        <div className="whitespace-pre-wrap px-4 py-2">{line.text}</div>
+                      </div>
+                    ))}
+                  </div>
+                </Scrollbar>
+              </section>
+
+              <section className="flex min-h-0 flex-col overflow-hidden bg-white dark:bg-surface-900">
+                <div className="shrink-0 border-b border-surface-200 bg-surface-50 px-4 py-2 text-xs font-semibold text-surface-500 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-400">
+                  {t("ai.diffRenderedPreview")}
+                </div>
+                <Scrollbar className="flex-1">
+                  <article
+                    className="max-w-none px-5 py-4 text-sm leading-7 text-surface-800 dark:text-surface-100 [&_blockquote]:border-l-4 [&_blockquote]:border-brand-200 [&_blockquote]:pl-4 [&_h1]:mb-3 [&_h1]:text-2xl [&_h1]:font-bold [&_h2]:mb-2 [&_h2]:mt-4 [&_h2]:text-xl [&_h2]:font-bold [&_h3]:mb-2 [&_h3]:mt-3 [&_h3]:text-lg [&_h3]:font-semibold [&_li]:my-1 [&_ol]:my-3 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:my-2 [&_strong]:font-semibold [&_ul]:my-3 [&_ul]:list-disc [&_ul]:pl-5"
+                    dangerouslySetInnerHTML={{ __html: pendingUpdate.nextHtml }}
+                  />
+                </Scrollbar>
+              </section>
+            </div>
           )}
 
           <div className="shrink-0 flex items-center justify-end gap-2 bg-white px-6 py-4 dark:bg-surface-900">
@@ -2699,7 +2718,7 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
       <Dialog open={!!pendingSpreadsheetPatch} onOpenChange={(open) => {
         if (!open && !applyingSpreadsheetPatch) setPendingSpreadsheetPatch(null);
       }}>
-        <DialogContent className="flex max-h-[82vh] max-w-[720px] flex-col overflow-hidden p-0">
+        <DialogContent className="flex max-h-[86vh] max-w-[1040px] flex-col overflow-hidden p-0">
           <div className="shrink-0 border-b border-surface-200 px-6 py-5 dark:border-surface-700">
             <div className="flex items-start justify-between gap-4 pr-8">
               <div>
@@ -2745,18 +2764,16 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
           </div>
 
           {pendingSpreadsheetPatch && (
-            <Scrollbar className="min-h-[220px] flex-1">
-              <div className="space-y-2 p-4">
-                {pendingSpreadsheetPatch.summary.split("\n").filter(Boolean).map((line, index) => (
-                  <div
-                    key={`${line}-${index}`}
-                    className="rounded-lg border border-emerald-100 bg-emerald-50/60 px-3 py-2 text-sm font-medium text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/35 dark:text-emerald-100"
-                  >
-                    {line}
-                  </div>
-                ))}
+            <div className="min-h-[360px] flex-1 overflow-hidden bg-surface-50 p-4 dark:bg-surface-950">
+              <div className="mb-3 text-xs font-semibold text-surface-500 dark:text-surface-400">
+                {t("ai.spreadsheetPatchRenderedPreview")}
               </div>
-            </Scrollbar>
+              <SpreadsheetPatchPreview
+                previousWorkbook={pendingSpreadsheetPatch.previousWorkbook}
+                nextWorkbook={pendingSpreadsheetPatch.nextWorkbook}
+                summary={pendingSpreadsheetPatch.summary}
+              />
+            </div>
           )}
 
           <div className="shrink-0 flex items-center justify-end gap-2 bg-white px-6 py-4 dark:bg-surface-900">

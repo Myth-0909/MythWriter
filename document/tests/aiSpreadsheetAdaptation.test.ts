@@ -21,4 +21,18 @@ describe("AI spreadsheet adaptation wiring", () => {
     assert.match(i18nSource, /ai\.spreadsheetPatchTitle/);
     assert.match(i18nSource, /ai\.spreadsheetPatchApplied/);
   });
+
+  it("renders AI diff previews as edited documents and spreadsheets instead of summary-only text", () => {
+    const root = new URL("../", import.meta.url);
+    const chatSource = readFileSync(new URL("src/components/AIChatWidget.tsx", root), "utf8");
+    const i18nSource = readFileSync(new URL("src/components/I18nProvider.tsx", root), "utf8");
+
+    assert.match(chatSource, /SpreadsheetPatchPreview/);
+    assert.match(chatSource, /previousWorkbook/);
+    assert.match(chatSource, /dangerouslySetInnerHTML=\{\{ __html: pendingUpdate\.nextHtml \}\}/);
+    assert.match(chatSource, /ai\.diffRenderedPreview/);
+    assert.match(chatSource, /ai\.spreadsheetPatchRenderedPreview/);
+    assert.match(i18nSource, /ai\.diffRenderedPreview/);
+    assert.match(i18nSource, /ai\.spreadsheetPatchRenderedPreview/);
+  });
 });
