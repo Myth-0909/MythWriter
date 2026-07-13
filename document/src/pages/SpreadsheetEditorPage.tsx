@@ -40,7 +40,6 @@ export function SpreadsheetEditorPage({ spreadsheetId, onBack }: SpreadsheetEdit
   const [workbook, setWorkbook] = useState<SpreadsheetWorkbook | null>(null);
   const [title, setTitle] = useState("");
   const [loading, setLoading] = useState(true);
-  const [dirty, setDirty] = useState(false);
   const [status, setStatus] = useState<SpreadsheetSaveStatus>("saved");
 
   const visibleWorkbook = workbookRef.current || workbook;
@@ -60,7 +59,6 @@ export function SpreadsheetEditorPage({ spreadsheetId, onBack }: SpreadsheetEdit
 
   const markUnsaved = useCallback(() => {
     changeVersionRef.current += 1;
-    setDirty(true);
     setStatus("unsaved");
     scheduleAutoSave();
   }, [scheduleAutoSave]);
@@ -95,7 +93,6 @@ export function SpreadsheetEditorPage({ spreadsheetId, onBack }: SpreadsheetEdit
     titleRef.current = nextSpreadsheet.title;
     setWorkbook(nextWorkbook);
     setTitle(nextSpreadsheet.title);
-    setDirty(false);
     setStatus("saved");
   }, [t]);
 
@@ -127,7 +124,6 @@ export function SpreadsheetEditorPage({ spreadsheetId, onBack }: SpreadsheetEdit
         setWorkbook(currentWorkbook);
         setTitle(res.spreadsheet.title);
         titleRef.current = res.spreadsheet.title;
-        setDirty(false);
         setStatus("saved");
       }
     } catch (error: any) {
@@ -325,8 +321,6 @@ export function SpreadsheetEditorPage({ spreadsheetId, onBack }: SpreadsheetEdit
 
         <SpreadsheetToolbar
           status={status}
-          canSave={!!visibleWorkbook && (dirty || status === "error")}
-          onSave={() => void saveWorkbook()}
           onImport={handleImportClick}
           onExport={handleExport}
           onUndo={() => gridRef.current?.undo()}

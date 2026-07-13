@@ -1,8 +1,10 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef } from "react";
 import { HotTable, type HotTableRef } from "@handsontable/react-wrapper";
+import { enUS, registerLanguageDictionary, zhCN } from "handsontable/i18n";
 import { registerAllModules } from "handsontable/registry";
 import HyperFormula from "hyperformula";
 import type Handsontable from "handsontable";
+import { useI18n } from "@/components/I18nProvider";
 import type {
   SpreadsheetCellColor,
   SpreadsheetCellStyle,
@@ -20,6 +22,8 @@ let modulesRegistered = false;
 function ensureHandsontableModules() {
   if (modulesRegistered) return;
   registerAllModules();
+  registerLanguageDictionary(enUS);
+  registerLanguageDictionary(zhCN);
   modulesRegistered = true;
 }
 
@@ -209,6 +213,7 @@ function buildCellClassName(style: SpreadsheetCellStyle | undefined) {
 
 export const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
   ({ sheet, onSheetChange }, ref) => {
+    const { lang } = useI18n();
     const hotRef = useRef<HotTableRef>(null);
     const latestSheetRef = useRef(sheet);
     const lastSelectionRef = useRef<SelectionTuple | null>(null);
@@ -382,6 +387,7 @@ export const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGrid
           data={sheet.data}
           rowHeaders
           colHeaders
+          language={lang === "zh" ? "zh-CN" : "en-US"}
           contextMenu
           dropdownMenu
           filters

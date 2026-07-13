@@ -67,4 +67,26 @@ describe("spreadsheet toolbar feature coverage", () => {
     assert.match(appCss, /@keyframes znTooltipIn/);
     assert.match(appCss, /\.zn-tooltip-content\[data-state="delayed-open"\]/);
   });
+
+  it("separates spreadsheet action buttons from editing tools and highlights saved status", () => {
+    const toolbarSource = readFileSync(new URL("../src/components/spreadsheet/SpreadsheetToolbar.tsx", import.meta.url), "utf8");
+    const editorSource = readFileSync(new URL("../src/pages/SpreadsheetEditorPage.tsx", import.meta.url), "utf8");
+
+    assert.doesNotMatch(toolbarSource, /sheets\.saveNow/);
+    assert.doesNotMatch(editorSource, /canSave=\{/);
+    assert.match(toolbarSource, /data-spreadsheet-action-bar/);
+    assert.match(toolbarSource, /data-spreadsheet-editing-bar/);
+    assert.match(toolbarSource, /status === "saved"/);
+    assert.match(toolbarSource, /text-emerald-600/);
+  });
+
+  it("localizes Handsontable built-in row and column menus with the app language", () => {
+    const gridSource = readFileSync(new URL("../src/components/spreadsheet/SpreadsheetGrid.tsx", import.meta.url), "utf8");
+
+    assert.match(gridSource, /registerLanguageDictionary/);
+    assert.match(gridSource, /zhCN/);
+    assert.match(gridSource, /enUS/);
+    assert.match(gridSource, /const \{ lang \} = useI18n\(\)/);
+    assert.match(gridSource, /language=\{lang === "zh" \? "zh-CN" : "en-US"\}/);
+  });
 });

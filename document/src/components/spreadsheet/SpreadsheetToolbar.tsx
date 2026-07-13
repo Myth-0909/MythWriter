@@ -13,7 +13,6 @@ import {
   PaintBucket,
   Redo2,
   Rows3,
-  Save,
   SplitSquareHorizontal,
   TableProperties,
   Trash2,
@@ -26,6 +25,7 @@ import {
 import type { MouseEvent, ReactNode } from "react";
 import { useI18n } from "@/components/I18nProvider";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -41,8 +41,6 @@ export type SpreadsheetSaveStatus = "saved" | "saving" | "unsaved" | "error";
 
 interface SpreadsheetToolbarProps {
   status: SpreadsheetSaveStatus;
-  canSave: boolean;
-  onSave: () => void;
   onImport: () => void;
   onExport: () => void;
   onUndo: () => void;
@@ -134,8 +132,6 @@ function ToolbarSeparator() {
 
 export function SpreadsheetToolbar({
   status,
-  canSave,
-  onSave,
   onImport,
   onExport,
   onUndo,
@@ -164,6 +160,13 @@ export function SpreadsheetToolbar({
   isFirstColumnFrozen,
 }: SpreadsheetToolbarProps) {
   const { t } = useI18n();
+  const statusClassName = cn(
+    "min-w-[88px] text-right text-[11px] font-semibold",
+    status === "saved" && "text-emerald-600 dark:text-emerald-400",
+    status === "saving" && "text-brand-600 dark:text-brand-300",
+    status === "unsaved" && "text-amber-600 dark:text-amber-300",
+    status === "error" && "text-red-600 dark:text-red-400"
+  );
 
   const colorMenu = (
     label: string,
@@ -191,138 +194,141 @@ export function SpreadsheetToolbar({
   );
 
   return (
-    <div className="flex min-h-12 shrink-0 items-center gap-1 overflow-x-auto border-b border-surface-200 bg-surface-50 px-3 py-1.5 dark:border-surface-800 dark:bg-surface-900">
-      <Button type="button" size="sm" onMouseDown={preserveSpreadsheetSelection} onClick={onSave} disabled={!canSave} className="shrink-0 gap-2">
-        <Save className="h-4 w-4" />
-        {t("sheets.saveNow")}
-      </Button>
+    <div className="shrink-0 border-b border-surface-200 bg-surface-50 dark:border-surface-800 dark:bg-surface-900">
+      <div
+        data-spreadsheet-action-bar
+        className="flex min-h-12 items-center gap-2 overflow-x-auto border-b border-surface-200 px-3 py-1.5 dark:border-surface-800"
+      >
+        <div className="ml-auto flex shrink-0 items-center gap-2">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button type="button" variant="outline" size="sm" onMouseDown={preserveSpreadsheetSelection} className="shrink-0 gap-2">
+                <TableProperties className="h-4 w-4" />
+                {t("sheets.structureMenu")}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="min-w-[220px]">
+              <DropdownMenuLabel>{t("sheets.structureMenu")}</DropdownMenuLabel>
+              <DropdownMenuItem onSelect={onInsertRowAbove}>
+                <Rows3 className="h-4 w-4" />
+                {t("sheets.insertRowAbove")}
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={onInsertRowBelow}>
+                <Rows3 className="h-4 w-4" />
+                {t("sheets.insertRowBelow")}
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={onInsertColumnLeft}>
+                <Columns3 className="h-4 w-4" />
+                {t("sheets.insertColumnLeft")}
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={onInsertColumnRight}>
+                <Columns3 className="h-4 w-4" />
+                {t("sheets.insertColumnRight")}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={onDeleteSelectedRows}>
+                <Trash2 className="h-4 w-4" />
+                {t("sheets.deleteRows")}
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={onDeleteSelectedColumns}>
+                <Trash2 className="h-4 w-4" />
+                {t("sheets.deleteColumns")}
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={onClearSelectedCells}>
+                <Eraser className="h-4 w-4" />
+                {t("sheets.clearCells")}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
 
-      <ToolbarSeparator />
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button type="button" variant="outline" size="sm" onMouseDown={preserveSpreadsheetSelection} className="shrink-0 gap-2">
+                <ArrowUpAZ className="h-4 w-4" />
+                {t("sheets.sortMenu")}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              <DropdownMenuItem onSelect={onSortAscending}>
+                <ArrowUpAZ className="h-4 w-4" />
+                {t("sheets.sortAscending")}
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={onSortDescending}>
+                <ArrowDownAZ className="h-4 w-4" />
+                {t("sheets.sortDescending")}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
 
-      <ToolbarIconButton label={t("sheets.undo")} onClick={onUndo}>
-        <Undo2 className="h-4 w-4" />
-      </ToolbarIconButton>
-      <ToolbarIconButton label={t("sheets.redo")} onClick={onRedo}>
-        <Redo2 className="h-4 w-4" />
-      </ToolbarIconButton>
-
-      <ToolbarSeparator />
-
-      <ToolbarIconButton label={t("sheets.bold")} onClick={onToggleBold}>
-        <Bold className="h-4 w-4" />
-      </ToolbarIconButton>
-      <ToolbarIconButton label={t("sheets.italic")} onClick={onToggleItalic}>
-        <Italic className="h-4 w-4" />
-      </ToolbarIconButton>
-      <ToolbarIconButton label={t("sheets.underline")} onClick={onToggleUnderline}>
-        <Underline className="h-4 w-4" />
-      </ToolbarIconButton>
-      <ToolbarIconButton label={t("sheets.wrap")} onClick={onToggleWrap}>
-        <WrapText className="h-4 w-4" />
-      </ToolbarIconButton>
-
-      {colorMenu(t("sheets.textColor"), <Type className="h-4 w-4" />, onSetTextColor)}
-      {colorMenu(t("sheets.fillColor"), <PaintBucket className="h-4 w-4" />, onSetFillColor)}
-
-      <ToolbarSeparator />
-
-      <ToolbarIconButton label={t("sheets.alignLeft")} onClick={() => onSetHorizontalAlign("left")}>
-        <AlignLeft className="h-4 w-4" />
-      </ToolbarIconButton>
-      <ToolbarIconButton label={t("sheets.alignCenter")} onClick={() => onSetHorizontalAlign("center")}>
-        <AlignCenter className="h-4 w-4" />
-      </ToolbarIconButton>
-      <ToolbarIconButton label={t("sheets.alignRight")} onClick={() => onSetHorizontalAlign("right")}>
-        <AlignRight className="h-4 w-4" />
-      </ToolbarIconButton>
-
-      <ToolbarSeparator />
-
-      <ToolbarIconButton label={t("sheets.merge")} onClick={onMerge}>
-        <Merge className="h-4 w-4" />
-      </ToolbarIconButton>
-      <ToolbarIconButton label={t("sheets.unmerge")} onClick={onUnmerge}>
-        <SplitSquareHorizontal className="h-4 w-4" />
-      </ToolbarIconButton>
-      <ToolbarIconButton label={t("sheets.freezeTopRow")} active={isTopRowFrozen} onClick={onToggleFreezeTopRow}>
-        <Rows3 className="h-4 w-4" />
-      </ToolbarIconButton>
-      <ToolbarIconButton label={t("sheets.freezeFirstColumn")} active={isFirstColumnFrozen} onClick={onToggleFreezeFirstColumn}>
-        <Columns3 className="h-4 w-4" />
-      </ToolbarIconButton>
-
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button type="button" variant="outline" size="sm" onMouseDown={preserveSpreadsheetSelection} className="shrink-0 gap-2">
-            <TableProperties className="h-4 w-4" />
-            {t("sheets.structureMenu")}
+          <Button type="button" variant="outline" size="sm" onMouseDown={preserveSpreadsheetSelection} onClick={onImport} className="gap-2">
+            <Upload className="h-4 w-4" />
+            {t("sheets.importXlsx")}
           </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="min-w-[220px]">
-          <DropdownMenuLabel>{t("sheets.structureMenu")}</DropdownMenuLabel>
-          <DropdownMenuItem onSelect={onInsertRowAbove}>
-            <Rows3 className="h-4 w-4" />
-            {t("sheets.insertRowAbove")}
-          </DropdownMenuItem>
-          <DropdownMenuItem onSelect={onInsertRowBelow}>
-            <Rows3 className="h-4 w-4" />
-            {t("sheets.insertRowBelow")}
-          </DropdownMenuItem>
-          <DropdownMenuItem onSelect={onInsertColumnLeft}>
-            <Columns3 className="h-4 w-4" />
-            {t("sheets.insertColumnLeft")}
-          </DropdownMenuItem>
-          <DropdownMenuItem onSelect={onInsertColumnRight}>
-            <Columns3 className="h-4 w-4" />
-            {t("sheets.insertColumnRight")}
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem onSelect={onDeleteSelectedRows}>
-            <Trash2 className="h-4 w-4" />
-            {t("sheets.deleteRows")}
-          </DropdownMenuItem>
-          <DropdownMenuItem onSelect={onDeleteSelectedColumns}>
-            <Trash2 className="h-4 w-4" />
-            {t("sheets.deleteColumns")}
-          </DropdownMenuItem>
-          <DropdownMenuItem onSelect={onClearSelectedCells}>
-            <Eraser className="h-4 w-4" />
-            {t("sheets.clearCells")}
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button type="button" variant="outline" size="sm" onMouseDown={preserveSpreadsheetSelection} className="shrink-0 gap-2">
-            <ArrowUpAZ className="h-4 w-4" />
-            {t("sheets.sortMenu")}
+          <Button type="button" variant="outline" size="sm" onMouseDown={preserveSpreadsheetSelection} onClick={onExport} className="gap-2">
+            <Download className="h-4 w-4" />
+            {t("sheets.exportXlsx")}
           </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start">
-          <DropdownMenuItem onSelect={onSortAscending}>
-            <ArrowUpAZ className="h-4 w-4" />
-            {t("sheets.sortAscending")}
-          </DropdownMenuItem>
-          <DropdownMenuItem onSelect={onSortDescending}>
-            <ArrowDownAZ className="h-4 w-4" />
-            {t("sheets.sortDescending")}
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
+          <span className={statusClassName}>
+            {t(statusKeys[status])}
+          </span>
+        </div>
+      </div>
 
-      <div className="ml-auto flex shrink-0 items-center gap-2">
-        <Button type="button" variant="outline" size="sm" onMouseDown={preserveSpreadsheetSelection} onClick={onImport} className="gap-2">
-          <Upload className="h-4 w-4" />
-          {t("sheets.importXlsx")}
-        </Button>
-        <Button type="button" variant="outline" size="sm" onMouseDown={preserveSpreadsheetSelection} onClick={onExport} className="gap-2">
-          <Download className="h-4 w-4" />
-          {t("sheets.exportXlsx")}
-        </Button>
-        <span className="min-w-[88px] text-right text-[11px] text-surface-500 dark:text-surface-400">
-          {t(statusKeys[status])}
-        </span>
+      <div
+        data-spreadsheet-editing-bar
+        className="flex min-h-12 items-center gap-1 overflow-x-auto px-3 py-1.5"
+      >
+        <ToolbarIconButton label={t("sheets.undo")} onClick={onUndo}>
+          <Undo2 className="h-4 w-4" />
+        </ToolbarIconButton>
+        <ToolbarIconButton label={t("sheets.redo")} onClick={onRedo}>
+          <Redo2 className="h-4 w-4" />
+        </ToolbarIconButton>
+
+        <ToolbarSeparator />
+
+        <ToolbarIconButton label={t("sheets.bold")} onClick={onToggleBold}>
+          <Bold className="h-4 w-4" />
+        </ToolbarIconButton>
+        <ToolbarIconButton label={t("sheets.italic")} onClick={onToggleItalic}>
+          <Italic className="h-4 w-4" />
+        </ToolbarIconButton>
+        <ToolbarIconButton label={t("sheets.underline")} onClick={onToggleUnderline}>
+          <Underline className="h-4 w-4" />
+        </ToolbarIconButton>
+        <ToolbarIconButton label={t("sheets.wrap")} onClick={onToggleWrap}>
+          <WrapText className="h-4 w-4" />
+        </ToolbarIconButton>
+
+        {colorMenu(t("sheets.textColor"), <Type className="h-4 w-4" />, onSetTextColor)}
+        {colorMenu(t("sheets.fillColor"), <PaintBucket className="h-4 w-4" />, onSetFillColor)}
+
+        <ToolbarSeparator />
+
+        <ToolbarIconButton label={t("sheets.alignLeft")} onClick={() => onSetHorizontalAlign("left")}>
+          <AlignLeft className="h-4 w-4" />
+        </ToolbarIconButton>
+        <ToolbarIconButton label={t("sheets.alignCenter")} onClick={() => onSetHorizontalAlign("center")}>
+          <AlignCenter className="h-4 w-4" />
+        </ToolbarIconButton>
+        <ToolbarIconButton label={t("sheets.alignRight")} onClick={() => onSetHorizontalAlign("right")}>
+          <AlignRight className="h-4 w-4" />
+        </ToolbarIconButton>
+
+        <ToolbarSeparator />
+
+        <ToolbarIconButton label={t("sheets.merge")} onClick={onMerge}>
+          <Merge className="h-4 w-4" />
+        </ToolbarIconButton>
+        <ToolbarIconButton label={t("sheets.unmerge")} onClick={onUnmerge}>
+          <SplitSquareHorizontal className="h-4 w-4" />
+        </ToolbarIconButton>
+        <ToolbarIconButton label={t("sheets.freezeTopRow")} active={isTopRowFrozen} onClick={onToggleFreezeTopRow}>
+          <Rows3 className="h-4 w-4" />
+        </ToolbarIconButton>
+        <ToolbarIconButton label={t("sheets.freezeFirstColumn")} active={isFirstColumnFrozen} onClick={onToggleFreezeFirstColumn}>
+          <Columns3 className="h-4 w-4" />
+        </ToolbarIconButton>
       </div>
     </div>
   );
