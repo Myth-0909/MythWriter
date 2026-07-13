@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { BrainCircuit, Check, CheckCircle2, ChevronDown, Clock3, Copy, CopyCheck, FileText, History, Pencil, RotateCcw, Smile, Sparkles, Star, ThumbsDown, ThumbsUp, Trash2, X, XCircle } from "lucide-react";
+import { BrainCircuit, Check, CheckCircle2, ChevronDown, Clock3, Copy, CopyCheck, FileSpreadsheet, FileText, History, Pencil, RotateCcw, Smile, Sparkles, Star, ThumbsDown, ThumbsUp, Trash2, X, XCircle } from "lucide-react";
 import catAvatar from "@/assets/cat-avatar.png";
 import { Sender } from "@ant-design/x";
 import { ConfirmModal } from "@/components/ConfirmModal";
@@ -27,6 +27,7 @@ import {
   shouldIncludeAssistantInPrompt,
 } from "@/lib/aiChatStream";
 import { toApiMessages, type ToolCallEvent } from "@/lib/aiChatApiMessages";
+import { applySpreadsheetPatch, type SpreadsheetPatchAction } from "@/lib/spreadsheetAiPatch";
 import {
   buildToolMemoryContent,
   resolveActionDisplayContent,
@@ -34,7 +35,7 @@ import {
   resolveActionSuccessContent,
 } from "@/lib/aiActionState";
 import { Tooltip } from "@/components/ui/tooltip";
-import type { DocumentVersion } from "@/types";
+import type { DocumentVersion, Spreadsheet, SpreadsheetWorkbook } from "@/types";
 import type { OverlayScrollbarsComponentRef } from "overlayscrollbars-react";
 import gsap from "gsap";
 
@@ -75,7 +76,7 @@ interface Message {
 }
 
 interface ChatReference {
-  type: "document" | "brain";
+  type: "document" | "brain" | "spreadsheet";
   id: string;
   title: string;
   auto?: boolean;
@@ -84,6 +85,7 @@ interface ChatReference {
 
 type DocumentReference = ChatReference & { type: "document" };
 type BrainReference = ChatReference & { type: "brain"; auto?: boolean; score?: number };
+type SpreadsheetReference = ChatReference & { type: "spreadsheet" };
 
 interface BrainKnowledge {
   id: string;
@@ -94,6 +96,7 @@ interface BrainKnowledge {
 
 interface AIChatWidgetProps {
   currentDocumentId?: string;
+  currentSpreadsheetId?: string;
 }
 
 type SlashCommand = {
@@ -120,6 +123,14 @@ type PendingDocumentUpdate = {
     removed: number;
     unchanged: number;
   };
+};
+
+type PendingSpreadsheetPatch = {
+  spreadsheetId: string;
+  title: string;
+  nextWorkbook: SpreadsheetWorkbook;
+  summary: string;
+  operationCount: number;
 };
 
 interface Position {
@@ -434,7 +445,7 @@ async function streamChat(
   return { reply: finalReply, action: finalAction, thinking: thinking || undefined, toolCalls: toolCalls.length > 0 ? toolCalls : undefined };
 }
 
-export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
+export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChatWidgetProps) {
   const { t } = useI18n();
   const { toast } = useToast();
   const {
@@ -483,6 +494,7 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
   const restoredRef = useRef(false);
   const [keyOk, setKeyOk] = useState(false);
   const [references, setReferences] = useState<DocumentReference[]>([]);
+  const [activeSpreadsheet, setActiveSpreadsheet] = useState<Spreadsheet | null>(null);
   const [brainReferences, setBrainReferences] = useState<BrainReference[]>([]);
   const [autoBrainReferences, setAutoBrainReferences] = useState<BrainReference[]>([]);
   const [autoReferenceEnabled, setAutoReferenceEnabled] = useState(() => localStorage.getItem(AUTO_RAG_KEY) !== "0");
@@ -499,6 +511,8 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
   const commandIdxRef = useRef(0);
   const [pendingUpdate, setPendingUpdate] = useState<PendingDocumentUpdate | null>(null);
   const [applyingUpdate, setApplyingUpdate] = useState(false);
+  const [pendingSpreadsheetPatch, setPendingSpreadsheetPatch] = useState<PendingSpreadsheetPatch | null>(null);
+  const [applyingSpreadsheetPatch, setApplyingSpreadsheetPatch] = useState(false);
   const [versionDialogOpen, setVersionDialogOpen] = useState(false);
   const [versionLoading, setVersionLoading] = useState(false);
   const [versions, setVersions] = useState<DocumentVersion[]>([]);
@@ -525,6 +539,24 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
       .then((res) => setBrainKnowledges(res.knowledges || []))
       .catch(() => setBrainKnowledges([]));
   }, [brainKnowledges.length, open]);
+
+  useEffect(() => {
+    if (!currentSpreadsheetId) {
+      setActiveSpreadsheet(null);
+      return;
+    }
+    let cancelled = false;
+    api.getSpreadsheet(currentSpreadsheetId)
+      .then((res) => {
+        if (!cancelled) setActiveSpreadsheet(res.spreadsheet);
+      })
+      .catch(() => {
+        if (!cancelled) setActiveSpreadsheet(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [currentSpreadsheetId]);
 
   useEffect(() => {
     const query = input.trim();
@@ -920,13 +952,20 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
     const currentReference = currentDocument && !currentDocument.isDeleted
       ? [{ type: "document" as const, id: currentDocument.id, title: currentDocument.title }]
       : [];
+    const currentSpreadsheet = currentSpreadsheetId
+      ? activeSpreadsheet || await api.getSpreadsheet(currentSpreadsheetId).then((res) => res.spreadsheet).catch(() => null)
+      : null;
+    if (currentSpreadsheet) setActiveSpreadsheet(currentSpreadsheet);
+    const currentSpreadsheetReference = currentSpreadsheet && !currentSpreadsheet.isDeleted
+      ? [{ type: "spreadsheet" as const, id: currentSpreadsheet.id, title: currentSpreadsheet.title }]
+      : [];
     const referencedByText = documents
       .filter((doc) => text.includes(`@${doc.title}`))
       .map((doc) => ({ type: "document" as const, id: doc.id, title: doc.title }));
     const referencedBrainsByText = brainKnowledges
       .filter((item) => text.includes(`#${item.title}`))
       .map((item) => ({ type: "brain" as const, id: item.id, title: item.title }));
-    const requestReferences = uniqueReferences([...currentReference, ...references, ...referencedByText, ...brainReferences, ...autoBrainReferences, ...referencedBrainsByText]);
+    const requestReferences: ChatReference[] = uniqueReferences([...currentReference, ...currentSpreadsheetReference, ...references, ...referencedByText, ...brainReferences, ...autoBrainReferences, ...referencedBrainsByText]);
 
     const userMsg: Message = { role: "user", content: text, timestamp: formatTimestamp() };
     setMessages((prev) => [...prev, userMsg]);
@@ -1048,7 +1087,7 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
         abort.signal
       );
 
-      const hasAction = !!(action && (action.type === "create_document" || action.type === "update_document"));
+      const hasAction = !!(action && (action.type === "create_document" || action.type === "update_document" || action.type === "spreadsheet_patch"));
       setIsActing(hasAction);
 
       const finalToolCalls = toolCalls || latestToolCalls;
@@ -1068,7 +1107,9 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
         genericFailure: t("ai.menu.failed"),
         fallbackTitle: t("editor.untitled"),
       };
-      const displayContent = resolveActionDisplayContent(action, finalContent, actionLabels);
+      const displayContent = action?.type === "spreadsheet_patch"
+        ? t("ai.spreadsheetPatchReady")
+        : resolveActionDisplayContent(action, finalContent, actionLabels);
       queueAssistantContent(displayContent);
       upsertAssistantMessage({
         finalContent: displayContent,
@@ -1219,6 +1260,54 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
         return;
       }
 
+      // Handle spreadsheet_patch action
+      if (action?.type === "spreadsheet_patch") {
+        try {
+          const patch = action as SpreadsheetPatchAction;
+          const actionSpreadsheetId = typeof patch.spreadsheetId === "string" ? patch.spreadsheetId.trim() : "";
+          const spreadsheetReferences = requestReferences.filter((ref): ref is SpreadsheetReference => ref.type === "spreadsheet");
+          const fallbackSpreadsheetId = spreadsheetReferences.length === 1 ? spreadsheetReferences[0].id : currentSpreadsheetId || "";
+          const targetSpreadsheetId = actionSpreadsheetId || fallbackSpreadsheetId;
+          const targetSpreadsheet = targetSpreadsheetId
+            ? activeSpreadsheet?.id === targetSpreadsheetId
+              ? activeSpreadsheet
+              : await api.getSpreadsheet(targetSpreadsheetId).then((res) => res.spreadsheet).catch(() => null)
+            : null;
+          if (!targetSpreadsheet) {
+            const message = t("ai.spreadsheetPatchTargetMissing");
+            replaceLastAssistantMessage(message);
+            saveAssistantTurn(message);
+            toast(message, "error");
+            return;
+          }
+          const result = applySpreadsheetPatch(targetSpreadsheet.data, patch);
+          if (result.appliedCount <= 0) {
+            const message = t("ai.spreadsheetPatchEmpty");
+            replaceLastAssistantMessage(message);
+            saveAssistantTurn(message);
+            toast(message, "error");
+            return;
+          }
+          setPendingSpreadsheetPatch({
+            spreadsheetId: targetSpreadsheet.id,
+            title: targetSpreadsheet.title,
+            nextWorkbook: result.workbook,
+            summary: result.summary || t("ai.spreadsheetPatchSummaryFallback").replace("{count}", String(result.appliedCount)),
+            operationCount: result.appliedCount,
+          });
+          setTaskStage("preview");
+          toast(t("ai.spreadsheetPatchReady"), "info");
+          saveAssistantTurn(displayContent);
+        } catch (err: any) {
+          console.error("[spreadsheet_patch] error:", err);
+          const message = t("ai.spreadsheetPatchFailed");
+          replaceLastAssistantMessage(message);
+          saveAssistantTurn(message);
+          toast(message, "error");
+        }
+        return;
+      }
+
       saveAssistantTurn(displayContent);
     } catch (error: any) {
       if (error.name === "AbortError") return;
@@ -1242,7 +1331,7 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
       setIsActing(false);
       setTaskStage((stage) => (stage === "preview" ? stage : "idle"));
     }
-  }, [loading, streaming, currentDocumentId, createDocument, toast, t, documents, references, brainReferences, autoBrainReferences, brainKnowledges, getDocument, loadDocument, refreshDocuments, updateDocument]);
+  }, [loading, streaming, currentDocumentId, currentSpreadsheetId, activeSpreadsheet, createDocument, toast, t, documents, references, brainReferences, autoBrainReferences, brainKnowledges, getDocument, loadDocument, refreshDocuments, updateDocument]);
 
   const handleSend = useCallback(async () => {
     const text = input.trim();
@@ -1349,6 +1438,43 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
     }
   }, [applyingUpdate, createDocumentVersion, loadDocument, pendingUpdate, t, toast, updateDocument]);
 
+  const applyPendingSpreadsheetPatch = useCallback(async () => {
+    if (!pendingSpreadsheetPatch || applyingSpreadsheetPatch) return;
+    const patch = pendingSpreadsheetPatch;
+    setApplyingSpreadsheetPatch(true);
+    try {
+      await api.updateSpreadsheet(patch.spreadsheetId, {
+        title: patch.title,
+        data: patch.nextWorkbook,
+      });
+      setTaskStage("verify");
+      const verified = await api.getSpreadsheet(patch.spreadsheetId);
+      if (JSON.stringify(verified.spreadsheet.data) !== JSON.stringify(patch.nextWorkbook)) {
+        toast(t("ai.spreadsheetPatchVerifyFailed"), "error");
+        return;
+      }
+      setActiveSpreadsheet(verified.spreadsheet);
+      window.dispatchEvent(new CustomEvent("spreadsheet:updated", {
+        detail: { id: patch.spreadsheetId, spreadsheet: verified.spreadsheet },
+      }));
+      toast(t("ai.spreadsheetPatchApplied"), "success");
+      const updatedNote = {
+        role: "assistant" as const,
+        content: `[系统] 已为用户更新表格「${patch.title}」[sheet:${patch.spreadsheetId}]。修改项：${patch.summary.slice(0, 200)}...`,
+      };
+      memoryRef.current = [...memoryRef.current, updatedNote];
+      saveMemory(memoryRef.current);
+      setPendingSpreadsheetPatch(null);
+      setTaskStage("done");
+    } catch (err: any) {
+      console.error("[apply_spreadsheet_patch] error:", err);
+      toast(t("ai.spreadsheetPatchFailed"), "error");
+    } finally {
+      setApplyingSpreadsheetPatch(false);
+      setTimeout(() => setTaskStage("idle"), 1200);
+    }
+  }, [applyingSpreadsheetPatch, pendingSpreadsheetPatch, t, toast]);
+
   const loadVersions = useCallback(async () => {
     if (!currentDocumentId) {
       setVersions([]);
@@ -1425,6 +1551,7 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
   const showBrainMenu = brainOpen && !!brainMention && !isGenerating;
   const showCommandMenu = commandOpen && !!slash && !isGenerating;
   const activeContextDocument = currentDocumentId ? getDocument(currentDocumentId) : undefined;
+  const activeContextSpreadsheet = currentSpreadsheetId && activeSpreadsheet?.id === currentSpreadsheetId ? activeSpreadsheet : null;
   const taskStageLabel = (stage: TaskStage) => {
     if (stage === "analyzing") return t("ai.taskAnalyze");
     if (stage === "generating") return t("ai.taskGenerate");
@@ -1825,6 +1952,16 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
                 </span>
               </div>
             )}
+            {activeContextSpreadsheet && (
+              <div className="flex min-w-0 items-center gap-1.5 rounded-lg border border-emerald-100 bg-emerald-50 px-2 py-1 text-xs text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-300">
+                <FileSpreadsheet className="h-3 w-3 shrink-0" />
+                <span className="shrink-0 font-medium">{t("ai.spreadsheetContext")}</span>
+                <span className="truncate">{activeContextSpreadsheet.title}</span>
+                <span className="shrink-0 rounded-full bg-white/70 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-600 dark:bg-emerald-900/70 dark:text-emerald-200">
+                  {t("ai.autoContext")}
+                </span>
+              </div>
+            )}
             </div>
             {taskStage !== "idle" && (
               <div className="mt-2 rounded-xl border border-surface-200 bg-surface-50 px-3 py-2 dark:border-surface-700 dark:bg-surface-800">
@@ -1970,6 +2107,9 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
                                   list_documents: t("ai.tool.listDocuments"),
                                   get_document_summary: t("ai.tool.getDocumentSummary"),
                                   search_documents: t("ai.tool.searchDocuments"),
+                                  list_spreadsheets: t("ai.tool.listSpreadsheets"),
+                                  get_spreadsheet_summary: t("ai.tool.getSpreadsheetSummary"),
+                                  search_spreadsheets: t("ai.tool.searchSpreadsheets"),
                                   list_recent_documents: t("ai.tool.listRecentDocuments"),
                                   list_favorite_documents: t("ai.tool.listFavoriteDocuments"),
                                   list_trashed_documents: t("ai.tool.listTrashedDocuments"),
@@ -2018,8 +2158,9 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
                                           const isSearch = tc.name === "search_web";
                                           const isCreate = tc.name === "create_document";
                                           const isUpdate = tc.name === "update_document";
+                                          const isSpreadsheet = tc.name.includes("spreadsheet");
                                           const toolLabel = toolLabels[tc.name] || tc.name;
-                                          const toolIcon = isSearch ? "🔍" : isCreate || isUpdate ? "📝" : "🔧";
+                                          const toolIcon = isSearch ? "🔍" : isSpreadsheet ? "📊" : isCreate || isUpdate ? "📝" : "🔧";
                                           const inProgress = tc.status === "calling";
                                           const done = tc.status === "done";
                                           const failed = tc.status === "error";
@@ -2098,10 +2239,12 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
                                 >
                                   {source.type === "brain" ? (
                                     <Sparkles className="h-3 w-3 shrink-0 text-amber-500" />
+                                  ) : source.type === "spreadsheet" ? (
+                                    <FileSpreadsheet className="h-3 w-3 shrink-0 text-emerald-500" />
                                   ) : (
                                     <FileText className="h-3 w-3 shrink-0 text-brand-500" />
                                   )}
-                                  <span className="truncate">{source.type === "brain" ? "#" : "@"}{source.title}</span>
+                                  <span className="truncate">{source.type === "brain" ? "#" : source.type === "spreadsheet" ? "" : "@"}{source.title}</span>
                                 </span>
                               ))}
                             </div>
@@ -2548,6 +2691,80 @@ export function AIChatWidget({ currentDocumentId }: AIChatWidgetProps) {
             </Button>
             <Button onClick={applyPendingUpdate} disabled={applyingUpdate}>
               {applyingUpdate ? t("ai.docActionRunning") : t("ai.diffApply")}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!pendingSpreadsheetPatch} onOpenChange={(open) => {
+        if (!open && !applyingSpreadsheetPatch) setPendingSpreadsheetPatch(null);
+      }}>
+        <DialogContent className="flex max-h-[82vh] max-w-[720px] flex-col overflow-hidden p-0">
+          <div className="shrink-0 border-b border-surface-200 px-6 py-5 dark:border-surface-700">
+            <div className="flex items-start justify-between gap-4 pr-8">
+              <div>
+                <DialogTitle className="text-base font-bold text-surface-900 dark:text-surface-100">
+                  {t("ai.spreadsheetPatchTitle")}
+                </DialogTitle>
+                <DialogDescription className="mt-1 text-xs leading-relaxed">
+                  {t("ai.spreadsheetPatchDesc")}
+                </DialogDescription>
+              </div>
+              {pendingSpreadsheetPatch && (
+                <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300">
+                  {pendingSpreadsheetPatch.operationCount} {t("ai.spreadsheetPatchOperations")}
+                </span>
+              )}
+            </div>
+            {pendingSpreadsheetPatch && (
+              <div className="mt-4 flex items-center gap-2 rounded-lg border border-surface-200 bg-surface-50 px-3 py-2 dark:border-surface-700 dark:bg-surface-800">
+                <FileSpreadsheet className="h-4 w-4 shrink-0 text-emerald-500" />
+                <span className="text-xs font-medium text-surface-500 dark:text-surface-400">{t("ai.spreadsheetPatchTarget")}</span>
+                <span className="truncate text-sm font-semibold text-surface-900 dark:text-surface-100">{pendingSpreadsheetPatch.title}</span>
+              </div>
+            )}
+            <div className="mt-3 grid grid-cols-5 gap-1.5">
+              {taskSteps.map((step, index) => {
+                const done = taskStage === "done" || (activeTaskIndex !== -1 && index < activeTaskIndex);
+                const active = step.stage === taskStage;
+                return (
+                  <div key={step.stage} className="min-w-0">
+                    <div
+                      className={cn(
+                        "mb-1 h-1.5 rounded-full transition-colors",
+                        done && "bg-brand-500",
+                        active && "bg-brand-300 dark:bg-brand-500",
+                        !done && !active && "bg-surface-200 dark:bg-surface-700"
+                      )}
+                    />
+                    <div className="truncate text-center text-[10px] text-surface-400">{step.label}</div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {pendingSpreadsheetPatch && (
+            <Scrollbar className="min-h-[220px] flex-1">
+              <div className="space-y-2 p-4">
+                {pendingSpreadsheetPatch.summary.split("\n").filter(Boolean).map((line, index) => (
+                  <div
+                    key={`${line}-${index}`}
+                    className="rounded-lg border border-emerald-100 bg-emerald-50/60 px-3 py-2 text-sm font-medium text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/35 dark:text-emerald-100"
+                  >
+                    {line}
+                  </div>
+                ))}
+              </div>
+            </Scrollbar>
+          )}
+
+          <div className="shrink-0 flex items-center justify-end gap-2 bg-white px-6 py-4 dark:bg-surface-900">
+            <Button variant="outline" onClick={() => setPendingSpreadsheetPatch(null)} disabled={applyingSpreadsheetPatch}>
+              {t("ai.diffCancel")}
+            </Button>
+            <Button onClick={applyPendingSpreadsheetPatch} disabled={applyingSpreadsheetPatch}>
+              {applyingSpreadsheetPatch ? t("ai.docActionRunning") : t("ai.spreadsheetPatchApply")}
             </Button>
           </div>
         </DialogContent>

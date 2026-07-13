@@ -388,9 +388,9 @@ export const api = {
     messages: { role: string; content: string }[];
     personality: string;
     memoryContext: string;
-    references?: { type: "document" | "brain"; id: string; title: string }[];
+    references?: { type: "document" | "brain" | "spreadsheet"; id: string; title: string }[];
   }) =>
-    request<{ reply: string; action: { type: string; title?: string; docId?: string; content?: string } | null }>(
+    request<{ reply: string; action: { type: string; title?: string; docId?: string; spreadsheetId?: string; content?: string; operations?: unknown[] } | null }>(
       "/ai/chat", { method: "POST", body: JSON.stringify(data) }
     ),
 

@@ -76,4 +76,44 @@ describe("ai assistant branding", () => {
       content: "# 修改稿",
     });
   });
+
+  it("teaches the model to inspect and patch spreadsheets through confirmed actions", () => {
+    const prompt = buildSystemPrompt("normal", "");
+
+    assert.match(prompt, /当前表格/);
+    assert.match(prompt, /spreadsheet_patch/);
+    assert.match(prompt, /set_cell/);
+    assert.match(prompt, /append_row/);
+    assert.match(prompt, /用户确认/);
+  });
+
+  it("extracts spreadsheet patch actions from structured replies", () => {
+    const rawReply = [
+      "<<ACTION_JSON>>",
+      JSON.stringify({
+        reply: "",
+        action: {
+          type: "spreadsheet_patch",
+          spreadsheetId: "sheet-book-1",
+          operations: [
+            { type: "set_cell", sheetName: "角色", row: 1, col: 2, value: 90 },
+            { type: "append_row", sheetName: "角色", values: ["绫清竹", "造化境", 72] },
+          ],
+        },
+      }),
+      "<<ACTION_JSON_END>>",
+    ].join("");
+
+    const parsed = resolveAssistantActionReply(rawReply);
+
+    assert.equal(parsed.reply, "已生成表格修改预览，请确认应用。");
+    assert.deepEqual(parsed.action, {
+      type: "spreadsheet_patch",
+      spreadsheetId: "sheet-book-1",
+      operations: [
+        { type: "set_cell", sheetName: "角色", row: 1, col: 2, value: 90 },
+        { type: "append_row", sheetName: "角色", values: ["绫清竹", "造化境", 72] },
+      ],
+    });
+  });
 });

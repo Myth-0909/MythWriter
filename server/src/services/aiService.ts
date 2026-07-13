@@ -159,8 +159,10 @@ const BASE_SYSTEM_PROMPT = `# 核心身份
 
 ## 上下文记忆
 - 用户打开的当前文档会自动作为上下文提供给你，格式为 [引用文档：标题] [doc:UUID]
+- 用户打开的当前表格会自动作为上下文提供给你，格式为 [引用表格：标题] [sheet:UUID]，表格样例中行号、列号均从 0 开始用于 action 操作
 - 多轮对话无需用户重复粘贴原文，所有操作基于上一轮最终文档执行
 - 修改文档时，必须使用 [doc:UUID] 中的 UUID 作为 docId
+- 修改表格时，必须使用 [sheet:UUID] 中的 UUID 作为 spreadsheetId
 
 ## 操作边界
 - 仅对用户指定区域操作，严禁擅自增删、篡改原文核心观点、主旨、关键信息
@@ -211,10 +213,28 @@ const BASE_SYSTEM_PROMPT = `# 核心身份
 }
 <<ACTION_JSON_END>>
 
+## 修改表格
+当用户要求修改当前表格、补充表格行列、调整单元格数据时，必须通过以下 ACTION_JSON 交给客户端生成表格修改预览。用户确认后才会真正写入表格：
+<<ACTION_JSON>>
+{
+  "reply": "已生成表格修改预览，请确认应用。",
+  "action": {
+    "type": "spreadsheet_patch",
+    "spreadsheetId": "从 [sheet:xxxxx] 中获取的 UUID，不要用标题",
+    "operations": [
+      { "type": "set_cell", "sheetName": "工作表名称", "row": 0, "col": 0, "value": "单元格值" },
+      { "type": "append_row", "sheetName": "工作表名称", "values": ["第一列", "第二列"] },
+      { "type": "rename_sheet", "sheetName": "旧工作表名称", "name": "新工作表名称" }
+    ]
+  }
+}
+<<ACTION_JSON_END>>
+
 ## 重要约束
 - 文档创建和修改只能通过 ACTION_JSON 的 action 交给客户端执行，不要伪造 create_document 或 update_document 工具调用
+- 表格修改只能通过 ACTION_JSON 的 spreadsheet_patch 交给客户端预览，不要伪造写入工具调用
 - 输出 ACTION_JSON 时，完整内容只放在 action.content 中，不要在 reply 文本中重复输出内容
-- "reply" 只能是一句状态提示，新建文档用 "正在为您创建文档「标题」~"，修改文档用 "已生成修改预览，请确认应用。"
+- "reply" 只能是一句状态提示，新建文档用 "正在为您创建文档「标题」~"，修改文档用 "已生成修改预览，请确认应用。"，修改表格用 "已生成表格修改预览，请确认应用。"
 - 绝对禁止在 reply 中输出任何文章内容、改动说明、操作摘要、段落对比
 - 禁止使用 "以下是"、"改动说明"、"具体改动如下"、"本次修改"、"新增了"、"删除了" 等引导词
 - 完整内容只放在 "action.content" 中，reply 只做一句话通知
@@ -341,6 +361,8 @@ function extractStructuredAction(reply: string): { reply: string; action: any } 
     if (cleanReply.length > MAX_REPLY_CHARS || !cleanReply) {
       if (action?.type === "update_document") {
         cleanReply = "已生成修改预览，请确认应用。";
+      } else if (action?.type === "spreadsheet_patch") {
+        cleanReply = "已生成表格修改预览，请确认应用。";
       } else if (action?.type === "create_document") {
         const title = typeof action.title === "string" && action.title.trim() ? action.title.trim() : "文档";
         cleanReply = `正在为您创建文档「${title}」~`;
@@ -368,6 +390,15 @@ function extractStructuredAction(reply: string): { reply: string; action: any } 
       return {
         reply: cleanReply || `正在为您创建文档「${title}」~`,
         action: content ? { type: "create_document", title, content } : null,
+      };
+    }
+
+    if (action.type === "spreadsheet_patch") {
+      const spreadsheetId = typeof action.spreadsheetId === "string" ? action.spreadsheetId.trim() : "";
+      const operations = Array.isArray(action.operations) ? action.operations.slice(0, 50) : [];
+      return {
+        reply: cleanReply || "已生成表格修改预览，请确认应用。",
+        action: operations.length > 0 ? { type: "spreadsheet_patch", spreadsheetId, operations } : null,
       };
     }
 

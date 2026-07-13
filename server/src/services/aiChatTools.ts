@@ -44,6 +44,17 @@ export function buildChatTools(): ChatToolDefinition[] {
       query: { type: "string", description: "Keyword query" },
       limit: { type: "number", description: "Number of matches, default 5, max 10" },
     }, ["query"]),
+    tool("list_spreadsheets", "List active built-in spreadsheets with title, sheet count, updated date, and compact preview. Use for spreadsheet inventory questions.", {
+      limit: { type: "number", description: "Number of spreadsheets, default 10, max 20" },
+    }),
+    tool("get_spreadsheet_summary", "Get a compact summary of one built-in spreadsheet by id or title, including sheet names, used cells, and sample rows.", {
+      id: { type: "string", description: "Spreadsheet id when known" },
+      title: { type: "string", description: "Spreadsheet title or partial title when id is unknown" },
+    }),
+    tool("search_spreadsheets", "Keyword-search active built-in spreadsheets by title, preview, or visible cell values. Use for 'find spreadsheet rows/cells about X' questions.", {
+      query: { type: "string", description: "Keyword query" },
+      limit: { type: "number", description: "Number of matches, default 5, max 10" },
+    }, ["query"]),
     tool("list_recent_documents", "List the user's most recently updated active documents. Use for recent edits or recent writing questions.", {
       limit: { type: "number", description: "Number of documents, default 5, max 10" },
     }),

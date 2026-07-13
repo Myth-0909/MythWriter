@@ -63,24 +63,28 @@ export function SpreadsheetEditorPage({ spreadsheetId, onBack }: SpreadsheetEdit
     });
   };
 
+  const applyLoadedSpreadsheet = useCallback((nextSpreadsheet: Spreadsheet) => {
+    const nextWorkbook = validateSpreadsheetWorkbook(nextSpreadsheet.data)
+      ? nextSpreadsheet.data
+      : createDefaultWorkbook(t("sheets.defaultSheetName"));
+    setSpreadsheet(nextSpreadsheet);
+    setWorkbook(nextWorkbook);
+    setTitle(nextSpreadsheet.title);
+    setDirty(false);
+    setStatus("saved");
+  }, [t]);
+
   const loadSpreadsheet = useCallback(async () => {
     setLoading(true);
     try {
       const res = await api.getSpreadsheet(spreadsheetId);
-      const nextWorkbook = validateSpreadsheetWorkbook(res.spreadsheet.data)
-        ? res.spreadsheet.data
-        : createDefaultWorkbook(t("sheets.defaultSheetName"));
-      setSpreadsheet(res.spreadsheet);
-      setWorkbook(nextWorkbook);
-      setTitle(res.spreadsheet.title);
-      setDirty(false);
-      setStatus("saved");
+      applyLoadedSpreadsheet(res.spreadsheet);
     } catch (error: any) {
       toast(error.message || t("sheets.loadFailed"), "error");
     } finally {
       setLoading(false);
     }
-  }, [spreadsheetId, t, toast]);
+  }, [applyLoadedSpreadsheet, spreadsheetId, t, toast]);
 
   const saveWorkbook = useCallback(async () => {
     if (!spreadsheet || !workbook) return;
@@ -106,6 +110,20 @@ export function SpreadsheetEditorPage({ spreadsheetId, onBack }: SpreadsheetEdit
   useEffect(() => {
     loadSpreadsheet();
   }, [loadSpreadsheet]);
+
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<{ id?: string; spreadsheet?: Spreadsheet }>).detail;
+      if (detail?.id !== spreadsheetId) return;
+      if (detail.spreadsheet) {
+        applyLoadedSpreadsheet(detail.spreadsheet);
+        return;
+      }
+      void loadSpreadsheet();
+    };
+    window.addEventListener("spreadsheet:updated", handler);
+    return () => window.removeEventListener("spreadsheet:updated", handler);
+  }, [applyLoadedSpreadsheet, loadSpreadsheet, spreadsheetId]);
 
   useEffect(() => {
     if (!dirty || !spreadsheet || !workbook) return;

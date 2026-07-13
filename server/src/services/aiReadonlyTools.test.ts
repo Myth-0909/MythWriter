@@ -78,6 +78,39 @@ function createMockDeps() {
   const categories = [
     { id: "cat-1", name: "角色", color: "#fff", sortOrder: 0, userId: "u1", createdAt: now, updatedAt: now },
   ];
+  const spreadsheets = [
+    {
+      id: "sheet-book-1",
+      title: "角色成长表",
+      data: {
+        version: 1,
+        activeSheetId: "sheet-1",
+        sheets: [
+          {
+            id: "sheet-1",
+            name: "角色",
+            data: [
+              ["角色", "境界", "进度"],
+              ["林动", "元丹境", 88],
+            ],
+            cellStyles: [],
+            merges: [],
+            fixedRowsTop: 1,
+            fixedColumnsLeft: 0,
+            rowHeights: [],
+            colWidths: [],
+          },
+        ],
+      },
+      preview: "角色 境界 进度 林动 元丹境 88",
+      isDeleted: false,
+      deletedAt: null,
+      createdAt: new Date("2026-07-08T01:30:00.000Z"),
+      updatedAt: new Date("2026-07-08T05:30:00.000Z"),
+      userId: "u1",
+      groupId: null,
+    },
+  ];
 
   const matchesWhere = (item: any, where: any): boolean => {
     if (!where) return true;
@@ -110,6 +143,7 @@ function createMockDeps() {
       documentVersion: { findMany: findMany(versions) },
       documentGroup: { findMany: async () => [{ ...categories[0], documents: [documents[0]], name: "正文" }], count: async () => 1 },
       workRecord: { findMany: findMany(workRecords), count: count(workRecords) },
+      spreadsheet: { findMany: findMany(spreadsheets), findFirst: async (args: any) => spreadsheets.find((item) => matchesWhere(item, args.where)) || null },
       aIBrainKnowledge: { findMany: findMany(knowledges), count: count(knowledges) },
       aIBrainCategory: { findMany: findMany(categories) },
     },
@@ -130,6 +164,9 @@ describe("read-only AI chat tools", () => {
       "list_trashed_documents",
       "get_document_summary",
       "search_documents",
+      "list_spreadsheets",
+      "get_spreadsheet_summary",
+      "search_spreadsheets",
       "list_document_groups",
       "list_document_versions",
       "list_brain_knowledge",
@@ -146,7 +183,7 @@ describe("read-only AI chat tools", () => {
 
     for (const name of toolNames) {
       const result = await executeReadonlyChatTool(
-        { name, arguments: JSON.stringify({ query: "林动", title: "第一章", period: "daily", targetDate: "2026-07-08" }) },
+        { name, arguments: JSON.stringify({ query: "林动", title: name.includes("spreadsheet") ? "角色成长表" : "第一章", period: "daily", targetDate: "2026-07-08" }) },
         { userId: "u1", userLang: "zh", deps }
       );
       assert.equal(result.status, "done", name);
@@ -170,5 +207,7 @@ describe("read-only AI chat tools", () => {
     assert.deepEqual(inferReadonlyToolCalls("脑库里有没有林动？").map((tool) => tool.name), ["search_brain_knowledge"]);
     assert.deepEqual(inferReadonlyToolCalls("这个文档有哪些历史版本？").map((tool) => tool.name), ["list_document_versions"]);
     assert.deepEqual(inferReadonlyToolCalls("这周每天写了多少字？").map((tool) => tool.name), ["get_writing_range_stats"]);
+    assert.deepEqual(inferReadonlyToolCalls("帮我看看有哪些表格？").map((tool) => tool.name), ["list_spreadsheets"]);
+    assert.deepEqual(inferReadonlyToolCalls("表格里有没有林动？").map((tool) => tool.name), ["search_spreadsheets"]);
   });
 });

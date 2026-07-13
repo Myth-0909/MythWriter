@@ -4,6 +4,7 @@ import { ragService } from "./ragService";
 import { formatLocalDateKey, getLocalDayRange } from "./writingStats";
 import { normalizeTargetDate, type WorkRecordPeriod } from "./workRecordSummaryService";
 import type { AssistantToolCall, AssistantToolResult } from "./aiToolConversation";
+import { buildSpreadsheetPreview, normalizeSpreadsheetWorkbook, type SpreadsheetSheet, type SpreadsheetWorkbook } from "./spreadsheetWorkbook";
 
 type ReadonlyToolDeps = {
   prisma: any;
@@ -31,6 +32,9 @@ const READONLY_TOOL_NAMES = new Set([
   "list_documents",
   "get_document_summary",
   "search_documents",
+  "list_spreadsheets",
+  "get_spreadsheet_summary",
+  "search_spreadsheets",
   "list_recent_documents",
   "list_favorite_documents",
   "list_trashed_documents",
@@ -112,6 +116,77 @@ function compactDocLine(doc: any, index: number, lang: string): string {
   return t(lang, `${index + 1}. 《${doc.title}》— ${meta}`, `${index + 1}. "${doc.title}" - ${meta}`);
 }
 
+function cellText(value: unknown): string {
+  if (value === null || value === undefined || value === "") return "";
+  return String(value);
+}
+
+function spreadsheetCellCount(workbook: SpreadsheetWorkbook): number {
+  return workbook.sheets.reduce((total, sheet) => (
+    total + sheet.data.reduce((rowTotal, row) => rowTotal + row.filter((cell) => cellText(cell)).length, 0)
+  ), 0);
+}
+
+function sheetUsedSize(sheet: SpreadsheetSheet): { rows: number; cols: number } {
+  let rows = 0;
+  let cols = 0;
+  sheet.data.forEach((row, rowIndex) => {
+    row.forEach((cell, colIndex) => {
+      if (!cellText(cell)) return;
+      rows = Math.max(rows, rowIndex + 1);
+      cols = Math.max(cols, colIndex + 1);
+    });
+  });
+  return { rows, cols };
+}
+
+function compactSpreadsheetLine(spreadsheet: any, index: number, lang: string): string {
+  const workbook = normalizeSpreadsheetWorkbook(spreadsheet.data);
+  const preview = excerpt(spreadsheet.preview || buildSpreadsheetPreview(workbook), 90);
+  const cellCount = spreadsheetCellCount(workbook);
+  const meta = [
+    t(lang, `${workbook.sheets.length} 个工作表`, `${workbook.sheets.length} sheet(s)`),
+    t(lang, `${cellCount} 个非空单元格`, `${cellCount} non-empty cell(s)`),
+    t(lang, `更新 ${dateKey(spreadsheet.updatedAt)}`, `updated ${dateKey(spreadsheet.updatedAt)}`),
+    preview ? t(lang, `预览：${preview}`, `preview: ${preview}`) : "",
+  ].filter(Boolean).join(t(lang, "，", ", "));
+  return t(lang, `${index + 1}. 《${spreadsheet.title}》— ${meta}`, `${index + 1}. "${spreadsheet.title}" - ${meta}`);
+}
+
+function formatSpreadsheetSample(workbook: SpreadsheetWorkbook, lang: string): string {
+  const sections: string[] = [];
+  for (const sheet of workbook.sheets.slice(0, 4)) {
+    const used = sheetUsedSize(sheet);
+    const rows = sheet.data
+      .map((row, index) => {
+        const values = row.slice(0, 8).map(cellText);
+        if (!values.some(Boolean)) return "";
+        return `${index + 1}: ${values.join(" | ")}`;
+      })
+      .filter(Boolean)
+      .slice(0, 8);
+    sections.push(t(
+      lang,
+      `工作表「${sheet.name}」：${used.rows} 行 x ${used.cols} 列，样例：\n${rows.join("\n") || "暂无非空单元格"}`,
+      `Sheet "${sheet.name}": ${used.rows} rows x ${used.cols} cols, sample:\n${rows.join("\n") || "No non-empty cells."}`
+    ));
+  }
+  return sections.join("\n\n");
+}
+
+function spreadsheetSearchText(spreadsheet: any): string {
+  const workbook = normalizeSpreadsheetWorkbook(spreadsheet.data);
+  return [
+    spreadsheet.title,
+    spreadsheet.preview,
+    buildSpreadsheetPreview(workbook),
+    ...workbook.sheets.flatMap((sheet) => [
+      sheet.name,
+      ...sheet.data.flatMap((row) => row.map(cellText)),
+    ]),
+  ].filter(Boolean).join(" ").toLowerCase();
+}
+
 async function findDocument(deps: ReadonlyToolDeps, userId: string, args: Record<string, any>) {
   const id = String(args.id || "").trim();
   const title = String(args.title || "").trim();
@@ -120,6 +195,27 @@ async function findDocument(deps: ReadonlyToolDeps, userId: string, args: Record
   }
   if (title) {
     return deps.prisma.document.findFirst({
+      where: {
+        userId,
+        isDeleted: false,
+        OR: [
+          { title },
+          { title: { contains: title } },
+        ],
+      },
+    });
+  }
+  return null;
+}
+
+async function findSpreadsheet(deps: ReadonlyToolDeps, userId: string, args: Record<string, any>) {
+  const id = String(args.id || "").trim();
+  const title = String(args.title || "").trim();
+  if (id) {
+    return deps.prisma.spreadsheet.findFirst({ where: { id, userId, isDeleted: false } });
+  }
+  if (title) {
+    return deps.prisma.spreadsheet.findFirst({
       where: {
         userId,
         isDeleted: false,
@@ -268,6 +364,21 @@ export async function executeReadonlyChatTool(
   }
 
   if (name === "list_documents") return listDocumentsByWhere(deps, userId, name, { isDeleted: false }, args, "用户文档列表", "Document list", lang);
+  if (name === "list_spreadsheets") {
+    const limit = clamp(args.limit, 10, 20);
+    const spreadsheets = await deps.prisma.spreadsheet.findMany({
+      where: { userId, isDeleted: false },
+      orderBy: { updatedAt: "desc" },
+      take: limit,
+    });
+    const lines = spreadsheets.map((spreadsheet: any, index: number) => compactSpreadsheetLine(spreadsheet, index, lang));
+    return makeResult(
+      name,
+      "done",
+      t(lang, `用户表格列表（${spreadsheets.length} 个）：\n${lines.join("\n") || "暂无表格"}`, `Spreadsheet list (${spreadsheets.length} spreadsheets):\n${lines.join("\n") || "No spreadsheets."}`),
+      `${spreadsheets.length} spreadsheets`
+    );
+  }
   if (name === "list_recent_documents") return listDocumentsByWhere(deps, userId, name, { isDeleted: false }, args, "用户最近文档", "Recent documents", lang);
   if (name === "list_favorite_documents") return listDocumentsByWhere(deps, userId, name, { isDeleted: false, isFavorite: true }, args, "用户收藏文档", "Favorite documents", lang);
   if (name === "list_trashed_documents") return listDocumentsByWhere(deps, userId, name, { isDeleted: true }, args, "用户回收站文档", "Trashed documents", lang);
@@ -313,6 +424,44 @@ export async function executeReadonlyChatTool(
       "done",
       t(lang, `文档搜索「${query}」命中 ${docs.length} 篇：\n${lines.join("\n") || "暂无匹配文档"}`, `Document search for "${query}" found ${docs.length} matches:\n${lines.join("\n") || "No matching documents."}`),
       `${docs.length} docs`
+    );
+  }
+
+  if (name === "get_spreadsheet_summary") {
+    const spreadsheet = await findSpreadsheet(deps, userId, args);
+    if (!spreadsheet) return makeResult(name, "done", t(lang, "未找到匹配表格。", "No matching spreadsheet found."), "0 spreadsheets");
+    const workbook = normalizeSpreadsheetWorkbook(spreadsheet.data);
+    const sample = formatSpreadsheetSample(workbook, lang);
+    return makeResult(
+      name,
+      "done",
+      t(
+        lang,
+        `表格摘要：\n- 标题：《${spreadsheet.title}》\n- 工作表：${workbook.sheets.map((sheet) => sheet.name).join("、")}\n- 非空单元格：${spreadsheetCellCount(workbook)} 个\n- 创建：${dateKey(spreadsheet.createdAt)}\n- 更新：${dateKey(spreadsheet.updatedAt)}\n\n${sample}`,
+        `Spreadsheet summary:\n- Title: "${spreadsheet.title}"\n- Sheets: ${workbook.sheets.map((sheet) => sheet.name).join(", ")}\n- Non-empty cells: ${spreadsheetCellCount(workbook)}\n- Created: ${dateKey(spreadsheet.createdAt)}\n- Updated: ${dateKey(spreadsheet.updatedAt)}\n\n${sample}`
+      ),
+      spreadsheet.title
+    );
+  }
+
+  if (name === "search_spreadsheets") {
+    const query = String(args.query || "").trim();
+    const limit = clamp(args.limit, 5, 10);
+    const candidates = await deps.prisma.spreadsheet.findMany({
+      where: { userId, isDeleted: false },
+      orderBy: { updatedAt: "desc" },
+      take: 50,
+    });
+    const needle = query.toLowerCase();
+    const spreadsheets = candidates
+      .filter((spreadsheet: any) => spreadsheetSearchText(spreadsheet).includes(needle))
+      .slice(0, limit);
+    const lines = spreadsheets.map((spreadsheet: any, index: number) => compactSpreadsheetLine(spreadsheet, index, lang));
+    return makeResult(
+      name,
+      "done",
+      t(lang, `表格搜索「${query}」命中 ${spreadsheets.length} 个：\n${lines.join("\n") || "暂无匹配表格"}`, `Spreadsheet search for "${query}" found ${spreadsheets.length} matches:\n${lines.join("\n") || "No matching spreadsheets."}`),
+      `${spreadsheets.length} spreadsheets`
     );
   }
 
@@ -472,6 +621,11 @@ export function inferReadonlyToolCalls(content: string): AssistantToolCall[] {
     return [tool("get_today_writing")];
   }
   if (/收藏|favorite|starred/.test(text) && /文档|文章|doc|article/.test(text)) return [tool("list_favorite_documents")];
+  if (/表格|工作表|excel|spreadsheet|sheet/.test(text) && /有没有|搜索|查找|找|search|find/.test(text)) {
+    const query = raw.match(/有没有(.+?)[？?。]?$/)?.[1]?.trim() || raw.replace(/.*?(搜索|查找|找)/, "").trim();
+    return [tool("search_spreadsheets", { query: query || raw })];
+  }
+  if (/表格|工作表|excel|spreadsheet|sheet/.test(text)) return [tool("list_spreadsheets")];
   if (/回收站|废纸篓|trash|deleted/.test(text)) return [tool("list_trashed_documents")];
   if (/历史版本|版本记录|version/.test(text)) return [tool("list_document_versions")];
   if (/脑库|设定|角色|世界观|brain|knowledge|setting/.test(text) && /有没有|搜索|查找|找|search|find/.test(text)) {

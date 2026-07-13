@@ -13,6 +13,7 @@ import type { Personality } from "../services/aiService";
 import { selectReferencedBrainIds, type ChatReference } from "../services/aiReferences";
 import { formatBrainKnowledgeContext, RAG_SCORE_THRESHOLD, ragService } from "../services/ragService";
 import { createAgentWriteService, markdownToBasicHtml } from "../services/agentService";
+import { normalizeSpreadsheetWorkbook, type SpreadsheetWorkbook, type SpreadsheetSheet } from "../services/spreadsheetWorkbook";
 import { buildChatTools } from "../services/aiChatTools";
 import { createDocument } from "../services/documentService";
 import { createLinkedTimeoutSignal } from "../lib/abortSignal";
@@ -38,6 +39,9 @@ const router = Router();
 const MAX_REFERENCE_DOCS = 4;
 const MAX_REFERENCE_CHARS = 6000;
 const MAX_TOTAL_REFERENCE_CHARS = 16000;
+const MAX_REFERENCE_SPREADSHEETS = 3;
+const MAX_SPREADSHEET_REFERENCE_ROWS = 10;
+const MAX_SPREADSHEET_REFERENCE_COLS = 8;
 
 async function webSearch(query: string, retries = 2): Promise<string> {
   // Extract snippets from DuckDuckGo HTML response
@@ -113,6 +117,14 @@ type ReferenceDocument = {
   updatedAt: Date;
 };
 
+type ReferenceSpreadsheet = {
+  id: string;
+  title: string;
+  data: unknown;
+  preview?: string | null;
+  updatedAt: Date;
+};
+
 function buildChatCompletionsUrl(baseUrl: string): string {
   const trimmed = baseUrl.trim().replace(/\/+$/, "");
   if (trimmed.endsWith("/chat/completions")) return trimmed;
@@ -134,6 +146,48 @@ function stripHtml(value: string): string {
     .replace(/&#39;/g, "'")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
+}
+
+function spreadsheetCellText(value: unknown): string {
+  if (value === null || value === undefined || value === "") return "";
+  return String(value);
+}
+
+function spreadsheetUsedSize(sheet: SpreadsheetSheet): { rows: number; cols: number } {
+  let rows = 0;
+  let cols = 0;
+  sheet.data.forEach((row, rowIndex) => {
+    row.forEach((cell, colIndex) => {
+      if (!spreadsheetCellText(cell)) return;
+      rows = Math.max(rows, rowIndex + 1);
+      cols = Math.max(cols, colIndex + 1);
+    });
+  });
+  return { rows, cols };
+}
+
+function formatSpreadsheetReference(workbook: SpreadsheetWorkbook): string {
+  return workbook.sheets.slice(0, 4).map((sheet) => {
+    const used = spreadsheetUsedSize(sheet);
+    const rows = sheet.data
+      .map((row, rowIndex) => {
+        const cells = row
+          .slice(0, MAX_SPREADSHEET_REFERENCE_COLS)
+          .map((cell, colIndex) => {
+            const text = spreadsheetCellText(cell);
+            return text ? `c${colIndex}=${text}` : "";
+          })
+          .filter(Boolean);
+        return cells.length > 0 ? `r${rowIndex}: ${cells.join(" | ")}` : "";
+      })
+      .filter(Boolean)
+      .slice(0, MAX_SPREADSHEET_REFERENCE_ROWS);
+    return [
+      `工作表：${sheet.name}`,
+      `已用范围：0-${Math.max(0, used.rows - 1)} 行，0-${Math.max(0, used.cols - 1)} 列（action 的 row/col 使用 0-based 索引）`,
+      rows.join("\n") || "(暂无非空单元格)",
+    ].join("\n");
+  }).join("\n\n");
 }
 
 function extractJsonObject(value: string): any | null {
@@ -234,20 +288,37 @@ async function buildReferenceContext(userId: string, references: ChatReference[]
       .filter((ref) => ref?.type === "document" && typeof ref.id === "string")
       .map((ref) => ref.id as string)
   )).slice(0, MAX_REFERENCE_DOCS);
-  if (ids.length === 0) return "";
+  const spreadsheetIds = Array.from(new Set(
+    references
+      .filter((ref) => ref?.type === "spreadsheet" && typeof ref.id === "string")
+      .map((ref) => ref.id as string)
+  )).slice(0, MAX_REFERENCE_SPREADSHEETS);
+  if (ids.length === 0 && spreadsheetIds.length === 0) return "";
 
-  const docs: ReferenceDocument[] = await prisma.document.findMany({
-    where: { id: { in: ids }, userId, isDeleted: false },
-    select: { id: true, title: true, content: true, updatedAt: true },
-  });
-  if (docs.length === 0) return "";
+  const [docs, spreadsheets]: [ReferenceDocument[], ReferenceSpreadsheet[]] = await Promise.all([
+    ids.length > 0
+      ? prisma.document.findMany({
+          where: { id: { in: ids }, userId, isDeleted: false },
+          select: { id: true, title: true, content: true, updatedAt: true },
+        })
+      : Promise.resolve([]),
+    spreadsheetIds.length > 0
+      ? prisma.spreadsheet.findMany({
+          where: { id: { in: spreadsheetIds }, userId, isDeleted: false },
+          select: { id: true, title: true, data: true, preview: true, updatedAt: true },
+        })
+      : Promise.resolve([]),
+  ]);
 
   const orderedDocs = ids
     .map((id) => docs.find((doc) => doc.id === id))
     .filter((doc): doc is ReferenceDocument => Boolean(doc));
+  const orderedSpreadsheets = spreadsheetIds
+    .map((id) => spreadsheets.find((spreadsheet) => spreadsheet.id === id))
+    .filter((spreadsheet): spreadsheet is ReferenceSpreadsheet => Boolean(spreadsheet));
 
   let remainingChars = MAX_TOTAL_REFERENCE_CHARS;
-  return orderedDocs.map((doc) => {
+  const documentContext = orderedDocs.map((doc) => {
     const availableChars = Math.max(0, Math.min(MAX_REFERENCE_CHARS, remainingChars));
     const rawContent = stripHtml(doc.content);
     const content = rawContent.slice(0, availableChars);
@@ -259,7 +330,18 @@ async function buildReferenceContext(userId: string, references: ChatReference[]
       "内容：",
       `${content || "(空文档)"}${truncatedNote}`,
     ].join("\n");
-  }).join("\n\n---\n\n");
+  });
+  const spreadsheetContext = orderedSpreadsheets.map((spreadsheet) => {
+    const workbook = normalizeSpreadsheetWorkbook(spreadsheet.data);
+    return [
+      `[引用表格：${spreadsheet.title}] [sheet:${spreadsheet.id}]`,
+      `更新时间：${spreadsheet.updatedAt.toISOString()}`,
+      spreadsheet.preview ? `预览：${spreadsheet.preview}` : "",
+      "内容样例：",
+      formatSpreadsheetReference(workbook),
+    ].filter(Boolean).join("\n");
+  });
+  return [...documentContext, ...spreadsheetContext].join("\n\n---\n\n");
 }
 
 async function buildBrainKnowledgeContext(userId: string, text: string, references?: ChatReference[]): Promise<string> {
