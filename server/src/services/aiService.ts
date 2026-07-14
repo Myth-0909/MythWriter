@@ -225,7 +225,7 @@ const BASE_SYSTEM_PROMPT = `# 核心身份
       { "type": "set_cell", "sheetName": "工作表名称", "row": 0, "col": 0, "value": "单元格值" },
       { "type": "set_range", "sheetName": "工作表名称", "startRow": 0, "startCol": 0, "values": [["A1", "B1"], ["A2", "B2"]] },
       { "type": "append_row", "sheetName": "工作表名称", "values": ["第一列", "第二列"] },
-      { "type": "set_style", "sheetName": "工作表名称", "startRow": 0, "startCol": 0, "endRow": 0, "endCol": 2, "style": { "bold": true, "fillColor": "green", "horizontalAlign": "center", "numberFormat": "currency", "fontSize": "normal", "border": true } },
+      { "type": "set_style", "sheetName": "工作表名称", "startRow": 0, "startCol": 0, "endRow": 0, "endCol": 2, "style": { "bold": true, "fillColor": "#d1fae5", "textColor": "#2563eb", "horizontalAlign": "center", "numberFormat": "currency", "fontSize": "normal", "border": true } },
       { "type": "merge_cells", "sheetName": "工作表名称", "row": 0, "col": 0, "rowspan": 1, "colspan": 3 },
       { "type": "unmerge_cells", "sheetName": "工作表名称", "row": 0, "col": 0 },
       { "type": "freeze_panes", "sheetName": "工作表名称", "fixedRowsTop": 1, "fixedColumnsLeft": 1 },
@@ -242,7 +242,7 @@ const BASE_SYSTEM_PROMPT = `# 核心身份
   }
 }
 <<ACTION_JSON_END>>
-支持的表格 operations 仅限：set_cell、set_range、append_row、set_style、merge_cells、unmerge_cells、freeze_panes、sort_range、insert_rows、delete_rows、insert_columns、delete_columns、clear_range、create_sheet、rename_sheet、delete_sheet。行列索引均为 0-based。set_cell 可写入以 = 开头的公式字符串；set_style 支持 bold、italic、underline、wrap、textColor、fillColor、horizontalAlign、verticalAlign、numberFormat、fontSize、border；删除工作表、删除行列、清空区域必须走这个预览确认流程，不要直接声称已经删除。
+支持的表格 operations 仅限：set_cell、set_range、append_row、set_style、merge_cells、unmerge_cells、freeze_panes、sort_range、insert_rows、delete_rows、insert_columns、delete_columns、clear_range、create_sheet、rename_sheet、delete_sheet。行列索引均为 0-based。set_cell 可写入以 = 开头的公式字符串；set_style 支持 bold、italic、underline、wrap、textColor、fillColor、horizontalAlign、verticalAlign、numberFormat、fontSize、border；textColor 和 fillColor 可使用安全十六进制色值（如 #2563eb）或 default；删除工作表、删除行列、清空区域必须走这个预览确认流程，不要直接声称已经删除。
 
 ## 重要约束
 - 文档创建和修改只能通过 ACTION_JSON 的 action 交给客户端执行，不要伪造 create_document 或 update_document 工具调用

@@ -146,6 +146,29 @@ describe("spreadsheet toolbar feature coverage", () => {
     assert.match(i18nSource, /sheets\.clearFormat/);
   });
 
+  it("uses a custom color palette and keeps toolbar actions anchored to the selected cells", () => {
+    const toolbarSource = readFileSync(new URL("../src/components/spreadsheet/SpreadsheetToolbar.tsx", import.meta.url), "utf8");
+    const gridSource = readFileSync(new URL("../src/components/spreadsheet/SpreadsheetGrid.tsx", import.meta.url), "utf8");
+    const typesSource = readFileSync(new URL("../src/types.ts", import.meta.url), "utf8");
+    const colorsSource = readFileSync(new URL("../src/lib/spreadsheetColors.ts", import.meta.url), "utf8");
+    const i18nSource = readFileSync(new URL("../src/components/I18nProvider.tsx", import.meta.url), "utf8");
+
+    assert.match(toolbarSource, /Popover/);
+    assert.match(toolbarSource, /ColorPaletteButton/);
+    assert.match(toolbarSource, /CUSTOM_COLOR_PALETTE/);
+    assert.doesNotMatch(toolbarSource, /const colorSwatches/);
+    assert.match(toolbarSource, /onMouseDown=\{preserveSpreadsheetSelection\}/);
+    assert.match(toolbarSource, /sheets\.applyColor/);
+    assert.match(toolbarSource, /ToolbarIconButton label=\{t\("sheets\.fontSizeSmall"\)\}/);
+    assert.match(toolbarSource, /ToolbarIconButton label=\{t\("sheets\.fontSizeLarge"\)\}/);
+    assert.match(gridSource, /restoreStoredSelection/);
+    assert.match(gridSource, /resolveSpreadsheetColor/);
+    assert.match(gridSource, /td\.style\.backgroundColor/);
+    assert.match(typesSource, /export type SpreadsheetCellColor = string/);
+    assert.match(colorsSource, /normalizeSpreadsheetColor/);
+    assert.match(i18nSource, /sheets\.customColor/);
+  });
+
   it("exposes column auto-fit and size reset controls", () => {
     const toolbarSource = readFileSync(new URL("../src/components/spreadsheet/SpreadsheetToolbar.tsx", import.meta.url), "utf8");
     const gridSource = readFileSync(new URL("../src/components/spreadsheet/SpreadsheetGrid.tsx", import.meta.url), "utf8");

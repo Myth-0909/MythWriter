@@ -33,7 +33,7 @@ export interface SpreadsheetMergeCell {
   colspan: number;
 }
 
-export type SpreadsheetCellColor = "default" | "red" | "green" | "blue" | "amber" | "gray";
+export type SpreadsheetCellColor = string;
 export type SpreadsheetHorizontalAlign = "left" | "center" | "right" | "justify";
 export type SpreadsheetVerticalAlign = "top" | "middle" | "bottom";
 export type SpreadsheetNumberFormat = "general" | "number" | "currency" | "percent" | "date";

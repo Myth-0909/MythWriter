@@ -25,10 +25,12 @@ import {
   Upload,
   WrapText,
 } from "lucide-react";
-import type { MouseEvent, ReactNode } from "react";
+import { useState, type MouseEvent, type ReactNode } from "react";
 import { useI18n } from "@/components/I18nProvider";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { normalizeSpreadsheetColor } from "@/lib/spreadsheetColors";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -37,6 +39,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip } from "@/components/ui/tooltip";
 import type {
   SpreadsheetCellColor,
@@ -100,23 +103,14 @@ const statusKeys: Record<SpreadsheetSaveStatus, "sheets.saved" | "sheets.saving"
   error: "sheets.saveFailed",
 };
 
-const colorSwatches: Array<{
-  color: SpreadsheetCellColor;
-  labelKey:
-    | "sheets.defaultColor"
-    | "sheets.colorRed"
-    | "sheets.colorGreen"
-    | "sheets.colorBlue"
-    | "sheets.colorAmber"
-    | "sheets.colorGray";
-  className: string;
-}> = [
-  { color: "default", labelKey: "sheets.defaultColor", className: "bg-white border-surface-300 dark:bg-surface-950" },
-  { color: "red", labelKey: "sheets.colorRed", className: "bg-red-500 border-red-500" },
-  { color: "green", labelKey: "sheets.colorGreen", className: "bg-emerald-500 border-emerald-500" },
-  { color: "blue", labelKey: "sheets.colorBlue", className: "bg-blue-500 border-blue-500" },
-  { color: "amber", labelKey: "sheets.colorAmber", className: "bg-amber-500 border-amber-500" },
-  { color: "gray", labelKey: "sheets.colorGray", className: "bg-zinc-500 border-zinc-500" },
+const CUSTOM_COLOR_PALETTE = [
+  "#111827", "#374151", "#6b7280", "#9ca3af", "#e5e7eb", "#ffffff",
+  "#dc2626", "#f97316", "#f59e0b", "#eab308", "#84cc16", "#16a34a",
+  "#059669", "#14b8a6", "#06b6d4", "#0ea5e9", "#2563eb", "#4f46e5",
+  "#7c3aed", "#9333ea", "#c026d3", "#db2777", "#e11d48", "#ef4444",
+  "#fee2e2", "#ffedd5", "#fef3c7", "#fef9c3", "#ecfccb", "#dcfce7",
+  "#d1fae5", "#ccfbf1", "#cffafe", "#e0f2fe", "#dbeafe", "#e0e7ff",
+  "#ede9fe", "#f3e8ff", "#fae8ff", "#fce7f3", "#ffe4e6", "#f4f4f5",
 ];
 
 function preserveSpreadsheetSelection(event: MouseEvent<HTMLButtonElement>) {
@@ -152,6 +146,105 @@ function ToolbarIconButton({
 
 function ToolbarSeparator() {
   return <div className="mx-1 h-5 w-px shrink-0 bg-surface-200 dark:bg-surface-800" />;
+}
+
+function ColorPaletteButton({
+  label,
+  icon,
+  onSelectColor,
+}: {
+  label: string;
+  icon: ReactNode;
+  onSelectColor: (color: SpreadsheetCellColor) => void;
+}) {
+  const { t } = useI18n();
+  const [open, setOpen] = useState(false);
+  const [draftColor, setDraftColor] = useState("#2563eb");
+
+  const applyColor = (color: string) => {
+    const normalized = normalizeSpreadsheetColor(color);
+    if (!normalized) return;
+    setDraftColor(normalized);
+    onSelectColor(normalized);
+    setOpen(false);
+  };
+
+  const applyDraftColor = () => {
+    applyColor(draftColor);
+  };
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          onMouseDown={preserveSpreadsheetSelection}
+          aria-label={label}
+          title={label}
+        >
+          {icon}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="start"
+        className="w-[264px]"
+        onOpenAutoFocus={(event) => event.preventDefault()}
+        onCloseAutoFocus={(event) => event.preventDefault()}
+      >
+        <div className="space-y-3">
+          <div>
+            <div className="mb-2 text-xs font-semibold text-surface-500 dark:text-surface-400">
+              {t("sheets.customColor")}
+            </div>
+            <div className="grid grid-cols-6 gap-1.5">
+              {CUSTOM_COLOR_PALETTE.map((color) => (
+                <button
+                  key={color}
+                  type="button"
+                  className="h-7 rounded-md border border-surface-200 shadow-sm transition-transform hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 dark:border-surface-700"
+                  style={{ backgroundColor: color }}
+                  aria-label={`${label} ${color}`}
+                  onMouseDown={preserveSpreadsheetSelection}
+                  onClick={() => applyColor(color)}
+                />
+              ))}
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <Input
+              value={draftColor}
+              onChange={(event) => setDraftColor(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") applyDraftColor();
+              }}
+              aria-label={t("sheets.colorHex")}
+              placeholder="#2563eb"
+              spellCheck={false}
+              className="h-8 font-mono text-xs"
+            />
+            <Button type="button" size="sm" onMouseDown={preserveSpreadsheetSelection} onClick={applyDraftColor}>
+              {t("sheets.applyColor")}
+            </Button>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="w-full"
+            onMouseDown={preserveSpreadsheetSelection}
+            onClick={() => {
+              onSelectColor("default");
+              setOpen(false);
+            }}
+          >
+            {t("sheets.defaultColor")}
+          </Button>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
 }
 
 export function SpreadsheetToolbar({
@@ -205,31 +298,6 @@ export function SpreadsheetToolbar({
     status === "saving" && "text-brand-600 dark:text-brand-300",
     status === "unsaved" && "text-amber-600 dark:text-amber-300",
     status === "error" && "text-red-600 dark:text-red-400"
-  );
-
-  const colorMenu = (
-    label: string,
-    icon: ReactNode,
-    onSelectColor: (color: SpreadsheetCellColor) => void
-  ) => (
-    <DropdownMenu>
-      <Tooltip content={label}>
-        <DropdownMenuTrigger asChild>
-          <Button type="button" variant="ghost" size="icon" onMouseDown={preserveSpreadsheetSelection} aria-label={label}>
-            {icon}
-          </Button>
-        </DropdownMenuTrigger>
-      </Tooltip>
-      <DropdownMenuContent align="start" className="min-w-[180px]">
-        <DropdownMenuLabel>{label}</DropdownMenuLabel>
-        {colorSwatches.map((item, index) => (
-          <DropdownMenuItem key={item.color} index={index} onSelect={() => onSelectColor(item.color)}>
-            <span className={`h-3.5 w-3.5 rounded-full border ${item.className}`} />
-            {t(item.labelKey)}
-          </DropdownMenuItem>
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
   );
 
   return (
@@ -413,8 +481,18 @@ export function SpreadsheetToolbar({
           <WrapText className="h-4 w-4" />
         </ToolbarIconButton>
 
-        {colorMenu(t("sheets.textColor"), <Type className="h-4 w-4" />, onSetTextColor)}
-        {colorMenu(t("sheets.fillColor"), <PaintBucket className="h-4 w-4" />, onSetFillColor)}
+        <ColorPaletteButton label={t("sheets.textColor")} icon={<Type className="h-4 w-4" />} onSelectColor={onSetTextColor} />
+        <ColorPaletteButton label={t("sheets.fillColor")} icon={<PaintBucket className="h-4 w-4" />} onSelectColor={onSetFillColor} />
+
+        <ToolbarIconButton label={t("sheets.fontSizeSmall")} onClick={() => onSetFontSize("small")}>
+          <span className="text-[10px] font-semibold leading-none">A-</span>
+        </ToolbarIconButton>
+        <ToolbarIconButton label={t("sheets.fontSizeNormal")} onClick={() => onSetFontSize("normal")}>
+          <span className="text-xs font-semibold leading-none">A</span>
+        </ToolbarIconButton>
+        <ToolbarIconButton label={t("sheets.fontSizeLarge")} onClick={() => onSetFontSize("large")}>
+          <span className="text-sm font-semibold leading-none">A+</span>
+        </ToolbarIconButton>
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>

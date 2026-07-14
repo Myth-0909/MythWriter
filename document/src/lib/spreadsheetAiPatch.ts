@@ -1,4 +1,5 @@
 import { createSpreadsheetSheet } from "./spreadsheetWorkbook.ts";
+import { normalizeSpreadsheetColor } from "./spreadsheetColors.ts";
 import type { SpreadsheetCellStyle, SpreadsheetCellValue, SpreadsheetMergeCell, SpreadsheetSheet, SpreadsheetWorkbook } from "../types";
 
 export type SpreadsheetPatchOperation =
@@ -232,8 +233,8 @@ function normalizeStylePatch(value: unknown): Partial<Omit<SpreadsheetCellStyle,
   if (typeof source.underline === "boolean") patch.underline = source.underline;
   if (typeof source.wrap === "boolean") patch.wrap = source.wrap;
   if (typeof source.border === "boolean") patch.border = source.border;
-  if (["default", "red", "green", "blue", "amber", "gray"].includes(String(source.textColor))) patch.textColor = source.textColor;
-  if (["default", "red", "green", "blue", "amber", "gray"].includes(String(source.fillColor))) patch.fillColor = source.fillColor;
+  if (source.textColor !== undefined) patch.textColor = normalizeSpreadsheetColor(source.textColor) || "default";
+  if (source.fillColor !== undefined) patch.fillColor = normalizeSpreadsheetColor(source.fillColor) || "default";
   if (["left", "center", "right", "justify"].includes(String(source.horizontalAlign))) patch.horizontalAlign = source.horizontalAlign;
   if (["top", "middle", "bottom"].includes(String(source.verticalAlign))) patch.verticalAlign = source.verticalAlign;
   if (["general", "number", "currency", "percent", "date"].includes(String(source.numberFormat))) patch.numberFormat = source.numberFormat;

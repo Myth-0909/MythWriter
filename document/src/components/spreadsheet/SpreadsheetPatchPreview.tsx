@@ -1,7 +1,8 @@
 import { useMemo } from "react";
 import { useI18n } from "@/components/I18nProvider";
+import { resolveSpreadsheetColor } from "@/lib/spreadsheetColors";
 import { cn } from "@/lib/utils";
-import type { SpreadsheetCellColor, SpreadsheetCellStyle, SpreadsheetSheet, SpreadsheetWorkbook } from "@/types";
+import type { SpreadsheetCellStyle, SpreadsheetSheet, SpreadsheetWorkbook } from "@/types";
 
 const MAX_PREVIEW_ROWS = 24;
 const MAX_PREVIEW_COLUMNS = 12;
@@ -162,24 +163,6 @@ function usedBounds(sheet: SpreadsheetSheet, changes: ChangedCellBounds) {
   return { startRow, startCol, rowCount, colCount };
 }
 
-const textColorClasses: Record<SpreadsheetCellColor, string> = {
-  default: "",
-  red: "text-red-700 dark:text-red-200",
-  green: "text-emerald-700 dark:text-emerald-200",
-  blue: "text-blue-700 dark:text-blue-200",
-  amber: "text-amber-700 dark:text-amber-200",
-  gray: "text-surface-600 dark:text-surface-300",
-};
-
-const fillColorClasses: Record<SpreadsheetCellColor, string> = {
-  default: "",
-  red: "bg-red-50 dark:bg-red-950/35",
-  green: "bg-emerald-50 dark:bg-emerald-950/35",
-  blue: "bg-blue-50 dark:bg-blue-950/35",
-  amber: "bg-amber-50 dark:bg-amber-950/35",
-  gray: "bg-surface-100 dark:bg-surface-800",
-};
-
 function cellClassName(style: SpreadsheetCellStyle | undefined, changed: boolean) {
   return cn(
     "min-w-[96px] max-w-[220px] border-b border-r border-surface-200 px-2.5 py-2 text-left text-xs leading-5 text-surface-800 dark:border-surface-700 dark:text-surface-100",
@@ -196,10 +179,15 @@ function cellClassName(style: SpreadsheetCellStyle | undefined, changed: boolean
     style?.fontSize === "small" && "text-[11px]",
     style?.fontSize === "large" && "text-sm",
     style?.border && "ring-1 ring-inset ring-surface-300 dark:ring-surface-600",
-    textColorClasses[style?.textColor || "default"],
-    fillColorClasses[style?.fillColor || "default"],
     changed && "ring-1 ring-inset ring-emerald-400 dark:ring-emerald-500"
   );
+}
+
+function cellStyle(style: SpreadsheetCellStyle | undefined) {
+  return {
+    color: resolveSpreadsheetColor(style?.textColor, "text"),
+    backgroundColor: resolveSpreadsheetColor(style?.fillColor, "fill"),
+  };
 }
 
 export function SpreadsheetPatchPreview({ previousWorkbook, nextWorkbook, summary }: SpreadsheetPatchPreviewProps) {
@@ -277,6 +265,7 @@ export function SpreadsheetPatchPreview({ previousWorkbook, nextWorkbook, summar
                       <td
                         key={col}
                         className={cellClassName(style, changed)}
+                        style={cellStyle(style)}
                         aria-label={changed ? t("ai.spreadsheetPatchChangedCell") : undefined}
                       >
                         {cellText(nextSheet.data[row]?.[col])}

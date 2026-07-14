@@ -94,6 +94,7 @@ describe("ai assistant branding", () => {
     assert.match(prompt, /numberFormat/);
     assert.match(prompt, /fontSize/);
     assert.match(prompt, /border/);
+    assert.match(prompt, /#2563eb/);
     assert.match(prompt, /merge_cells/);
     assert.match(prompt, /unmerge_cells/);
     assert.match(prompt, /freeze_panes/);

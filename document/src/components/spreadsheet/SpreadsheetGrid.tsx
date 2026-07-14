@@ -6,7 +6,6 @@ import HyperFormula from "hyperformula";
 import type Handsontable from "handsontable";
 import { useI18n } from "@/components/I18nProvider";
 import type {
-  SpreadsheetCellColor,
   SpreadsheetCellStyle,
   SpreadsheetCellValue,
   SpreadsheetHorizontalAlign,
@@ -15,6 +14,7 @@ import type {
   SpreadsheetVerticalAlign,
 } from "@/types";
 import { applySpreadsheetCellChanges, type SpreadsheetCellChange } from "@/lib/spreadsheetPerformance";
+import { normalizeSpreadsheetColor, resolveSpreadsheetColor } from "@/lib/spreadsheetColors";
 import { formatSpreadsheetCellDisplay } from "@/lib/spreadsheetFormatting";
 import {
   buildSpreadsheetSelectionSummary,
@@ -173,10 +173,6 @@ function readData(hot: Handsontable): SpreadsheetCellValue[][] {
   return hot.getData() as SpreadsheetCellValue[][];
 }
 
-function normalizeColor(value: SpreadsheetCellColor | undefined) {
-  return value === "default" ? undefined : value;
-}
-
 function horizontalAlignFromClassName(className: string): SpreadsheetHorizontalAlign | undefined {
   if (className.includes("htCenter")) return "center";
   if (className.includes("htRight")) return "right";
@@ -207,8 +203,8 @@ function normalizeCellStyle(style: SpreadsheetCellStyle): SpreadsheetCellStyle |
     ...(style.bold ? { bold: true } : {}),
     ...(style.italic ? { italic: true } : {}),
     ...(style.underline ? { underline: true } : {}),
-    ...(normalizeColor(style.textColor) ? { textColor: normalizeColor(style.textColor) } : {}),
-    ...(normalizeColor(style.fillColor) ? { fillColor: normalizeColor(style.fillColor) } : {}),
+    ...(normalizeSpreadsheetColor(style.textColor) ? { textColor: normalizeSpreadsheetColor(style.textColor) } : {}),
+    ...(normalizeSpreadsheetColor(style.fillColor) ? { fillColor: normalizeSpreadsheetColor(style.fillColor) } : {}),
     ...(style.horizontalAlign ? { horizontalAlign: style.horizontalAlign } : {}),
     ...(style.verticalAlign ? { verticalAlign: style.verticalAlign } : {}),
     ...(style.numberFormat ? { numberFormat: style.numberFormat } : {}),
@@ -308,14 +304,17 @@ function buildCellClassName(style: SpreadsheetCellStyle | undefined) {
     style.italic && "zn-cell-italic",
     style.underline && "zn-cell-underline",
     style.wrap && "zn-cell-wrap",
-    style.textColor && `zn-cell-text-${style.textColor}`,
-    style.fillColor && `zn-cell-fill-${style.fillColor}`,
     style.horizontalAlign && `zn-cell-align-${style.horizontalAlign}`,
     style.verticalAlign && `zn-cell-valign-${style.verticalAlign}`,
     style.fontSize && `zn-cell-font-${style.fontSize}`,
     style.border && "zn-cell-border",
   ].filter(Boolean);
   return classes.length > 0 ? classes.join(" ") : undefined;
+}
+
+function restoreStoredSelection(hot: Handsontable, fallback?: SelectionTuple | null) {
+  if (!fallback) return;
+  hot.selectCell(fallback[0], fallback[1], fallback[2], fallback[3], false, false);
 }
 
 function readCellStyleOverridesFromHot(
@@ -482,6 +481,7 @@ export const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGrid
       clearSelectedFormats: () => {
         const hot = hotRef.current?.hotInstance;
         if (!hot) return;
+        restoreStoredSelection(hot, lastSelectionRef.current);
         const selectedCells = getSelectedCells(hot, lastSelectionRef.current);
         if (selectedCells.length === 0) return;
         const removeKeys = new Set(selectedCells.map((coord) => cellKey(coord.row, coord.col)));
@@ -499,8 +499,10 @@ export const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGrid
       },
       mergeSelected: () => {
         const hot = hotRef.current?.hotInstance;
-        const range = hot?.getSelectedRangeLast();
-        if (!hot || !range) return;
+        if (!hot) return;
+        restoreStoredSelection(hot, lastSelectionRef.current);
+        const range = hot.getSelectedRangeLast();
+        if (!range) return;
         const plugin = hot.getPlugin("mergeCells") as any;
         plugin?.mergeRange?.(range);
         hot.render();
@@ -508,8 +510,10 @@ export const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGrid
       },
       unmergeSelected: () => {
         const hot = hotRef.current?.hotInstance;
-        const range = hot?.getSelectedRangeLast();
-        if (!hot || !range) return;
+        if (!hot) return;
+        restoreStoredSelection(hot, lastSelectionRef.current);
+        const range = hot.getSelectedRangeLast();
+        if (!range) return;
         const plugin = hot.getPlugin("mergeCells") as any;
         plugin?.unmergeSelection?.(range);
         hot.render();
@@ -518,6 +522,7 @@ export const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGrid
       applyCellStyle: (patch, options) => {
         const hot = hotRef.current?.hotInstance;
         if (!hot) return;
+        restoreStoredSelection(hot, lastSelectionRef.current);
         const selectedCells = getSelectedCells(hot, lastSelectionRef.current);
         if (selectedCells.length === 0) return;
 
@@ -546,11 +551,13 @@ export const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGrid
         }
 
         syncFromHot({ cellStyles: Array.from(styles.values()) });
+        restoreStoredSelection(hot, lastSelectionRef.current);
         hot.render();
       },
       insertRowAbove: () => {
         const hot = hotRef.current?.hotInstance;
         if (!hot) return;
+        restoreStoredSelection(hot, lastSelectionRef.current);
         const bounds = getSelectedBounds(hot, lastSelectionRef.current);
         const index = bounds?.startRow ?? 0;
         (hot as any).alter("insert_row_above", index, 1);
@@ -559,6 +566,7 @@ export const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGrid
       insertRowBelow: () => {
         const hot = hotRef.current?.hotInstance;
         if (!hot) return;
+        restoreStoredSelection(hot, lastSelectionRef.current);
         const bounds = getSelectedBounds(hot, lastSelectionRef.current);
         const index = bounds ? bounds.endRow + 1 : hot.countRows();
         (hot as any).alter("insert_row_above", index, 1);
@@ -567,6 +575,7 @@ export const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGrid
       insertColumnLeft: () => {
         const hot = hotRef.current?.hotInstance;
         if (!hot) return;
+        restoreStoredSelection(hot, lastSelectionRef.current);
         const bounds = getSelectedBounds(hot, lastSelectionRef.current);
         const index = bounds?.startCol ?? 0;
         (hot as any).alter("insert_col_start", index, 1);
@@ -575,6 +584,7 @@ export const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGrid
       insertColumnRight: () => {
         const hot = hotRef.current?.hotInstance;
         if (!hot) return;
+        restoreStoredSelection(hot, lastSelectionRef.current);
         const bounds = getSelectedBounds(hot, lastSelectionRef.current);
         const index = bounds ? bounds.endCol + 1 : hot.countCols();
         (hot as any).alter("insert_col_start", index, 1);
@@ -583,6 +593,7 @@ export const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGrid
       deleteSelectedRows: () => {
         const hot = hotRef.current?.hotInstance;
         if (!hot) return;
+        restoreStoredSelection(hot, lastSelectionRef.current);
         const bounds = getSelectedBounds(hot, lastSelectionRef.current);
         if (!bounds) return;
         const amount = bounds.endRow - bounds.startRow + 1;
@@ -592,6 +603,7 @@ export const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGrid
       deleteSelectedColumns: () => {
         const hot = hotRef.current?.hotInstance;
         if (!hot) return;
+        restoreStoredSelection(hot, lastSelectionRef.current);
         const bounds = getSelectedBounds(hot, lastSelectionRef.current);
         if (!bounds) return;
         const amount = bounds.endCol - bounds.startCol + 1;
@@ -601,6 +613,7 @@ export const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGrid
       clearSelectedCells: () => {
         const hot = hotRef.current?.hotInstance;
         if (!hot) return;
+        restoreStoredSelection(hot, lastSelectionRef.current);
         for (const coord of getSelectedCells(hot, lastSelectionRef.current)) {
           hot.setDataAtCell(coord.row, coord.col, null, "toolbar-clear");
         }
@@ -609,6 +622,7 @@ export const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGrid
       autoFitSelectedColumns: () => {
         const hot = hotRef.current?.hotInstance;
         if (!hot) return;
+        restoreStoredSelection(hot, lastSelectionRef.current);
         const bounds = getSelectedBounds(hot, lastSelectionRef.current);
         if (!bounds) return;
         const nextWidths = [...(latestSheetRef.current.colWidths || [])];
@@ -624,6 +638,7 @@ export const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGrid
       resetSelectedColumnWidths: () => {
         const hot = hotRef.current?.hotInstance;
         if (!hot) return;
+        restoreStoredSelection(hot, lastSelectionRef.current);
         const bounds = getSelectedBounds(hot, lastSelectionRef.current);
         if (!bounds) return;
         const nextWidths = [...(latestSheetRef.current.colWidths || [])];
@@ -635,6 +650,7 @@ export const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGrid
       resetSelectedRowHeights: () => {
         const hot = hotRef.current?.hotInstance;
         if (!hot) return;
+        restoreStoredSelection(hot, lastSelectionRef.current);
         const bounds = getSelectedBounds(hot, lastSelectionRef.current);
         if (!bounds) return;
         const nextHeights = [...(latestSheetRef.current.rowHeights || [])];
@@ -646,6 +662,7 @@ export const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGrid
       sortSelectedColumn: (direction) => {
         const hot = hotRef.current?.hotInstance;
         if (!hot) return;
+        restoreStoredSelection(hot, lastSelectionRef.current);
         const bounds = getSelectedBounds(hot, lastSelectionRef.current);
         if (!bounds) return;
         const plugin = hot.getPlugin("columnSorting") as any;
@@ -682,6 +699,8 @@ export const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGrid
             return {
               className: buildCellClassName(style),
               renderer: (_instance: Handsontable, td: HTMLTableCellElement, _row: number, _col: number, _prop: string | number, value: SpreadsheetCellValue) => {
+                td.style.color = resolveSpreadsheetColor(style?.textColor, "text") || "";
+                td.style.backgroundColor = resolveSpreadsheetColor(style?.fillColor, "fill") || "";
                 td.textContent = formatSpreadsheetCellDisplay(value, style?.numberFormat);
                 return td;
               },
