@@ -24,9 +24,11 @@ describe("spreadsheet editor source wiring", () => {
     const editorSource = readFileSync(new URL("src/pages/SpreadsheetEditorPage.tsx", root), "utf8");
     const gridSource = readFileSync(new URL("src/components/spreadsheet/SpreadsheetGrid.tsx", root), "utf8");
     const formulaBarPath = resolve(new URL("src/components/spreadsheet/SpreadsheetFormulaBar.tsx", root).pathname);
+    const formulaBarSource = readFileSync(new URL("src/components/spreadsheet/SpreadsheetFormulaBar.tsx", root), "utf8");
     const i18nSource = readFileSync(new URL("src/components/I18nProvider.tsx", root), "utf8");
 
     assert.equal(existsSync(formulaBarPath), true);
+    assert.match(formulaBarSource, /data-spreadsheet-formula-bar/);
     assert.match(editorSource, /SpreadsheetFormulaBar/);
     assert.match(editorSource, /formulaBarState/);
     assert.match(editorSource, /onNavigateToCell/);
@@ -60,13 +62,20 @@ describe("spreadsheet editor source wiring", () => {
     const editorSource = readFileSync(new URL("src/pages/SpreadsheetEditorPage.tsx", root), "utf8");
     const gridSource = readFileSync(new URL("src/components/spreadsheet/SpreadsheetGrid.tsx", root), "utf8");
     const statusBarPath = resolve(new URL("src/components/spreadsheet/SpreadsheetStatusBar.tsx", root).pathname);
+    const statusBarSource = readFileSync(new URL("src/components/spreadsheet/SpreadsheetStatusBar.tsx", root), "utf8");
     const i18nSource = readFileSync(new URL("src/components/I18nProvider.tsx", root), "utf8");
 
     assert.equal(existsSync(statusBarPath), true);
+    assert.match(statusBarSource, /data-spreadsheet-status-bar/);
+    assert.match(statusBarSource, /tabular-nums/);
     assert.match(editorSource, /SpreadsheetStatusBar/);
     assert.match(editorSource, /selectionSummary/);
     assert.match(gridSource, /onSelectionSummaryChange/);
     assert.match(gridSource, /buildSpreadsheetSelectionSummary/);
+    assert.match(gridSource, /window\.addEventListener\("resize", refreshDimensions\)/);
+    assert.match(gridSource, /adjustElementsSize/);
+    assert.match(gridSource, /refreshDimensions/);
+    assert.match(gridSource, /viewportColumnRenderingOffset=\{12\}/);
     assert.match(i18nSource, /sheets\.statusAverage/);
     assert.match(i18nSource, /sheets\.statusCount/);
   });
@@ -80,6 +89,7 @@ describe("spreadsheet editor source wiring", () => {
     assert.match(tabsSource, /onRenameSheet/);
     assert.match(tabsSource, /onDuplicateSheet/);
     assert.match(tabsSource, /onMoveSheet/);
+    assert.match(tabsSource, /data-sheet-tabs/);
     assert.match(tabsSource, /DialogContent/);
     assert.match(editorSource, /duplicateSpreadsheetSheet/);
     assert.match(editorSource, /moveSpreadsheetSheet/);

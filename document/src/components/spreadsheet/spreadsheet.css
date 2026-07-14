@@ -34,6 +34,31 @@
   border-color: rgba(63, 63, 70, 0.9);
 }
 
+.zn-spreadsheet-grid .handsontable td.area,
+.zn-spreadsheet-grid .handsontable td.highlight {
+  background-color: rgba(16, 185, 129, 0.12) !important;
+}
+
+.zn-spreadsheet-grid .handsontable td.current {
+  box-shadow: inset 0 0 0 2px #059669;
+}
+
+.zn-spreadsheet-grid .handsontable th.ht__highlight,
+.zn-spreadsheet-grid .handsontable th.current,
+.zn-spreadsheet-grid .handsontable th.area {
+  background-color: #059669 !important;
+  color: #fff !important;
+}
+
+.zn-spreadsheet-grid .handsontable .wtBorder {
+  background-color: #059669 !important;
+}
+
+.dark .zn-spreadsheet-grid .handsontable td.area,
+.dark .zn-spreadsheet-grid .handsontable td.highlight {
+  background-color: rgba(16, 185, 129, 0.2) !important;
+}
+
 .zn-spreadsheet-grid .handsontable td.zn-cell-bold {
   font-weight: 700;
 }

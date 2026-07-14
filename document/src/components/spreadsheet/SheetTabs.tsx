@@ -52,7 +52,10 @@ export function SheetTabs({
 
   return (
     <>
-      <div className="flex h-10 shrink-0 items-center gap-1 border-t border-surface-200 bg-surface-50 px-2 dark:border-surface-800 dark:bg-surface-900">
+      <div
+        data-sheet-tabs
+        className="flex h-9 shrink-0 items-center gap-1 border-t border-surface-200 bg-surface-50 px-2 dark:border-surface-800 dark:bg-surface-900"
+      >
         <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
           {sheets.map((sheet, index) => {
             const active = sheet.id === activeSheetId;

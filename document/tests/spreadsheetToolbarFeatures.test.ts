@@ -78,7 +78,9 @@ describe("spreadsheet toolbar feature coverage", () => {
     assert.match(toolbarSource, /data-spreadsheet-action-bar/);
     assert.match(toolbarSource, /data-spreadsheet-editing-bar/);
     assert.match(toolbarSource, /status === "saved"/);
-    assert.match(toolbarSource, /text-emerald-600/);
+    assert.match(toolbarSource, /sheets\.fileMenu/);
+    assert.match(toolbarSource, /grid-cols-\[minmax\(0,1fr\)_auto\]/);
+    assert.match(toolbarSource, /border-emerald-200/);
   });
 
   it("localizes Handsontable built-in row and column menus with the app language", () => {
@@ -102,6 +104,15 @@ describe("spreadsheet toolbar feature coverage", () => {
       spreadsheetCss,
       /\.zn-spreadsheet-grid \.handsontable tbody tr th \.relative\s*\{[^}]*display:\s*flex;[^}]*height:\s*100%;[^}]*align-items:\s*center;[^}]*justify-content:\s*center;/s
     );
+  });
+
+  it("uses a spreadsheet-focused selection color instead of the default blue selection", () => {
+    const spreadsheetCss = readFileSync(new URL("../src/components/spreadsheet/spreadsheet.css", import.meta.url), "utf8");
+
+    assert.match(spreadsheetCss, /\.zn-spreadsheet-grid \.handsontable td\.area/);
+    assert.match(spreadsheetCss, /rgba\(16,\s*185,\s*129,\s*0\.12\)/);
+    assert.match(spreadsheetCss, /\.zn-spreadsheet-grid \.handsontable th\.ht__highlight/);
+    assert.match(spreadsheetCss, /background-color:\s*#059669 !important/);
   });
 
   it("synchronizes Handsontable context-menu edits into workbook state", () => {
@@ -199,6 +210,7 @@ describe("spreadsheet toolbar feature coverage", () => {
     assert.match(toolbarSource, /Popover/);
     assert.match(toolbarSource, /ColorPaletteButton/);
     assert.match(toolbarSource, /CUSTOM_COLOR_PALETTE/);
+    assert.match(toolbarSource, /data-color-palette/);
     assert.doesNotMatch(toolbarSource, /const colorSwatches/);
     assert.match(toolbarSource, /onMouseDown=\{preserveSpreadsheetSelection\}/);
     assert.match(toolbarSource, /sheets\.applyColor/);
@@ -262,6 +274,8 @@ describe("spreadsheet toolbar feature coverage", () => {
     assert.match(toolbarSource, /window\.requestAnimationFrame\(\(\) => action\(\)\)/);
     assert.doesNotMatch(toolbarSource, /window\.setTimeout\(\(\) => action\(\), 0\)/);
     assert.match(toolbarSource, /function StructureMenuButton/);
+    assert.match(toolbarSource, /tone\?: "default" \| "danger"/);
+    assert.match(toolbarSource, /tone="danger"/);
     assert.match(toolbarSource, /<Popover open=\{structureMenuOpen\} onOpenChange=\{setStructureMenuOpen\}>/);
     assert.match(toolbarSource, /onOpenAutoFocus=\{\(event\) => event\.preventDefault\(\)\}/);
     assert.match(toolbarSource, /onCloseAutoFocus=\{\(event\) => event\.preventDefault\(\)\}/);
@@ -278,10 +292,12 @@ describe("spreadsheet toolbar feature coverage", () => {
 
     assert.match(toolbarSource, /onImportCsv/);
     assert.match(toolbarSource, /onExportCsv/);
+    assert.match(toolbarSource, /<DropdownMenuLabel>\{t\("sheets\.fileMenu"\)\}<\/DropdownMenuLabel>/);
     assert.match(editorSource, /importing/);
     assert.match(editorSource, /workbookFromCsvText/);
     assert.match(editorSource, /workbookToCsvText/);
     assert.match(importExportSource, /CSV_MIME/);
+    assert.match(i18nSource, /sheets\.fileMenu/);
     assert.match(i18nSource, /sheets\.importCsv/);
     assert.match(i18nSource, /sheets\.importing/);
   });

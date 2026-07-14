@@ -15,7 +15,6 @@ import {
   Plus,
   type LucideIcon,
 } from "lucide-react";
-import Shuffle from "@/components/Shuffle";
 import { Tooltip } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
 import { useI18n } from "@/components/I18nProvider";
@@ -29,6 +28,7 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { LogoClickEffect } from "@/components/LogoClickEffect";
+import Shuffle from "@/components/Shuffle";
 
 export type NavId = "workbench" | "documents" | "spreadsheets" | "favorites" | "records" | "record-history" | "trash" | "settings" | "brain" | "model-config";
 
@@ -202,17 +202,9 @@ export function SideNavBar({
               className="relative flex w-full items-center gap-2 rounded-lg p-0 text-left cursor-pointer"
             >
               <BrandLogo size="sm" />
-              <Shuffle
-                text={t("app.name")}
-                shuffleDirection="up"
-                duration={1.5}
-                loop
-                loopDelay={1.2}
-                shuffleTimes={1}
-                stagger={0.03}
-                triggerOnHover={false}
-                className="text-lg font-bold tracking-[0.14em] text-surface-950 dark:text-surface-50 font-[var(--font-zn-display)]"
-              />
+              <span className="shrink-0 whitespace-nowrap text-lg font-bold tracking-[0.14em] text-surface-950 dark:text-surface-50 font-[var(--font-zn-display)]">
+                {t("app.name")}
+              </span>
             </button>
           )}
 

@@ -163,6 +163,7 @@ const translations = {
   "sheets.importXlsx": { zh: "导入 XLSX", en: "Import XLSX" },
   "sheets.importCsv": { zh: "导入 CSV", en: "Import CSV" },
   "sheets.importing": { zh: "正在导入...", en: "Importing..." },
+  "sheets.fileMenu": { zh: "文件", en: "File" },
   "sheets.export": { zh: "导出", en: "Export" },
   "sheets.exportXlsx": { zh: "导出 XLSX", en: "Export XLSX" },
   "sheets.exportCsv": { zh: "导出 CSV", en: "Export CSV" },

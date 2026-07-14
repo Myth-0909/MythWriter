@@ -465,6 +465,44 @@ export const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGrid
       }
     }, []);
 
+    useEffect(() => {
+      let frame: number | null = null;
+      let timer: number | null = null;
+      const runRefresh = () => {
+        const hot = hotRef.current?.hotInstance as any;
+        hot?.view?.adjustElementsSize?.(true);
+        hot?.refreshDimensions?.();
+        hot?.render?.();
+      };
+      const refreshDimensions = () => {
+        if (frame !== null) {
+          window.cancelAnimationFrame(frame);
+        }
+        if (timer !== null) {
+          window.clearTimeout(timer);
+        }
+        frame = window.requestAnimationFrame(() => {
+          frame = null;
+          runRefresh();
+        });
+        timer = window.setTimeout(() => {
+          timer = null;
+          runRefresh();
+        }, 160);
+      };
+
+      window.addEventListener("resize", refreshDimensions);
+      return () => {
+        window.removeEventListener("resize", refreshDimensions);
+        if (frame !== null) {
+          window.cancelAnimationFrame(frame);
+        }
+        if (timer !== null) {
+          window.clearTimeout(timer);
+        }
+      };
+    }, []);
+
     const emitSheetChange = (nextSheet: SpreadsheetSheet, options?: SheetChangeOptions) => {
       latestSheetRef.current = nextSheet;
       onSheetChange(nextSheet, options);
@@ -872,6 +910,7 @@ export const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGrid
           }}
           licenseKey="non-commercial-and-evaluation"
           stretchH="all"
+          viewportColumnRenderingOffset={12}
           width="100%"
           height="100%"
           className="ht-theme-main"
