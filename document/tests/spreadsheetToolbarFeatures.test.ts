@@ -226,15 +226,18 @@ describe("spreadsheet toolbar feature coverage", () => {
     assert.match(toolbarSource, /const \[structureMenuOpen, setStructureMenuOpen\] = useState\(false\)/);
     assert.match(toolbarSource, /const pendingStructureActionRef = useRef<\(\(\) => void\) \| null>\(null\)/);
     assert.match(toolbarSource, /useEffect\(\(\) => \{/);
-    assert.match(toolbarSource, /function runStructureAction/);
-    assert.match(toolbarSource, /event\.preventDefault\(\)/);
+    assert.match(toolbarSource, /function runStructureAction\(action: \(\) => void\)/);
     assert.match(toolbarSource, /pendingStructureActionRef\.current = action/);
     assert.match(toolbarSource, /setStructureMenuOpen\(false\)/);
     assert.match(toolbarSource, /window\.requestAnimationFrame\(\(\) => action\(\)\)/);
     assert.doesNotMatch(toolbarSource, /window\.setTimeout\(\(\) => action\(\), 0\)/);
-    assert.match(toolbarSource, /<DropdownMenu open=\{structureMenuOpen\} onOpenChange=\{setStructureMenuOpen\} modal=\{false\}>/);
-    assert.match(toolbarSource, /<DropdownMenuContent\s+align="start"\s+className="min-w-\[220px\]"\s+onCloseAutoFocus=\{\(event\) => event\.preventDefault\(\)\}/);
-    assert.match(toolbarSource, /onSelect=\{\(event\) => runStructureAction\(event, \(\) => onSetRowHeight\(40\)\)\}/);
+    assert.match(toolbarSource, /function StructureMenuButton/);
+    assert.match(toolbarSource, /<Popover open=\{structureMenuOpen\} onOpenChange=\{setStructureMenuOpen\}>/);
+    assert.match(toolbarSource, /onOpenAutoFocus=\{\(event\) => event\.preventDefault\(\)\}/);
+    assert.match(toolbarSource, /onCloseAutoFocus=\{\(event\) => event\.preventDefault\(\)\}/);
+    assert.match(toolbarSource, /onClick=\{\(\) => runStructureAction\(\(\) => onSetRowHeight\(40\)\)\}/);
+    assert.doesNotMatch(toolbarSource, /<DropdownMenu open=\{structureMenuOpen\}/);
+    assert.doesNotMatch(toolbarSource, /onSelect=\{\(event\) => runStructureAction\(event,/);
   });
 
   it("exposes csv import/export and import busy state", () => {

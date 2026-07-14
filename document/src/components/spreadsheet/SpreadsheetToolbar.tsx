@@ -149,6 +149,43 @@ function ToolbarSeparator() {
   return <div className="mx-1 h-5 w-px shrink-0 bg-surface-200 dark:bg-surface-800" />;
 }
 
+function StructureMenuLabel({ children }: { children: ReactNode }) {
+  return (
+    <div className="dropdown-item-enter px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-surface-400">
+      {children}
+    </div>
+  );
+}
+
+function StructureMenuSeparator() {
+  return <div className="my-1 h-px bg-surface-200 dark:bg-surface-700" />;
+}
+
+function StructureMenuButton({
+  icon,
+  children,
+  onClick,
+}: {
+  icon: ReactNode;
+  children: ReactNode;
+  onClick: () => void;
+}) {
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
+      role="menuitem"
+      onMouseDown={preserveSpreadsheetSelection}
+      onClick={onClick}
+      className="dropdown-item-enter h-9 w-full justify-start px-3 text-sm font-normal text-surface-700 hover:text-surface-900 dark:text-surface-300 dark:hover:text-surface-100"
+    >
+      {icon}
+      <span>{children}</span>
+    </Button>
+  );
+}
+
 function ColorPaletteButton({
   label,
   icon,
@@ -313,8 +350,7 @@ export function SpreadsheetToolbar({
     return () => window.cancelAnimationFrame(frame);
   }, [structureMenuOpen]);
 
-  function runStructureAction(event: Event, action: () => void) {
-    event.preventDefault();
+  function runStructureAction(action: () => void) {
     pendingStructureActionRef.current = action;
     setStructureMenuOpen(false);
   }
@@ -365,107 +401,96 @@ export function SpreadsheetToolbar({
             </DropdownMenuContent>
           </DropdownMenu>
 
-          <DropdownMenu open={structureMenuOpen} onOpenChange={setStructureMenuOpen} modal={false}>
-            <DropdownMenuTrigger asChild>
+          <Popover open={structureMenuOpen} onOpenChange={setStructureMenuOpen}>
+            <PopoverTrigger asChild>
               <Button type="button" variant="outline" size="sm" onMouseDown={preserveSpreadsheetSelection} className="shrink-0 gap-2">
                 <TableProperties className="h-4 w-4" />
                 {t("sheets.structureMenu")}
               </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
+            </PopoverTrigger>
+            <PopoverContent
               align="start"
-              className="min-w-[220px]"
+              className="w-[260px] p-1"
+              onOpenAutoFocus={(event) => event.preventDefault()}
               onCloseAutoFocus={(event) => event.preventDefault()}
             >
-              <DropdownMenuLabel>{t("sheets.structureMenu")}</DropdownMenuLabel>
-              <DropdownMenuItem onSelect={(event) => runStructureAction(event, onInsertRowAbove)}>
-                <Rows3 className="h-4 w-4" />
-                {t("sheets.insertRowAbove")}
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={(event) => runStructureAction(event, onInsertRowBelow)}>
-                <Rows3 className="h-4 w-4" />
-                {t("sheets.insertRowBelow")}
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={(event) => runStructureAction(event, onInsertColumnLeft)}>
-                <Columns3 className="h-4 w-4" />
-                {t("sheets.insertColumnLeft")}
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={(event) => runStructureAction(event, onInsertColumnRight)}>
-                <Columns3 className="h-4 w-4" />
-                {t("sheets.insertColumnRight")}
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onSelect={(event) => runStructureAction(event, onDeleteSelectedRows)}>
-                <Trash2 className="h-4 w-4" />
-                {t("sheets.deleteRows")}
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={(event) => runStructureAction(event, onDeleteSelectedColumns)}>
-                <Trash2 className="h-4 w-4" />
-                {t("sheets.deleteColumns")}
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={(event) => runStructureAction(event, onClearSelectedCells)}>
-                <Eraser className="h-4 w-4" />
-                {t("sheets.clearCells")}
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onSelect={(event) => runStructureAction(event, onAutoFitColumns)}>
-                <Columns3 className="h-4 w-4" />
-                {t("sheets.autoFitColumns")}
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={(event) => runStructureAction(event, onResetColumnWidths)}>
-                <Columns3 className="h-4 w-4" />
-                {t("sheets.resetColumnWidths")}
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuLabel>{t("sheets.rowHeight")}</DropdownMenuLabel>
-              <DropdownMenuItem onSelect={(event) => runStructureAction(event, () => onSetRowHeight(30))}>
-                <Rows3 className="h-4 w-4" />
-                {t("sheets.rowHeightCompact")}
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={(event) => runStructureAction(event, () => onSetRowHeight(40))}>
-                <Rows3 className="h-4 w-4" />
-                {t("sheets.rowHeightNormal")}
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={(event) => runStructureAction(event, () => onSetRowHeight(64))}>
-                <Rows3 className="h-4 w-4" />
-                {t("sheets.rowHeightRoomy")}
-              </DropdownMenuItem>
-              <DropdownMenuItem onSelect={(event) => runStructureAction(event, () => onSetRowHeight(96))}>
-                <Rows3 className="h-4 w-4" />
-                {t("sheets.rowHeightTall")}
-              </DropdownMenuItem>
-              <div className="px-3 py-2">
-                <div className="mb-1.5 text-xs font-semibold text-surface-500 dark:text-surface-400">
-                  {t("sheets.rowHeightCustom")}
+              <div role="menu" aria-label={t("sheets.structureMenu")}>
+                <StructureMenuLabel>{t("sheets.structureMenu")}</StructureMenuLabel>
+                <StructureMenuButton icon={<Rows3 className="h-4 w-4" />} onClick={() => runStructureAction(onInsertRowAbove)}>
+                  {t("sheets.insertRowAbove")}
+                </StructureMenuButton>
+                <StructureMenuButton icon={<Rows3 className="h-4 w-4" />} onClick={() => runStructureAction(onInsertRowBelow)}>
+                  {t("sheets.insertRowBelow")}
+                </StructureMenuButton>
+                <StructureMenuButton icon={<Columns3 className="h-4 w-4" />} onClick={() => runStructureAction(onInsertColumnLeft)}>
+                  {t("sheets.insertColumnLeft")}
+                </StructureMenuButton>
+                <StructureMenuButton icon={<Columns3 className="h-4 w-4" />} onClick={() => runStructureAction(onInsertColumnRight)}>
+                  {t("sheets.insertColumnRight")}
+                </StructureMenuButton>
+                <StructureMenuSeparator />
+                <StructureMenuButton icon={<Trash2 className="h-4 w-4" />} onClick={() => runStructureAction(onDeleteSelectedRows)}>
+                  {t("sheets.deleteRows")}
+                </StructureMenuButton>
+                <StructureMenuButton icon={<Trash2 className="h-4 w-4" />} onClick={() => runStructureAction(onDeleteSelectedColumns)}>
+                  {t("sheets.deleteColumns")}
+                </StructureMenuButton>
+                <StructureMenuButton icon={<Eraser className="h-4 w-4" />} onClick={() => runStructureAction(onClearSelectedCells)}>
+                  {t("sheets.clearCells")}
+                </StructureMenuButton>
+                <StructureMenuSeparator />
+                <StructureMenuButton icon={<Columns3 className="h-4 w-4" />} onClick={() => runStructureAction(onAutoFitColumns)}>
+                  {t("sheets.autoFitColumns")}
+                </StructureMenuButton>
+                <StructureMenuButton icon={<Columns3 className="h-4 w-4" />} onClick={() => runStructureAction(onResetColumnWidths)}>
+                  {t("sheets.resetColumnWidths")}
+                </StructureMenuButton>
+                <StructureMenuSeparator />
+                <StructureMenuLabel>{t("sheets.rowHeight")}</StructureMenuLabel>
+                <StructureMenuButton icon={<Rows3 className="h-4 w-4" />} onClick={() => runStructureAction(() => onSetRowHeight(30))}>
+                  {t("sheets.rowHeightCompact")}
+                </StructureMenuButton>
+                <StructureMenuButton icon={<Rows3 className="h-4 w-4" />} onClick={() => runStructureAction(() => onSetRowHeight(40))}>
+                  {t("sheets.rowHeightNormal")}
+                </StructureMenuButton>
+                <StructureMenuButton icon={<Rows3 className="h-4 w-4" />} onClick={() => runStructureAction(() => onSetRowHeight(64))}>
+                  {t("sheets.rowHeightRoomy")}
+                </StructureMenuButton>
+                <StructureMenuButton icon={<Rows3 className="h-4 w-4" />} onClick={() => runStructureAction(() => onSetRowHeight(96))}>
+                  {t("sheets.rowHeightTall")}
+                </StructureMenuButton>
+                <div className="px-3 py-2">
+                  <div className="mb-1.5 text-xs font-semibold text-surface-500 dark:text-surface-400">
+                    {t("sheets.rowHeightCustom")}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="number"
+                      min={30}
+                      max={320}
+                      step={1}
+                      value={rowHeightDraft}
+                      onChange={(event) => setRowHeightDraft(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          event.preventDefault();
+                          applyCustomRowHeight();
+                        }
+                      }}
+                      aria-label={t("sheets.rowHeightPixels")}
+                      className="h-8 w-24"
+                    />
+                    <Button type="button" size="sm" onMouseDown={preserveSpreadsheetSelection} onClick={applyCustomRowHeight}>
+                      {t("sheets.applyRowHeight")}
+                    </Button>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Input
-                    type="number"
-                    min={30}
-                    max={320}
-                    step={1}
-                    value={rowHeightDraft}
-                    onChange={(event) => setRowHeightDraft(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") {
-                        event.preventDefault();
-                        applyCustomRowHeight();
-                      }
-                    }}
-                    aria-label={t("sheets.rowHeightPixels")}
-                    className="h-8 w-24"
-                  />
-                  <Button type="button" size="sm" onMouseDown={preserveSpreadsheetSelection} onClick={applyCustomRowHeight}>
-                    {t("sheets.applyRowHeight")}
-                  </Button>
-                </div>
+                <StructureMenuButton icon={<Rows3 className="h-4 w-4" />} onClick={() => runStructureAction(onResetRowHeights)}>
+                  {t("sheets.resetRowHeights")}
+                </StructureMenuButton>
               </div>
-              <DropdownMenuItem onSelect={(event) => runStructureAction(event, onResetRowHeights)}>
-                <Rows3 className="h-4 w-4" />
-                {t("sheets.resetRowHeights")}
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+            </PopoverContent>
+          </Popover>
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
