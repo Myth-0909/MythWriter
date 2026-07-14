@@ -62,6 +62,7 @@ describe("spreadsheet toolbar feature coverage", () => {
     assert.match(toolbarSource, /onMouseDown=\{preserveSpreadsheetSelection\}/);
     assert.match(gridSource, /lastSelectionRef/);
     assert.match(gridSource, /afterSelectionEnd/);
+    assert.match(gridSource, /outsideClickDeselects=\{false\}/);
     assert.match(tooltipSource, /zn-tooltip-content/);
     assert.match(tooltipSource, /delay = 120/);
     assert.match(appCss, /@keyframes znTooltipIn/);

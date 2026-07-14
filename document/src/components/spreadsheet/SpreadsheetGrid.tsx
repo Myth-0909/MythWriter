@@ -845,6 +845,7 @@ export const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGrid
           contextMenu
           dropdownMenu
           filters
+          outsideClickDeselects={false}
           columnSorting={{ indicator: true, headerAction: false }}
           manualColumnResize
           manualRowResize
