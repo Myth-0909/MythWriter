@@ -269,7 +269,7 @@ const translations = {
   "sheets.resetColumnWidths": { zh: "重置列宽", en: "Reset column widths" },
   "sheets.resetRowHeights": { zh: "重置行高", en: "Reset row heights" },
   "sheets.rowHeight": { zh: "行高", en: "Row height" },
-  "sheets.rowHeightCompact": { zh: "紧凑 24px", en: "Compact 24px" },
+  "sheets.rowHeightCompact": { zh: "紧凑 30px", en: "Compact 30px" },
   "sheets.rowHeightNormal": { zh: "标准 40px", en: "Standard 40px" },
   "sheets.rowHeightRoomy": { zh: "宽松 64px", en: "Roomy 64px" },
   "sheets.rowHeightTall": { zh: "高行 96px", en: "Tall 96px" },

@@ -194,9 +194,12 @@ describe("spreadsheet toolbar feature coverage", () => {
     assert.match(toolbarSource, /sheets\.rowHeight/);
     assert.match(toolbarSource, /sheets\.rowHeightCompact/);
     assert.match(toolbarSource, /sheets\.rowHeightCustom/);
+    assert.match(toolbarSource, /onSetRowHeight\(30\)/);
+    assert.match(toolbarSource, /min=\{30\}/);
     assert.match(toolbarSource, /onResetRowHeights/);
     assert.match(gridSource, /autoFitSelectedColumns/);
     assert.match(gridSource, /resetSelectedColumnWidths/);
+    assert.match(gridSource, /const MIN_ROW_HEIGHT = 30/);
     assert.match(gridSource, /setSelectedRowHeight/);
     assert.match(gridSource, /resetSelectedRowHeights/);
     assert.match(editorSource, /gridRef\.current\?\.autoFitSelectedColumns/);
@@ -205,6 +208,18 @@ describe("spreadsheet toolbar feature coverage", () => {
     assert.match(i18nSource, /sheets\.autoFitColumns/);
     assert.match(i18nSource, /sheets\.rowHeight/);
     assert.match(i18nSource, /sheets\.rowHeightPixels/);
+  });
+
+  it("closes the structure menu before applying sheet mutations", () => {
+    const toolbarSource = readFileSync(new URL("../src/components/spreadsheet/SpreadsheetToolbar.tsx", import.meta.url), "utf8");
+
+    assert.match(toolbarSource, /const \[structureMenuOpen, setStructureMenuOpen\] = useState\(false\)/);
+    assert.match(toolbarSource, /function runStructureAction/);
+    assert.match(toolbarSource, /event\.preventDefault\(\)/);
+    assert.match(toolbarSource, /setStructureMenuOpen\(false\)/);
+    assert.match(toolbarSource, /window\.setTimeout\(\(\) => action\(\), 0\)/);
+    assert.match(toolbarSource, /<DropdownMenu open=\{structureMenuOpen\} onOpenChange=\{setStructureMenuOpen\}>/);
+    assert.match(toolbarSource, /onSelect=\{\(event\) => runStructureAction\(event, \(\) => onSetRowHeight\(40\)\)\}/);
   });
 
   it("exposes csv import/export and import busy state", () => {

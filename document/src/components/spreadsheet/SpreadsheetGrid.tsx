@@ -38,8 +38,8 @@ ensureHandsontableModules();
 
 type CellStylePatch = Partial<Omit<SpreadsheetCellStyle, "row" | "col">>;
 type ToggleCellStyleKey = "bold" | "italic" | "underline" | "wrap" | "border";
-const DEFAULT_ROW_HEIGHT = 24;
-const MIN_ROW_HEIGHT = 20;
+const DEFAULT_ROW_HEIGHT = 30;
+const MIN_ROW_HEIGHT = 30;
 const MAX_ROW_HEIGHT = 320;
 
 export interface SpreadsheetActiveCellState {

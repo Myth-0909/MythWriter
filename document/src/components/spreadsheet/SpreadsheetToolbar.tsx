@@ -295,6 +295,7 @@ export function SpreadsheetToolbar({
 }: SpreadsheetToolbarProps) {
   const { t } = useI18n();
   const [rowHeightDraft, setRowHeightDraft] = useState("40");
+  const [structureMenuOpen, setStructureMenuOpen] = useState(false);
   const statusClassName = cn(
     "min-w-[88px] text-right text-[11px] font-semibold",
     status === "saved" && "text-emerald-600 dark:text-emerald-400",
@@ -302,10 +303,18 @@ export function SpreadsheetToolbar({
     status === "unsaved" && "text-amber-600 dark:text-amber-300",
     status === "error" && "text-red-600 dark:text-red-400"
   );
+
+  function runStructureAction(event: Event, action: () => void) {
+    event.preventDefault();
+    setStructureMenuOpen(false);
+    window.setTimeout(() => action(), 0);
+  }
+
   const applyCustomRowHeight = () => {
     const height = Number(rowHeightDraft);
     if (!Number.isFinite(height)) return;
-    onSetRowHeight(height);
+    setStructureMenuOpen(false);
+    window.setTimeout(() => onSetRowHeight(height), 0);
   };
 
   return (
@@ -347,7 +356,7 @@ export function SpreadsheetToolbar({
             </DropdownMenuContent>
           </DropdownMenu>
 
-          <DropdownMenu>
+          <DropdownMenu open={structureMenuOpen} onOpenChange={setStructureMenuOpen}>
             <DropdownMenuTrigger asChild>
               <Button type="button" variant="outline" size="sm" onMouseDown={preserveSpreadsheetSelection} className="shrink-0 gap-2">
                 <TableProperties className="h-4 w-4" />
@@ -356,59 +365,59 @@ export function SpreadsheetToolbar({
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="min-w-[220px]">
               <DropdownMenuLabel>{t("sheets.structureMenu")}</DropdownMenuLabel>
-              <DropdownMenuItem onSelect={onInsertRowAbove}>
+              <DropdownMenuItem onSelect={(event) => runStructureAction(event, onInsertRowAbove)}>
                 <Rows3 className="h-4 w-4" />
                 {t("sheets.insertRowAbove")}
               </DropdownMenuItem>
-              <DropdownMenuItem onSelect={onInsertRowBelow}>
+              <DropdownMenuItem onSelect={(event) => runStructureAction(event, onInsertRowBelow)}>
                 <Rows3 className="h-4 w-4" />
                 {t("sheets.insertRowBelow")}
               </DropdownMenuItem>
-              <DropdownMenuItem onSelect={onInsertColumnLeft}>
+              <DropdownMenuItem onSelect={(event) => runStructureAction(event, onInsertColumnLeft)}>
                 <Columns3 className="h-4 w-4" />
                 {t("sheets.insertColumnLeft")}
               </DropdownMenuItem>
-              <DropdownMenuItem onSelect={onInsertColumnRight}>
+              <DropdownMenuItem onSelect={(event) => runStructureAction(event, onInsertColumnRight)}>
                 <Columns3 className="h-4 w-4" />
                 {t("sheets.insertColumnRight")}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onSelect={onDeleteSelectedRows}>
+              <DropdownMenuItem onSelect={(event) => runStructureAction(event, onDeleteSelectedRows)}>
                 <Trash2 className="h-4 w-4" />
                 {t("sheets.deleteRows")}
               </DropdownMenuItem>
-              <DropdownMenuItem onSelect={onDeleteSelectedColumns}>
+              <DropdownMenuItem onSelect={(event) => runStructureAction(event, onDeleteSelectedColumns)}>
                 <Trash2 className="h-4 w-4" />
                 {t("sheets.deleteColumns")}
               </DropdownMenuItem>
-              <DropdownMenuItem onSelect={onClearSelectedCells}>
+              <DropdownMenuItem onSelect={(event) => runStructureAction(event, onClearSelectedCells)}>
                 <Eraser className="h-4 w-4" />
                 {t("sheets.clearCells")}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onSelect={onAutoFitColumns}>
+              <DropdownMenuItem onSelect={(event) => runStructureAction(event, onAutoFitColumns)}>
                 <Columns3 className="h-4 w-4" />
                 {t("sheets.autoFitColumns")}
               </DropdownMenuItem>
-              <DropdownMenuItem onSelect={onResetColumnWidths}>
+              <DropdownMenuItem onSelect={(event) => runStructureAction(event, onResetColumnWidths)}>
                 <Columns3 className="h-4 w-4" />
                 {t("sheets.resetColumnWidths")}
               </DropdownMenuItem>
               <DropdownMenuSeparator />
               <DropdownMenuLabel>{t("sheets.rowHeight")}</DropdownMenuLabel>
-              <DropdownMenuItem onSelect={() => onSetRowHeight(24)}>
+              <DropdownMenuItem onSelect={(event) => runStructureAction(event, () => onSetRowHeight(30))}>
                 <Rows3 className="h-4 w-4" />
                 {t("sheets.rowHeightCompact")}
               </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => onSetRowHeight(40)}>
+              <DropdownMenuItem onSelect={(event) => runStructureAction(event, () => onSetRowHeight(40))}>
                 <Rows3 className="h-4 w-4" />
                 {t("sheets.rowHeightNormal")}
               </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => onSetRowHeight(64)}>
+              <DropdownMenuItem onSelect={(event) => runStructureAction(event, () => onSetRowHeight(64))}>
                 <Rows3 className="h-4 w-4" />
                 {t("sheets.rowHeightRoomy")}
               </DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => onSetRowHeight(96)}>
+              <DropdownMenuItem onSelect={(event) => runStructureAction(event, () => onSetRowHeight(96))}>
                 <Rows3 className="h-4 w-4" />
                 {t("sheets.rowHeightTall")}
               </DropdownMenuItem>
@@ -419,7 +428,7 @@ export function SpreadsheetToolbar({
                 <div className="flex items-center gap-2">
                   <Input
                     type="number"
-                    min={20}
+                    min={30}
                     max={320}
                     step={1}
                     value={rowHeightDraft}
@@ -438,7 +447,7 @@ export function SpreadsheetToolbar({
                   </Button>
                 </div>
               </div>
-              <DropdownMenuItem onSelect={onResetRowHeights}>
+              <DropdownMenuItem onSelect={(event) => runStructureAction(event, onResetRowHeights)}>
                 <Rows3 className="h-4 w-4" />
                 {t("sheets.resetRowHeights")}
               </DropdownMenuItem>
