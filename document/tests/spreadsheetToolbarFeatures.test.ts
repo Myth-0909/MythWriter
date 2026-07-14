@@ -210,6 +210,16 @@ describe("spreadsheet toolbar feature coverage", () => {
     assert.match(i18nSource, /sheets\.rowHeightPixels/);
   });
 
+  it("keeps header row and column selections for toolbar sizing actions", () => {
+    const gridSource = readFileSync(new URL("../src/components/spreadsheet/SpreadsheetGrid.tsx", import.meta.url), "utf8");
+
+    assert.match(gridSource, /function isUsableSelectionTuple/);
+    assert.match(gridSource, /value >= -1/);
+    assert.match(gridSource, /function getAxisSelectionBounds/);
+    assert.match(gridSource, /if \(a < 0 && b < 0\) return \{ start: 0, end: count - 1 \}/);
+    assert.doesNotMatch(gridSource, /every\(\(value\) => Number\.isInteger\(value\) && value >= 0\)/);
+  });
+
   it("closes the structure menu before applying sheet mutations", () => {
     const toolbarSource = readFileSync(new URL("../src/components/spreadsheet/SpreadsheetToolbar.tsx", import.meta.url), "utf8");
 

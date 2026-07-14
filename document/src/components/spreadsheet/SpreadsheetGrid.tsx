@@ -100,6 +100,35 @@ interface SelectionBounds {
 
 type SelectionTuple = [number, number, number, number];
 
+function isUsableSelectionTuple(selection: SelectionTuple) {
+  return (
+    selection.every((value) => Number.isInteger(value) && value >= -1) &&
+    selection.some((value) => value >= 0)
+  );
+}
+
+function getAxisSelectionBounds(a: number, b: number, count: number) {
+  if (a < 0 && b < 0) return { start: 0, end: count - 1 };
+  const start = Math.max(0, Math.min(a, b));
+  const end = Math.min(count - 1, Math.max(a, b));
+  return start <= end ? { start, end } : null;
+}
+
+function selectionTupleToBounds(selection: SelectionTuple, rowCount: number, colCount: number): SelectionBounds | null {
+  if (!isUsableSelectionTuple(selection)) return null;
+  const [rowA, colA, rowB, colB] = selection;
+  const rowBounds = getAxisSelectionBounds(rowA, rowB, rowCount);
+  const colBounds = getAxisSelectionBounds(colA, colB, colCount);
+  if (!rowBounds || !colBounds) return null;
+
+  return {
+    startRow: rowBounds.start,
+    endRow: rowBounds.end,
+    startCol: colBounds.start,
+    endCol: colBounds.end,
+  };
+}
+
 function updateIndexedValue(values: number[] | undefined, index: number, value: number) {
   const next = [...(values || [])];
   next[index] = value;
@@ -232,13 +261,7 @@ function getSelectedBounds(hot: Handsontable, fallback?: SelectionTuple | null):
   const colCount = hot.countCols();
   if (rowCount <= 0 || colCount <= 0) return null;
 
-  const [rowA, colA, rowB, colB] = selected;
-  const startRow = Math.max(0, Math.min(rowA, rowB));
-  const endRow = Math.min(rowCount - 1, Math.max(rowA, rowB));
-  const startCol = Math.max(0, Math.min(colA, colB));
-  const endCol = Math.min(colCount - 1, Math.max(colA, colB));
-
-  return { startRow, endRow, startCol, endCol };
+  return selectionTupleToBounds(selected, rowCount, colCount);
 }
 
 function getSelectedCells(hot: Handsontable, fallback?: SelectionTuple | null): CellCoord[] {
@@ -269,12 +292,12 @@ function getSelectedCells(hot: Handsontable, fallback?: SelectionTuple | null): 
   }
 
   for (const range of ranges as any[]) {
-    pushBounds({
-      startRow: Math.max(0, Math.min(range.from.row, range.to.row)),
-      endRow: Math.min(rowCount - 1, Math.max(range.from.row, range.to.row)),
-      startCol: Math.max(0, Math.min(range.from.col, range.to.col)),
-      endCol: Math.min(colCount - 1, Math.max(range.from.col, range.to.col)),
-    });
+    const bounds = selectionTupleToBounds(
+      [range.from.row, range.from.col, range.to.row, range.to.col],
+      rowCount,
+      colCount
+    );
+    if (bounds) pushBounds(bounds);
   }
 
   return cells;
@@ -323,7 +346,26 @@ function buildCellClassName(style: SpreadsheetCellStyle | undefined) {
 
 function restoreStoredSelection(hot: Handsontable, fallback?: SelectionTuple | null) {
   if (!fallback) return;
-  hot.selectCell(fallback[0], fallback[1], fallback[2], fallback[3], false, false);
+  if (!isUsableSelectionTuple(fallback)) return;
+
+  const [rowA, colA, rowB, colB] = fallback;
+  if (colA < 0 && colB < 0 && rowA >= 0 && rowB >= 0) {
+    hot.selectRows(Math.min(rowA, rowB), Math.max(rowA, rowB));
+    return;
+  }
+  if (rowA < 0 && rowB < 0 && colA >= 0 && colB >= 0) {
+    hot.selectColumns(Math.min(colA, colB), Math.max(colA, colB));
+    return;
+  }
+
+  hot.selectCell(
+    Math.max(0, rowA),
+    Math.max(0, colA),
+    Math.max(0, rowB),
+    Math.max(0, colB),
+    false,
+    false
+  );
 }
 
 function readCellStyleOverridesFromHot(
@@ -772,8 +814,9 @@ export const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGrid
             syncFromHot({ cellStyles: shiftStylesForDelete(latestSheetRef.current.cellStyles, "col", index, amount) });
           }}
           afterSelectionEnd={(row: number, column: number, row2: number, column2: number) => {
-            if ([row, column, row2, column2].every((value) => Number.isInteger(value) && value >= 0)) {
-              lastSelectionRef.current = [row, column, row2, column2];
+            const selection: SelectionTuple = [row, column, row2, column2];
+            if (isUsableSelectionTuple(selection)) {
+              lastSelectionRef.current = selection;
               notifyActiveCellChange();
               notifySelectionSummaryChange();
             }
