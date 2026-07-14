@@ -196,6 +196,22 @@ function readActiveCellState(hot: Handsontable, fallback?: SelectionTuple | null
   };
 }
 
+function activeCellSignature(state: SpreadsheetActiveCellState) {
+  return JSON.stringify([state.row, state.col, state.cellLabel, state.value]);
+}
+
+function selectionSummarySignature(summary: SpreadsheetSelectionSummary) {
+  return JSON.stringify([
+    summary.rangeLabel,
+    summary.cellCount,
+    summary.numberCount,
+    summary.sum,
+    summary.average,
+    summary.min,
+    summary.max,
+  ]);
+}
+
 function readMerges(hot: Handsontable | null | undefined): SpreadsheetMergeCell[] {
   const plugin = hot?.getPlugin("mergeCells") as any;
   const mergedCells = plugin?.mergedCellsCollection?.mergedCells || [];
@@ -409,7 +425,12 @@ export const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGrid
     const hotRef = useRef<HotTableRef>(null);
     const latestSheetRef = useRef(sheet);
     const lastSelectionRef = useRef<SelectionTuple | null>(null);
+    const lastActiveCellSignatureRef = useRef("");
+    const lastSelectionSummarySignatureRef = useRef("");
     const contextMenuStyleSyncTimerRef = useRef<number | null>(null);
+    const contextMenuInteractionRef = useRef(false);
+    const contextMenuInteractionTimerRef = useRef<number | null>(null);
+    const delayedContextMenuOpenTimerRef = useRef<number | null>(null);
     const contextMenuClassNameByCoordRef = useRef(new Map<string, string>());
     const formulaEngine = useMemo(
       () => HyperFormula.buildEmpty({ licenseKey: "internal-use-in-handsontable" }),
@@ -427,9 +448,20 @@ export const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGrid
       latestSheetRef.current = sheet;
     }, [sheet]);
 
+    useEffect(() => {
+      lastActiveCellSignatureRef.current = "";
+      lastSelectionSummarySignatureRef.current = "";
+    }, [sheet.id]);
+
     useEffect(() => () => {
       if (contextMenuStyleSyncTimerRef.current !== null) {
         window.clearTimeout(contextMenuStyleSyncTimerRef.current);
+      }
+      if (contextMenuInteractionTimerRef.current !== null) {
+        window.clearTimeout(contextMenuInteractionTimerRef.current);
+      }
+      if (delayedContextMenuOpenTimerRef.current !== null) {
+        window.clearTimeout(delayedContextMenuOpenTimerRef.current);
       }
     }, []);
 
@@ -473,7 +505,11 @@ export const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGrid
       const hot = hotRef.current?.hotInstance;
       if (!hot) return;
       const state = readActiveCellState(hot, lastSelectionRef.current);
-      if (state) onActiveCellChange?.(state);
+      if (!state) return;
+      const signature = activeCellSignature(state);
+      if (signature === lastActiveCellSignatureRef.current) return;
+      lastActiveCellSignatureRef.current = signature;
+      onActiveCellChange?.(state);
     };
 
     const notifySelectionSummaryChange = () => {
@@ -481,9 +517,70 @@ export const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGrid
       if (!hot) return;
       const bounds = getSelectedBounds(hot, lastSelectionRef.current);
       if (bounds) {
-        onSelectionSummaryChange?.(buildSpreadsheetSelectionSummary(latestSheetRef.current, bounds));
+        const summary = buildSpreadsheetSelectionSummary(latestSheetRef.current, bounds);
+        const signature = selectionSummarySignature(summary);
+        if (signature === lastSelectionSummarySignatureRef.current) return;
+        lastSelectionSummarySignatureRef.current = signature;
+        onSelectionSummaryChange?.(summary);
       }
     };
+
+    function startContextMenuInteraction() {
+      contextMenuInteractionRef.current = true;
+      if (contextMenuInteractionTimerRef.current !== null) {
+        window.clearTimeout(contextMenuInteractionTimerRef.current);
+      }
+      contextMenuInteractionTimerRef.current = window.setTimeout(() => {
+        contextMenuInteractionTimerRef.current = null;
+        contextMenuInteractionRef.current = false;
+      }, 500);
+    }
+
+    function keepContextMenuInteraction() {
+      contextMenuInteractionRef.current = true;
+      if (contextMenuInteractionTimerRef.current !== null) {
+        window.clearTimeout(contextMenuInteractionTimerRef.current);
+        contextMenuInteractionTimerRef.current = null;
+      }
+    }
+
+    function finishContextMenuInteraction() {
+      if (contextMenuInteractionTimerRef.current !== null) {
+        window.clearTimeout(contextMenuInteractionTimerRef.current);
+      }
+      contextMenuInteractionTimerRef.current = window.setTimeout(() => {
+        contextMenuInteractionTimerRef.current = null;
+        contextMenuInteractionRef.current = false;
+      }, 120);
+    }
+
+    function openContextMenuAfterPointerRelease(event: MouseEvent) {
+      const hot = hotRef.current?.hotInstance;
+      if (!hot) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+      startContextMenuInteraction();
+
+      const offset = hot.rootDocument?.documentElement?.getBoundingClientRect?.() || { top: 0, left: 0 };
+      const position = {
+        top: event.clientY + Math.abs(offset.top || 0),
+        left: event.clientX + Math.abs(offset.left || 0),
+      };
+
+      if (delayedContextMenuOpenTimerRef.current !== null) {
+        window.clearTimeout(delayedContextMenuOpenTimerRef.current);
+      }
+
+      delayedContextMenuOpenTimerRef.current = window.setTimeout(() => {
+        delayedContextMenuOpenTimerRef.current = null;
+        const currentHot = hotRef.current?.hotInstance;
+        if (!currentHot) return;
+        const plugin = currentHot.getPlugin("contextMenu") as any;
+        plugin?.open?.(position);
+      }, 80);
+    }
 
     useImperativeHandle(ref, () => ({
       getActiveCellState: () => {
@@ -748,7 +845,7 @@ export const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGrid
           contextMenu
           dropdownMenu
           filters
-          columnSorting
+          columnSorting={{ indicator: true, headerAction: false }}
           manualColumnResize
           manualRowResize
           manualColumnMove
@@ -813,10 +910,20 @@ export const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGrid
             if (!isContextMenuSource(source)) return;
             syncFromHot({ cellStyles: shiftStylesForDelete(latestSheetRef.current.cellStyles, "col", index, amount) });
           }}
+          beforeOnCellMouseDown={(event: MouseEvent) => {
+            if (event.button === 2) startContextMenuInteraction();
+          }}
+          beforeOnCellContextMenu={(event: MouseEvent) => openContextMenuAfterPointerRelease(event)}
+          beforeContextMenuShow={() => startContextMenuInteraction()}
+          afterContextMenuShow={() => keepContextMenuInteraction()}
+          afterContextMenuHide={() => {
+            finishContextMenuInteraction();
+          }}
           afterSelectionEnd={(row: number, column: number, row2: number, column2: number) => {
             const selection: SelectionTuple = [row, column, row2, column2];
             if (isUsableSelectionTuple(selection)) {
               lastSelectionRef.current = selection;
+              if (contextMenuInteractionRef.current) return;
               notifyActiveCellChange();
               notifySelectionSummaryChange();
             }

@@ -124,6 +124,35 @@ describe("spreadsheet toolbar feature coverage", () => {
     assert.match(spreadsheetCss, /zn-cell-valign-middle/);
   });
 
+  it("does not re-render the React sheet while the Handsontable context menu is opening", () => {
+    const gridSource = readFileSync(new URL("../src/components/spreadsheet/SpreadsheetGrid.tsx", import.meta.url), "utf8");
+
+    assert.match(gridSource, /contextMenuInteractionRef/);
+    assert.match(gridSource, /delayedContextMenuOpenTimerRef/);
+    assert.match(gridSource, /function startContextMenuInteraction/);
+    assert.match(gridSource, /function keepContextMenuInteraction/);
+    assert.match(gridSource, /function openContextMenuAfterPointerRelease\(event: MouseEvent\)/);
+    assert.match(gridSource, /event\.stopImmediatePropagation\(\)/);
+    assert.match(gridSource, /plugin\?\.open\?\.\(position\)/);
+    assert.match(gridSource, /columnSorting=\{\{ indicator: true, headerAction: false \}\}/);
+    assert.match(gridSource, /beforeOnCellMouseDown=\{\(event: MouseEvent\) => \{/);
+    assert.match(gridSource, /if \(event\.button === 2\) startContextMenuInteraction\(\)/);
+    assert.match(gridSource, /beforeOnCellContextMenu=\{\(event: MouseEvent\) => openContextMenuAfterPointerRelease\(event\)\}/);
+    assert.match(gridSource, /beforeContextMenuShow=\{\(\) => startContextMenuInteraction\(\)\}/);
+    assert.match(gridSource, /afterContextMenuShow=\{\(\) => keepContextMenuInteraction\(\)\}/);
+    assert.match(gridSource, /afterContextMenuHide=\{\(\) => \{/);
+    assert.match(gridSource, /function finishContextMenuInteraction/);
+    assert.match(gridSource, /contextMenuInteractionTimerRef\.current = window\.setTimeout\(\(\) => \{/);
+    assert.match(gridSource, /if \(contextMenuInteractionRef\.current\) return/);
+    assert.match(gridSource, /lastActiveCellSignatureRef/);
+    assert.match(gridSource, /lastSelectionSummarySignatureRef/);
+    assert.match(gridSource, /function activeCellSignature/);
+    assert.match(gridSource, /function selectionSummarySignature/);
+    assert.match(gridSource, /if \(signature === lastActiveCellSignatureRef\.current\) return/);
+    assert.match(gridSource, /if \(signature === lastSelectionSummarySignatureRef\.current\) return/);
+    assert.doesNotMatch(gridSource, /contextMenuInteractionRef\.current = false;\s*notifyActiveCellChange\(\);\s*notifySelectionSummaryChange\(\);/);
+  });
+
   it("exposes filter controls through the spreadsheet toolbar", () => {
     const toolbarSource = readFileSync(new URL("../src/components/spreadsheet/SpreadsheetToolbar.tsx", import.meta.url), "utf8");
     const gridSource = readFileSync(new URL("../src/components/spreadsheet/SpreadsheetGrid.tsx", import.meta.url), "utf8");
