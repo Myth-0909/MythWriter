@@ -25,7 +25,7 @@ import {
   Upload,
   WrapText,
 } from "lucide-react";
-import { useState, type MouseEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import { useI18n } from "@/components/I18nProvider";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -296,6 +296,7 @@ export function SpreadsheetToolbar({
   const { t } = useI18n();
   const [rowHeightDraft, setRowHeightDraft] = useState("40");
   const [structureMenuOpen, setStructureMenuOpen] = useState(false);
+  const pendingStructureActionRef = useRef<(() => void) | null>(null);
   const statusClassName = cn(
     "min-w-[88px] text-right text-[11px] font-semibold",
     status === "saved" && "text-emerald-600 dark:text-emerald-400",
@@ -304,17 +305,25 @@ export function SpreadsheetToolbar({
     status === "error" && "text-red-600 dark:text-red-400"
   );
 
+  useEffect(() => {
+    if (structureMenuOpen || !pendingStructureActionRef.current) return;
+    const action = pendingStructureActionRef.current;
+    pendingStructureActionRef.current = null;
+    const frame = window.requestAnimationFrame(() => action());
+    return () => window.cancelAnimationFrame(frame);
+  }, [structureMenuOpen]);
+
   function runStructureAction(event: Event, action: () => void) {
     event.preventDefault();
+    pendingStructureActionRef.current = action;
     setStructureMenuOpen(false);
-    window.setTimeout(() => action(), 0);
   }
 
   const applyCustomRowHeight = () => {
     const height = Number(rowHeightDraft);
     if (!Number.isFinite(height)) return;
+    pendingStructureActionRef.current = () => onSetRowHeight(height);
     setStructureMenuOpen(false);
-    window.setTimeout(() => onSetRowHeight(height), 0);
   };
 
   return (
@@ -356,14 +365,18 @@ export function SpreadsheetToolbar({
             </DropdownMenuContent>
           </DropdownMenu>
 
-          <DropdownMenu open={structureMenuOpen} onOpenChange={setStructureMenuOpen}>
+          <DropdownMenu open={structureMenuOpen} onOpenChange={setStructureMenuOpen} modal={false}>
             <DropdownMenuTrigger asChild>
               <Button type="button" variant="outline" size="sm" onMouseDown={preserveSpreadsheetSelection} className="shrink-0 gap-2">
                 <TableProperties className="h-4 w-4" />
                 {t("sheets.structureMenu")}
               </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="min-w-[220px]">
+            <DropdownMenuContent
+              align="start"
+              className="min-w-[220px]"
+              onCloseAutoFocus={(event) => event.preventDefault()}
+            >
               <DropdownMenuLabel>{t("sheets.structureMenu")}</DropdownMenuLabel>
               <DropdownMenuItem onSelect={(event) => runStructureAction(event, onInsertRowAbove)}>
                 <Rows3 className="h-4 w-4" />

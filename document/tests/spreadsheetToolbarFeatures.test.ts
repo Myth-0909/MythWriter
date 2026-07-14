@@ -224,11 +224,16 @@ describe("spreadsheet toolbar feature coverage", () => {
     const toolbarSource = readFileSync(new URL("../src/components/spreadsheet/SpreadsheetToolbar.tsx", import.meta.url), "utf8");
 
     assert.match(toolbarSource, /const \[structureMenuOpen, setStructureMenuOpen\] = useState\(false\)/);
+    assert.match(toolbarSource, /const pendingStructureActionRef = useRef<\(\(\) => void\) \| null>\(null\)/);
+    assert.match(toolbarSource, /useEffect\(\(\) => \{/);
     assert.match(toolbarSource, /function runStructureAction/);
     assert.match(toolbarSource, /event\.preventDefault\(\)/);
+    assert.match(toolbarSource, /pendingStructureActionRef\.current = action/);
     assert.match(toolbarSource, /setStructureMenuOpen\(false\)/);
-    assert.match(toolbarSource, /window\.setTimeout\(\(\) => action\(\), 0\)/);
-    assert.match(toolbarSource, /<DropdownMenu open=\{structureMenuOpen\} onOpenChange=\{setStructureMenuOpen\}>/);
+    assert.match(toolbarSource, /window\.requestAnimationFrame\(\(\) => action\(\)\)/);
+    assert.doesNotMatch(toolbarSource, /window\.setTimeout\(\(\) => action\(\), 0\)/);
+    assert.match(toolbarSource, /<DropdownMenu open=\{structureMenuOpen\} onOpenChange=\{setStructureMenuOpen\} modal=\{false\}>/);
+    assert.match(toolbarSource, /<DropdownMenuContent\s+align="start"\s+className="min-w-\[220px\]"\s+onCloseAutoFocus=\{\(event\) => event\.preventDefault\(\)\}/);
     assert.match(toolbarSource, /onSelect=\{\(event\) => runStructureAction\(event, \(\) => onSetRowHeight\(40\)\)\}/);
   });
 
