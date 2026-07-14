@@ -38,6 +38,9 @@ ensureHandsontableModules();
 
 type CellStylePatch = Partial<Omit<SpreadsheetCellStyle, "row" | "col">>;
 type ToggleCellStyleKey = "bold" | "italic" | "underline" | "wrap" | "border";
+const DEFAULT_ROW_HEIGHT = 24;
+const MIN_ROW_HEIGHT = 20;
+const MAX_ROW_HEIGHT = 320;
 
 export interface SpreadsheetActiveCellState {
   row: number;
@@ -67,6 +70,7 @@ export interface SpreadsheetGridHandle {
   clearSelectedCells: () => void;
   autoFitSelectedColumns: () => void;
   resetSelectedColumnWidths: () => void;
+  setSelectedRowHeight: (height: number) => void;
   resetSelectedRowHeights: () => void;
   sortSelectedColumn: (direction: "asc" | "desc") => void;
 }
@@ -104,6 +108,11 @@ function updateIndexedValue(values: number[] | undefined, index: number, value: 
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
+}
+
+function normalizeRowHeight(height: number) {
+  if (!Number.isFinite(height)) return DEFAULT_ROW_HEIGHT;
+  return clamp(Math.round(height), MIN_ROW_HEIGHT, MAX_ROW_HEIGHT);
 }
 
 function cellKey(row: number, col: number) {
@@ -647,6 +656,21 @@ export const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGrid
         }
         syncFromHot({ colWidths: nextWidths });
       },
+      setSelectedRowHeight: (height) => {
+        const hot = hotRef.current?.hotInstance;
+        if (!hot) return;
+        restoreStoredSelection(hot, lastSelectionRef.current);
+        const bounds = getSelectedBounds(hot, lastSelectionRef.current);
+        if (!bounds) return;
+        const normalizedHeight = normalizeRowHeight(height);
+        const nextHeights = [...(latestSheetRef.current.rowHeights || [])];
+        for (let row = bounds.startRow; row <= bounds.endRow; row += 1) {
+          nextHeights[row] = normalizedHeight;
+        }
+        syncFromHot({ rowHeights: nextHeights });
+        restoreStoredSelection(hot, lastSelectionRef.current);
+        hot.render();
+      },
       resetSelectedRowHeights: () => {
         const hot = hotRef.current?.hotInstance;
         if (!hot) return;
@@ -655,7 +679,7 @@ export const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGrid
         if (!bounds) return;
         const nextHeights = [...(latestSheetRef.current.rowHeights || [])];
         for (let row = bounds.startRow; row <= bounds.endRow; row += 1) {
-          nextHeights[row] = 24;
+          nextHeights[row] = DEFAULT_ROW_HEIGHT;
         }
         syncFromHot({ rowHeights: nextHeights });
       },

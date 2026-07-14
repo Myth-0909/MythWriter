@@ -18,6 +18,13 @@
   vertical-align: middle;
 }
 
+.zn-spreadsheet-grid .handsontable tbody tr th .relative {
+  display: flex;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+}
+
 .dark .zn-spreadsheet-grid .handsontable {
   color: #f4f4f5;
 }

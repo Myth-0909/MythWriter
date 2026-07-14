@@ -97,6 +97,10 @@ describe("spreadsheet toolbar feature coverage", () => {
       spreadsheetCss,
       /\.zn-spreadsheet-grid \.handsontable \.htCore th\s*\{[^}]*vertical-align:\s*middle;/s
     );
+    assert.match(
+      spreadsheetCss,
+      /\.zn-spreadsheet-grid \.handsontable tbody tr th \.relative\s*\{[^}]*display:\s*flex;[^}]*height:\s*100%;[^}]*align-items:\s*center;[^}]*justify-content:\s*center;/s
+    );
   });
 
   it("synchronizes Handsontable context-menu edits into workbook state", () => {
@@ -178,7 +182,7 @@ describe("spreadsheet toolbar feature coverage", () => {
     assert.match(i18nSource, /sheets\.customColor/);
   });
 
-  it("exposes column auto-fit and size reset controls", () => {
+  it("exposes row and column sizing controls", () => {
     const toolbarSource = readFileSync(new URL("../src/components/spreadsheet/SpreadsheetToolbar.tsx", import.meta.url), "utf8");
     const gridSource = readFileSync(new URL("../src/components/spreadsheet/SpreadsheetGrid.tsx", import.meta.url), "utf8");
     const editorSource = readFileSync(new URL("../src/pages/SpreadsheetEditorPage.tsx", import.meta.url), "utf8");
@@ -186,12 +190,21 @@ describe("spreadsheet toolbar feature coverage", () => {
 
     assert.match(toolbarSource, /onAutoFitColumns/);
     assert.match(toolbarSource, /onResetColumnWidths/);
+    assert.match(toolbarSource, /onSetRowHeight/);
+    assert.match(toolbarSource, /sheets\.rowHeight/);
+    assert.match(toolbarSource, /sheets\.rowHeightCompact/);
+    assert.match(toolbarSource, /sheets\.rowHeightCustom/);
     assert.match(toolbarSource, /onResetRowHeights/);
     assert.match(gridSource, /autoFitSelectedColumns/);
     assert.match(gridSource, /resetSelectedColumnWidths/);
+    assert.match(gridSource, /setSelectedRowHeight/);
     assert.match(gridSource, /resetSelectedRowHeights/);
     assert.match(editorSource, /gridRef\.current\?\.autoFitSelectedColumns/);
+    assert.match(editorSource, /handleSetRowHeight/);
+    assert.match(editorSource, /gridRef\.current\?\.setSelectedRowHeight/);
     assert.match(i18nSource, /sheets\.autoFitColumns/);
+    assert.match(i18nSource, /sheets\.rowHeight/);
+    assert.match(i18nSource, /sheets\.rowHeightPixels/);
   });
 
   it("exposes csv import/export and import busy state", () => {

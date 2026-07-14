@@ -88,6 +88,7 @@ interface SpreadsheetToolbarProps {
   onClearSelectedCells: () => void;
   onAutoFitColumns: () => void;
   onResetColumnWidths: () => void;
+  onSetRowHeight: (height: number) => void;
   onResetRowHeights: () => void;
   onSortAscending: () => void;
   onSortDescending: () => void;
@@ -284,6 +285,7 @@ export function SpreadsheetToolbar({
   onClearSelectedCells,
   onAutoFitColumns,
   onResetColumnWidths,
+  onSetRowHeight,
   onResetRowHeights,
   onSortAscending,
   onSortDescending,
@@ -292,6 +294,7 @@ export function SpreadsheetToolbar({
   isFindReplaceOpen,
 }: SpreadsheetToolbarProps) {
   const { t } = useI18n();
+  const [rowHeightDraft, setRowHeightDraft] = useState("40");
   const statusClassName = cn(
     "min-w-[88px] text-right text-[11px] font-semibold",
     status === "saved" && "text-emerald-600 dark:text-emerald-400",
@@ -299,6 +302,11 @@ export function SpreadsheetToolbar({
     status === "unsaved" && "text-amber-600 dark:text-amber-300",
     status === "error" && "text-red-600 dark:text-red-400"
   );
+  const applyCustomRowHeight = () => {
+    const height = Number(rowHeightDraft);
+    if (!Number.isFinite(height)) return;
+    onSetRowHeight(height);
+  };
 
   return (
     <div className="shrink-0 border-b border-surface-200 bg-surface-50 dark:border-surface-800 dark:bg-surface-900">
@@ -386,6 +394,50 @@ export function SpreadsheetToolbar({
                 <Columns3 className="h-4 w-4" />
                 {t("sheets.resetColumnWidths")}
               </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuLabel>{t("sheets.rowHeight")}</DropdownMenuLabel>
+              <DropdownMenuItem onSelect={() => onSetRowHeight(24)}>
+                <Rows3 className="h-4 w-4" />
+                {t("sheets.rowHeightCompact")}
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => onSetRowHeight(40)}>
+                <Rows3 className="h-4 w-4" />
+                {t("sheets.rowHeightNormal")}
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => onSetRowHeight(64)}>
+                <Rows3 className="h-4 w-4" />
+                {t("sheets.rowHeightRoomy")}
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => onSetRowHeight(96)}>
+                <Rows3 className="h-4 w-4" />
+                {t("sheets.rowHeightTall")}
+              </DropdownMenuItem>
+              <div className="px-3 py-2">
+                <div className="mb-1.5 text-xs font-semibold text-surface-500 dark:text-surface-400">
+                  {t("sheets.rowHeightCustom")}
+                </div>
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="number"
+                    min={20}
+                    max={320}
+                    step={1}
+                    value={rowHeightDraft}
+                    onChange={(event) => setRowHeightDraft(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        applyCustomRowHeight();
+                      }
+                    }}
+                    aria-label={t("sheets.rowHeightPixels")}
+                    className="h-8 w-24"
+                  />
+                  <Button type="button" size="sm" onMouseDown={preserveSpreadsheetSelection} onClick={applyCustomRowHeight}>
+                    {t("sheets.applyRowHeight")}
+                  </Button>
+                </div>
+              </div>
               <DropdownMenuItem onSelect={onResetRowHeights}>
                 <Rows3 className="h-4 w-4" />
                 {t("sheets.resetRowHeights")}

@@ -351,6 +351,10 @@ export function SpreadsheetEditorPage({ spreadsheetId, onBack }: SpreadsheetEdit
     gridRef.current?.applyCellStyle({ fontSize });
   };
 
+  const handleSetRowHeight = (height: number) => {
+    gridRef.current?.setSelectedRowHeight(height);
+  };
+
   const handleToggleBorder = () => {
     gridRef.current?.applyCellStyle({}, { toggleKey: "border" });
   };
@@ -538,6 +542,7 @@ export function SpreadsheetEditorPage({ spreadsheetId, onBack }: SpreadsheetEdit
           onClearSelectedCells={handleClearSelectedCells}
           onAutoFitColumns={() => gridRef.current?.autoFitSelectedColumns()}
           onResetColumnWidths={() => gridRef.current?.resetSelectedColumnWidths()}
+          onSetRowHeight={handleSetRowHeight}
           onResetRowHeights={() => gridRef.current?.resetSelectedRowHeights()}
           onSortAscending={handleSortAscending}
           onSortDescending={handleSortDescending}
