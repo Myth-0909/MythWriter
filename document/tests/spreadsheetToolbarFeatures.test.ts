@@ -90,6 +90,15 @@ describe("spreadsheet toolbar feature coverage", () => {
     assert.match(gridSource, /language=\{lang === "zh" \? "zh-CN" : "en-US"\}/);
   });
 
+  it("keeps spreadsheet row and column headers vertically centered", () => {
+    const spreadsheetCss = readFileSync(new URL("../src/components/spreadsheet/spreadsheet.css", import.meta.url), "utf8");
+
+    assert.match(
+      spreadsheetCss,
+      /\.zn-spreadsheet-grid \.handsontable \.htCore th\s*\{[^}]*vertical-align:\s*middle;/s
+    );
+  });
+
   it("synchronizes Handsontable context-menu edits into workbook state", () => {
     const gridSource = readFileSync(new URL("../src/components/spreadsheet/SpreadsheetGrid.tsx", import.meta.url), "utf8");
     const typesSource = readFileSync(new URL("../src/types.ts", import.meta.url), "utf8");
