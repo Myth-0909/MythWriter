@@ -139,14 +139,14 @@ export function SettingsPage() {
 
   return (
     <Scrollbar className="flex-1 bg-surface-50 dark:bg-surface-950">
-      <div className="mx-auto max-w-[820px] px-4 py-8 sm:px-6 lg:px-10 lg:py-12">
+      <div className="mx-auto w-full max-w-[1180px] px-4 py-8 sm:px-6 lg:px-10 lg:py-12">
         <h2 className="text-[28px] font-bold leading-tight text-surface-900 dark:text-surface-100 mb-8">
           {t("settings.title")}
         </h2>
 
-        <div className="flex flex-col gap-6">
+        <div className="grid gap-6 2xl:grid-cols-[minmax(300px,0.72fr)_minmax(0,1.28fr)] 2xl:items-start">
           {/* Profile Section */}
-          <section className="rounded-xl border border-surface-200 bg-white p-4 sm:p-6 dark:border-surface-800 dark:bg-surface-900">
+          <section className="rounded-xl border border-surface-200 bg-white p-4 sm:p-6 2xl:col-start-1 2xl:row-start-1 dark:border-surface-800 dark:bg-surface-900">
             <div className="mb-6 flex items-center justify-between gap-3">
               <div className="flex items-center gap-3">
                 <User className="h-5 w-5 text-surface-500" />
@@ -236,7 +236,7 @@ export function SettingsPage() {
           </section>
 
           {/* Appearance Section */}
-          <section className="rounded-xl border border-surface-200 bg-white p-4 sm:p-6 dark:border-surface-800 dark:bg-surface-900">
+          <section className="rounded-xl border border-surface-200 bg-white p-4 sm:p-6 2xl:col-start-2 2xl:row-span-3 2xl:row-start-1 dark:border-surface-800 dark:bg-surface-900">
             <div className="mb-6 flex items-center justify-between gap-3">
               <div className="flex items-center gap-3">
                 {theme === "light" ? (
@@ -398,14 +398,14 @@ export function SettingsPage() {
                   className="gap-2"
                 >
                   <Languages className="h-4 w-4" />
-                  {lang === "zh" ? "中文" : "English"}
+                  {lang === "zh" ? t("nav.switchToEnglish") : t("nav.switchToChinese")}
                 </Button>
               </div>
             </div>
           </section>
 
           {/* About Section */}
-          <section className="rounded-xl border border-surface-200 bg-white p-4 sm:p-6 dark:border-surface-800 dark:bg-surface-900">
+          <section className="rounded-xl border border-surface-200 bg-white p-4 sm:p-6 2xl:col-start-1 2xl:row-start-2 dark:border-surface-800 dark:bg-surface-900">
             <div className="flex items-center gap-3 mb-6">
               <Info className="h-5 w-5 text-surface-500" />
               <h3 className="text-base font-semibold text-surface-900 dark:text-surface-100">
@@ -419,7 +419,7 @@ export function SettingsPage() {
           </section>
 
           {/* Save Button */}
-          <div className="flex justify-end">
+          <div className="flex justify-end 2xl:col-start-1 2xl:row-start-3">
             <Button onClick={handleSave} disabled={saving || !profileDirty}>
               {saving ? <InlineLoading variant="cursor" size="sm" label={t("settings.save")} /> : t("settings.save")}
             </Button>

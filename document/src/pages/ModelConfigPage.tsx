@@ -227,7 +227,7 @@ export function ModelConfigPage() {
 
   return (
     <Scrollbar className="flex-1 bg-surface-50 dark:bg-surface-950">
-      <div className="mx-auto max-w-[820px] px-4 py-8 sm:px-6 lg:px-10 lg:py-12">
+      <div className="mx-auto w-full max-w-[1180px] px-4 py-8 sm:px-6 lg:px-10 lg:py-12">
         <div className="mb-8">
           <h2 className="text-[28px] font-bold leading-tight text-surface-900 dark:text-surface-100">
             {t("modelConfig.title")}
@@ -237,7 +237,7 @@ export function ModelConfigPage() {
           </p>
         </div>
 
-        <div className="flex flex-col gap-6">
+        <div className="grid gap-6 2xl:grid-cols-2 2xl:items-start">
           <section className="rounded-xl border border-surface-200 bg-white p-4 sm:p-6 dark:border-surface-800 dark:bg-surface-900">
             <div className="mb-6 flex items-start gap-3">
               <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-brand-50 text-brand-600 dark:bg-brand-950/60 dark:text-brand-300">

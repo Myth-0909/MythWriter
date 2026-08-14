@@ -138,7 +138,7 @@ function ToolbarIconButton({
         onMouseDown={preserveSpreadsheetSelection}
         onClick={onClick}
         aria-label={label}
-        className={active ? "ring-1 ring-brand-200 dark:ring-brand-400/25" : undefined}
+        className={cn("h-9 w-9", active && "ring-1 ring-brand-200 dark:ring-brand-400/25")}
       >
         {children}
       </Button>
@@ -350,7 +350,7 @@ export function SpreadsheetToolbar({
   const [structureMenuOpen, setStructureMenuOpen] = useState(false);
   const pendingStructureActionRef = useRef<(() => void) | null>(null);
   const statusClassName = cn(
-    "inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md border px-2.5 text-[11px] font-semibold",
+    "inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border px-2.5 text-xs font-semibold",
     status === "saved" && "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/50 dark:text-emerald-300",
     status === "saving" && "border-brand-200 bg-brand-50 text-brand-700 dark:border-brand-900 dark:bg-brand-950/50 dark:text-brand-300",
     status === "unsaved" && "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950/50 dark:text-amber-300",
@@ -381,7 +381,7 @@ export function SpreadsheetToolbar({
     <div className="shrink-0 border-b border-surface-200 bg-surface-50 dark:border-surface-800 dark:bg-surface-900">
       <div
         data-spreadsheet-action-bar
-        className="grid min-h-10 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 overflow-hidden border-b border-surface-200 px-3 py-1 dark:border-surface-800"
+        className="grid min-h-11 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 overflow-hidden border-b border-surface-200 px-3 py-1 dark:border-surface-800"
       >
         <div className="flex min-w-0 items-center gap-1.5 overflow-x-auto pr-2">
           <Button
@@ -390,7 +390,7 @@ export function SpreadsheetToolbar({
             size="sm"
             onMouseDown={preserveSpreadsheetSelection}
             onClick={onToggleFindReplace}
-            className="h-8 shrink-0 gap-2"
+            className="h-9 shrink-0 gap-2 text-sm"
           >
             <Search className="h-4 w-4" />
             {t("sheets.findReplace")}
@@ -398,7 +398,7 @@ export function SpreadsheetToolbar({
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button type="button" variant="outline" size="sm" onMouseDown={preserveSpreadsheetSelection} className="h-8 shrink-0 gap-2">
+              <Button type="button" variant="outline" size="sm" onMouseDown={preserveSpreadsheetSelection} className="h-9 shrink-0 gap-2 text-sm">
                 <ListFilter className="h-4 w-4" />
                 {t("sheets.filters")}
               </Button>
@@ -418,7 +418,7 @@ export function SpreadsheetToolbar({
 
           <Popover open={structureMenuOpen} onOpenChange={setStructureMenuOpen}>
             <PopoverTrigger asChild>
-              <Button type="button" variant="outline" size="sm" onMouseDown={preserveSpreadsheetSelection} className="h-8 shrink-0 gap-2">
+              <Button type="button" variant="outline" size="sm" onMouseDown={preserveSpreadsheetSelection} className="h-9 shrink-0 gap-2 text-sm">
                 <TableProperties className="h-4 w-4" />
                 {t("sheets.structureMenu")}
               </Button>
@@ -509,7 +509,7 @@ export function SpreadsheetToolbar({
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button type="button" variant="outline" size="sm" onMouseDown={preserveSpreadsheetSelection} className="h-8 shrink-0 gap-2">
+              <Button type="button" variant="outline" size="sm" onMouseDown={preserveSpreadsheetSelection} className="h-9 shrink-0 gap-2 text-sm">
                 <ArrowUpAZ className="h-4 w-4" />
                 {t("sheets.sortMenu")}
               </Button>
@@ -528,7 +528,7 @@ export function SpreadsheetToolbar({
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button type="button" variant="outline" size="sm" onMouseDown={preserveSpreadsheetSelection} className="h-8 shrink-0 gap-2">
+              <Button type="button" variant="outline" size="sm" onMouseDown={preserveSpreadsheetSelection} className="h-9 shrink-0 gap-2 text-sm">
                 <Upload className="h-4 w-4" />
                 {t("sheets.fileMenu")}
               </Button>
@@ -555,7 +555,7 @@ export function SpreadsheetToolbar({
             </DropdownMenuContent>
           </DropdownMenu>
           {importing && (
-            <span className="shrink-0 text-[11px] font-medium text-brand-600 dark:text-brand-300">
+            <span className="shrink-0 text-xs font-medium text-brand-600 dark:text-brand-300">
               {t("sheets.importing")}
             </span>
           )}
@@ -568,7 +568,7 @@ export function SpreadsheetToolbar({
 
       <div
         data-spreadsheet-editing-bar
-        className="flex min-h-10 items-center gap-1 overflow-x-auto px-3 py-1"
+        className="flex min-h-11 items-center gap-1 overflow-x-auto px-3 py-1"
       >
         <ToolbarIconButton label={t("sheets.undo")} onClick={onUndo}>
           <Undo2 className="h-4 w-4" />

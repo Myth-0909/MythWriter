@@ -82,15 +82,15 @@ export function TopAppBar({
       <div className="flex items-center justify-end gap-2">
         {variant === "editor" && (
           <>
-            <Button variant="ghost" size="sm" className="gap-1.5 text-surface-600 hover:text-surface-900 dark:text-surface-300 dark:hover:text-surface-100" onClick={onShare}>
-              <Share2 className="h-3.5 w-3.5" />
-              <span className="text-xs">{t("topbar.share")}</span>
+            <Button variant="ghost" size="sm" className="h-9 gap-2 text-surface-600 hover:text-surface-900 dark:text-surface-300 dark:hover:text-surface-100" onClick={onShare}>
+              <Share2 className="h-4 w-4" />
+              <span className="text-sm">{t("topbar.share")}</span>
             </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm" className="gap-1.5 text-surface-600 hover:text-surface-900 dark:text-surface-300 dark:hover:text-surface-100">
-                  <Download className="h-3.5 w-3.5" />
-                  <span className="text-xs">{t("topbar.export")}</span>
+                <Button variant="ghost" size="sm" className="h-9 gap-2 text-surface-600 hover:text-surface-900 dark:text-surface-300 dark:hover:text-surface-100">
+                  <Download className="h-4 w-4" />
+                  <span className="text-sm">{t("topbar.export")}</span>
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-[160px]">
@@ -121,7 +121,7 @@ export function TopAppBar({
             size="icon"
             onClick={toggleLang}
             className="h-8 w-8 text-surface-500 hover:text-surface-900 dark:text-surface-400 dark:hover:text-surface-100"
-            aria-label={lang === "zh" ? "Switch to English" : "切换到中文"}
+            aria-label={lang === "zh" ? t("nav.switchToEnglish") : t("nav.switchToChinese")}
           >
             <Languages className="h-4 w-4" />
           </Button>

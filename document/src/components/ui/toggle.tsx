@@ -13,8 +13,8 @@ const toggleVariants = cva(
           "border border-surface-300 bg-transparent hover:bg-surface-100 dark:border-surface-700",
       },
       size: {
-        default: "h-8 w-8",
-        sm: "h-7 w-7",
+        default: "h-9 w-9",
+        sm: "h-8 w-8",
         lg: "h-10 w-10",
       },
     },

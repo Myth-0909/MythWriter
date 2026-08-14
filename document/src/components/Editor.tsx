@@ -101,7 +101,7 @@ export function Editor({ documentId }: EditorProps) {
   const [saveStatus, setSaveStatus] = useState<"" | "unsaved" | "saving" | "saved" | "failed">("");
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [showLineHeightPicker, setShowLineHeightPicker] = useState(false);
-  const [currentFontSize, setCurrentFontSize] = useState(16);
+  const [currentFontSize, setCurrentFontSize] = useState(17);
   const [currentColor, setCurrentColor] = useState("#1a1a1a");
   const [currentLineHeight, setCurrentLineHeight] = useState("1.5");
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -141,7 +141,7 @@ export function Editor({ documentId }: EditorProps) {
   const syncSelectionStyles = useCallback((ed: any) => {
     if (!ed) return;
     const fs = ed.getAttributes("textStyle").fontSize as string | undefined;
-    setCurrentFontSize(fs ? parseInt(fs, 10) || 16 : 16);
+    setCurrentFontSize(fs ? parseInt(fs, 10) || 17 : 17);
 
     const col = ed.getAttributes("textStyle").color as string | undefined;
     setCurrentColor(col || "#1a1a1a");
@@ -307,9 +307,6 @@ export function Editor({ documentId }: EditorProps) {
       }
       if (result.isLatest && documentIdRef.current === targetDocumentId) {
         setSaveStatus("saved");
-        window.setTimeout(() => {
-          setSaveStatus((status) => (status === "saved" ? "" : status));
-        }, 1500);
       }
       return true;
     }
@@ -556,13 +553,14 @@ export function Editor({ documentId }: EditorProps) {
   }
 
   return (
-    <div className="flex h-full flex-col bg-white dark:bg-surface-950">
+    <div data-document-editor className="flex h-full flex-col bg-white dark:bg-surface-950">
       {/* Toolbar */}
       <TooltipProvider delayDuration={150}>
         <div
           data-toolbar-revision={toolbarRevision}
-          className="flex flex-wrap items-center gap-0.5 border-b border-surface-200 px-4 py-1.5 dark:border-surface-800"
+          className="border-b border-surface-200 bg-white/95 dark:border-surface-800 dark:bg-surface-950/95"
         >
+          <div className="mx-auto flex min-h-12 w-full max-w-[1240px] flex-nowrap items-center gap-0.5 overflow-x-auto px-3 py-2 sm:px-4">
           {/* Undo / Redo */}
           <Tooltip content={t("editor.undo")}>
             <Toggle size="sm" pressed={false} onPressedChange={() => editor.chain().focus().undo().run()} aria-label={t("editor.undo")}>
@@ -743,7 +741,7 @@ export function Editor({ documentId }: EditorProps) {
               onClick={() => {
                 const raw = editor.getAttributes("textStyle").fontSize as string | undefined;
                 const parsed = raw ? parseInt(raw, 10) : currentFontSize;
-                const next = Math.max(12, (Number.isNaN(parsed) ? 16 : parsed) - 1);
+                const next = Math.max(12, (Number.isNaN(parsed) ? 17 : parsed) - 1);
                 setCurrentFontSize(next);
                 editor.chain().setFontSize(`${next}px`).run();
               }}
@@ -760,7 +758,7 @@ export function Editor({ documentId }: EditorProps) {
               onClick={() => {
                 const raw = editor.getAttributes("textStyle").fontSize as string | undefined;
                 const parsed = raw ? parseInt(raw, 10) : currentFontSize;
-                const next = Math.min(72, (Number.isNaN(parsed) ? 16 : parsed) + 1);
+                const next = Math.min(72, (Number.isNaN(parsed) ? 17 : parsed) + 1);
                 setCurrentFontSize(next);
                 editor.chain().setFontSize(`${next}px`).run();
               }}
@@ -840,14 +838,39 @@ export function Editor({ documentId }: EditorProps) {
             {reviewLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
           </Toggle>
         </Tooltip>
+          <div
+            className="ml-auto flex min-w-fit shrink-0 items-center pl-3 text-xs font-medium"
+            role="status"
+            aria-live="polite"
+          >
+            {saveStatus === "unsaved" && <span className="text-amber-600 dark:text-amber-300">{t("editor.unsaved")}</span>}
+            {saveStatus === "saving" && (
+              <span className="inline-flex items-center gap-1.5 text-surface-500 dark:text-surface-400">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                {t("editor.saving")}
+              </span>
+            )}
+            {saveStatus === "saved" && <span className="text-emerald-600 dark:text-emerald-300">{t("editor.saved")}</span>}
+            {saveStatus === "failed" && (
+              <span className="inline-flex items-center gap-1.5 text-red-600 dark:text-red-300">
+                <AlertTriangle className="h-3.5 w-3.5" />
+                {t("editor.saveFailed")}
+                <Button type="button" variant="ghost" size="sm" onClick={retrySave} className="h-8 px-2 text-xs">
+                  <RotateCcw className="h-3.5 w-3.5" />
+                  {t("editor.retrySave")}
+                </Button>
+              </span>
+            )}
+          </div>
+          </div>
         </div>
       </TooltipProvider>
 
       {/* Editor Area */}
       <div className="flex min-h-0 flex-1">
       <Scrollbar className="min-w-0 flex-1">
-        <div className="min-h-full cursor-default" onMouseDown={handleContainerMouseDown}>
-          <div className={cn("mx-auto px-5 py-8 transition-[max-width] duration-200 sm:px-8 lg:px-12 lg:py-12", inspectorOpen ? "max-w-[680px]" : "max-w-[720px]")}>
+        <div data-document-editor-surface className="min-h-full cursor-default" onMouseDown={handleContainerMouseDown}>
+          <div className={cn("mx-auto px-5 py-8 transition-[max-width] duration-200 sm:px-8 lg:px-12 lg:py-12", inspectorOpen ? "max-w-[760px]" : "max-w-[880px]")}>
             {/* Title + Favorite */}
             <div className="flex items-start gap-3 mb-4">
               <Input
@@ -1015,35 +1038,17 @@ export function Editor({ documentId }: EditorProps) {
       </div>
 
       {/* Footer */}
-      <div className="flex items-center justify-between border-t border-surface-200 px-6 py-2 dark:border-surface-800">
+      <div className="border-t border-surface-200 dark:border-surface-800">
+        <div className="mx-auto flex w-full max-w-[880px] items-center justify-between px-5 py-2.5 sm:px-8 lg:px-12">
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2 text-xs text-surface-400">
-            {saveStatus === "unsaved" && <span className="text-amber-500">{t("editor.unsaved")}</span>}
-            {saveStatus === "saving" && (
-              <span className="inline-flex items-center gap-1 text-surface-500 dark:text-surface-400">
-                <Loader2 className="h-3 w-3 animate-spin" />
-                {t("editor.saving")}
-              </span>
-            )}
-            {saveStatus === "saved" && <span className="text-green-500">{t("editor.saved")}</span>}
-            {saveStatus === "failed" && (
-              <span className="inline-flex items-center gap-1 text-red-500">
-                <AlertTriangle className="h-3 w-3" />
-                {t("editor.saveFailed")}
-                <Button type="button" variant="ghost" size="sm" onClick={retrySave} className="h-6 px-2 text-[11px]">
-                  <RotateCcw className="h-3 w-3" />
-                  {t("editor.retrySave")}
-                </Button>
-              </span>
-            )}
-          </div>
           {selectionChars > 0 && (
-            <span className="text-xs text-brand-400">
+            <span className="text-xs font-medium text-brand-500 dark:text-brand-300">
               {t("editor.selected")} {selectionChars} {t("editor.characters")}
             </span>
           )}
         </div>
-        <span className="text-xs text-surface-400">{charCount} {t("editor.characters")}</span>
+        <span className="text-xs font-medium tabular-nums text-surface-500 dark:text-surface-400">{charCount} {t("editor.characters")}</span>
+        </div>
       </div>
       {documentId && (
         <DocumentVersionDialog

@@ -11,7 +11,7 @@ export function WorkRecordsPage() {
       className="flex-1 bg-surface-50 dark:bg-surface-950"
       options={{ scrollbars: { autoHide: "scroll" } }}
     >
-      <div className="mx-auto w-full max-w-[1360px] px-8 py-8 xl:px-10">
+      <div className="mx-auto w-full max-w-[1600px] px-5 py-8 sm:px-6 lg:px-8 xl:px-10">
         <section className="rounded-2xl border border-surface-200 bg-white p-6 shadow-sm dark:border-surface-800 dark:bg-surface-900">
           <div className="flex items-start gap-3">
             <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-brand-100 text-brand-700 shadow-sm dark:bg-brand-500/15 dark:text-brand-300">

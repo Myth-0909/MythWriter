@@ -480,7 +480,7 @@ export function BrainMemoryPage() {
 
   return (
     <Scrollbar className="flex-1 bg-surface-50 dark:bg-surface-950">
-      <div className="mx-auto max-w-[1200px] px-4 py-8 sm:px-6 lg:px-10 lg:py-12">
+      <div className="mx-auto w-full max-w-[1600px] px-5 py-8 sm:px-6 lg:px-8 lg:py-12 2xl:px-10">
         {/* Header Section */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6 mb-10">
           <div>
@@ -503,7 +503,7 @@ export function BrainMemoryPage() {
                   size="sm"
                   onClick={handleReindexAll}
                   disabled={reindexAllLoading || cards.length === 0 || !ragAvailable}
-                  className="h-9 gap-1.5 text-xs"
+                  className="h-10 gap-2 text-sm"
                 >
                   {reindexAllLoading ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -519,7 +519,7 @@ export function BrainMemoryPage() {
               variant="outline"
               size="sm"
               onClick={() => setManageDialogOpen(true)}
-              className="h-9 gap-1.5 text-xs"
+              className="h-10 gap-2 text-sm"
             >
               <Layers className="h-4 w-4" />
               <span>{t("brain.manageCategories")}</span>
@@ -528,7 +528,7 @@ export function BrainMemoryPage() {
               type="button"
               size="sm"
               onClick={handleOpenAdd}
-              className="h-9 gap-1.5 bg-brand-500 text-xs text-white shadow-sm hover:bg-brand-600"
+              className="h-10 gap-2 bg-brand-500 text-sm text-white shadow-sm hover:bg-brand-600"
             >
               <Plus className="h-4 w-4" />
               <span>{t("brain.addCard")}</span>
@@ -572,14 +572,14 @@ export function BrainMemoryPage() {
           )}
 
           {/* Search Box */}
-          <div className="relative w-full sm:max-w-[280px]">
+          <div className="relative w-full sm:max-w-[360px]">
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-surface-400" />
             <Input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder={t("brain.searchPlaceholder")}
-              className="h-9 w-full pl-9 pr-9 text-xs dark:border-surface-800 dark:bg-surface-900 dark:text-surface-100"
+              className="h-10 w-full pl-9 pr-9 text-sm dark:border-surface-800 dark:bg-surface-900 dark:text-surface-100"
             />
             {searchQuery && (
               <Button
@@ -603,7 +603,7 @@ export function BrainMemoryPage() {
             <CreativeLoader variant="ai" size="lg" label={t("brain.loadingData")} />
           </div>
         ) : filteredCards.length > 0 ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
             {filteredCards.map((card) => {
               const cat = categories.find((c) => c.name === card.category);
               const catColor = cat?.color || "#94a3b8";
@@ -710,8 +710,6 @@ export function BrainMemoryPage() {
             variant="stars"
             title={t("brain.noCards")}
             description={t("atmosphere.starMap.emptyDesc")}
-            actionLabel={t("brain.createNow")}
-            onAction={handleOpenAdd}
           />
         )}
       </div>

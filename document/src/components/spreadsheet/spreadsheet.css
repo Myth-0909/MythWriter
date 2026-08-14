@@ -7,7 +7,18 @@
 .zn-spreadsheet-grid .handsontable {
   color: #171717;
   font-family: inherit;
-  font-size: 12px;
+  font-size: 13px;
+}
+
+.zn-spreadsheet-grid .handsontable .htCore td {
+  border-color: #e2e8f0;
+}
+
+.zn-spreadsheet-grid .handsontable .htCore th {
+  border-color: #cbd5e1;
+  background-color: #f1f5f9;
+  color: #475569;
+  font-weight: 600;
 }
 
 .zn-spreadsheet-grid .ht_master .wtHolder {
@@ -105,15 +116,15 @@
 }
 
 .zn-spreadsheet-grid .handsontable td.zn-cell-font-small {
-  font-size: 11px;
-}
-
-.zn-spreadsheet-grid .handsontable td.zn-cell-font-normal {
   font-size: 12px;
 }
 
+.zn-spreadsheet-grid .handsontable td.zn-cell-font-normal {
+  font-size: 13px;
+}
+
 .zn-spreadsheet-grid .handsontable td.zn-cell-font-large {
-  font-size: 14px;
+  font-size: 15px;
 }
 
 .zn-spreadsheet-grid .handsontable td.zn-cell-border {

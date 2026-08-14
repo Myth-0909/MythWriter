@@ -22,12 +22,35 @@ type CountableDocument = {
 };
 
 function stripHtml(value: string): string {
+  const decodeCodePoint = (match: string, rawValue: string, radix: number) => {
+    const codePoint = Number.parseInt(rawValue, radix);
+    if (!Number.isInteger(codePoint) || codePoint < 0 || codePoint > 0x10ffff) return match;
+    return String.fromCodePoint(codePoint);
+  };
+
   return value
     .replace(/<script[\s\S]*?<\/script>/gi, "")
     .replace(/<style[\s\S]*?<\/style>/gi, "")
     .replace(/<[^>]+>/g, "")
-    .replace(/&nbsp;/g, " ")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#(?:39|x27);/gi, "'")
+    .replace(/&#x([0-9a-f]+);/gi, (match, value: string) => decodeCodePoint(match, value, 16))
+    .replace(/&#(\d+);/g, (match, value: string) => decodeCodePoint(match, value, 10))
     .trim();
+}
+
+export function stripRedundantLeadingTitle(content: string, title: string): string {
+  if (!content.trim() || !title.trim()) return content;
+  const match = content.match(/^\s*<h1(?:\s[^>]*)?>([\s\S]*?)<\/h1>\s*/i);
+  if (!match) return content;
+
+  const normalize = (value: string) => stripHtml(value).replace(/\s+/g, " ").trim().toLowerCase();
+  if (normalize(match[1]) !== normalize(title)) return content;
+  return content.slice(match[0].length);
 }
 
 export function countWritingUnits(value: string): number {

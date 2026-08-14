@@ -71,7 +71,7 @@ export function TrashPage() {
           message={loading ? t("loading.trash") : t("loading.documentAction")}
         />
       )}
-      <div className="mx-auto max-w-[960px] px-4 py-8 sm:px-6 lg:px-10 lg:py-12">
+      <div className="mx-auto w-full max-w-[1280px] px-4 py-8 sm:px-6 lg:px-10 lg:py-12">
         <div className="mb-8 flex items-start justify-between">
           <div>
             <h2 className="text-[28px] font-bold leading-tight text-surface-900 dark:text-surface-100">
@@ -132,7 +132,7 @@ export function TrashPage() {
             ))}
           </div>
         ) : (
-          <div className="flex flex-col items-center justify-center py-32 text-center">
+          <div className="flex min-h-[300px] flex-col items-center justify-center rounded-xl border border-dashed border-surface-200 bg-white px-6 py-12 text-center dark:border-surface-800 dark:bg-surface-900">
             <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-surface-100 dark:bg-surface-800">
               <Trash2 className="h-8 w-8 text-surface-300 dark:text-surface-600" />
             </div>

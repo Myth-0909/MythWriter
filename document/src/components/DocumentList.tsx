@@ -86,7 +86,7 @@ export function DocumentList({ activeId, onSelect }: DocumentListProps) {
   };
 
   return (
-    <div className="hidden h-full w-[300px] shrink-0 flex-col border-r border-surface-200 bg-white lg:flex xl:w-[320px] dark:border-surface-800 dark:bg-surface-950">
+    <div className="hidden h-full w-[300px] shrink-0 flex-col border-r border-surface-200 bg-white lg:flex xl:w-[320px] 2xl:w-[340px] dark:border-surface-800 dark:bg-surface-950">
       <div className="border-b border-surface-200 px-4 py-4 dark:border-surface-800">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-surface-400" />
@@ -96,7 +96,7 @@ export function DocumentList({ activeId, onSelect }: DocumentListProps) {
             onChange={(event) => setQuery(event.target.value)}
             aria-label={t("editor.searchDocs")}
             placeholder={t("editor.searchDocs")}
-            className="w-full rounded-md border border-surface-200 bg-surface-50 py-2 pl-9 pr-3 text-sm text-surface-900 placeholder:text-surface-400 transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-surface-300 focus:border-transparent dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100"
+            className="h-10 w-full rounded-lg border border-surface-200 bg-surface-50 py-2 pl-9 pr-3 text-sm text-surface-900 placeholder:text-surface-400 transition-colors duration-200 focus:border-transparent focus:outline-none focus:ring-2 focus:ring-brand-300 dark:border-surface-700 dark:bg-surface-900 dark:text-surface-100"
           />
         </div>
       </div>
@@ -111,17 +111,17 @@ export function DocumentList({ activeId, onSelect }: DocumentListProps) {
               <div
                 key={doc.id}
                 className={cn(
-                  "group relative rounded-lg transition-colors",
+                  "group relative rounded-xl border-l-2 transition-all duration-200",
                   active
-                    ? "bg-surface-100 shadow-sm dark:bg-surface-800"
-                    : "hover:bg-surface-50 dark:hover:bg-surface-900"
+                    ? "border-brand-500 bg-brand-50/70 shadow-sm ring-1 ring-brand-200/60 dark:border-brand-300 dark:bg-brand-500/10 dark:ring-brand-500/20"
+                    : "border-transparent hover:bg-surface-50 dark:hover:bg-surface-900"
                 )}
               >
                 <Button
                   type="button"
                   variant="ghost"
                   onClick={() => onSelect?.(doc.id)}
-                  className="h-auto w-full flex-col items-stretch gap-1 whitespace-normal rounded-lg px-4 py-3 text-left hover:bg-transparent"
+                  className="h-auto min-h-[76px] w-full flex-col items-stretch gap-1.5 whitespace-normal rounded-xl px-4 py-3.5 text-left hover:bg-transparent"
                 >
                   <div className="flex min-w-0 items-center justify-between gap-2 pl-[78px] pr-[68px]">
                     <h3 className={cn(
@@ -131,7 +131,7 @@ export function DocumentList({ activeId, onSelect }: DocumentListProps) {
                       {doc.title}
                     </h3>
                   </div>
-                <p className="line-clamp-2 text-xs leading-relaxed text-surface-500 ml-7">{doc.preview}</p>
+                <p className="ml-7 line-clamp-2 text-[13px] leading-5 text-surface-500 dark:text-surface-400">{doc.preview}</p>
                 </Button>
 
                 <div className="absolute left-4 top-3">

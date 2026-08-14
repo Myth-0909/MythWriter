@@ -70,7 +70,7 @@ import { useDocuments } from "@/store";
 import { useToast } from "@/components/Toast";
 import { api } from "@/api";
 import { escapeHtml, sanitizeHtml } from "@/lib/html";
-import { buildDocumentCountSummary, buildImportPreview, buildSearchStatus } from "@/lib/interactionState";
+import { buildDocumentCountSummary, buildImportPreview, buildSearchStatus, stripRedundantLeadingTitle } from "@/lib/interactionState";
 import { getWorkbenchLayoutClasses } from "@/lib/displayExperience";
 import { cn } from "@/lib/utils";
 import { categoryLabels, type Document, type DocumentCategory, type WorkRecord } from "@/types";
@@ -486,6 +486,8 @@ export function DocumentCenterPage({
         }
       }
 
+      content = stripRedundantLeadingTitle(content, title);
+
       const preview = buildImportPreview({ fileName: file.name, extension: ext, content });
       setImportPreview({
         ...preview,
@@ -854,7 +856,7 @@ export function DocumentCenterPage({
       : isWorkbench
         ? t("documents.workspaceSubtitle")
         : t("documents.subtitle");
-  const gridClass = viewMode === "grid" ? "grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4" : "flex flex-col gap-2";
+  const gridClass = viewMode === "grid" ? "grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-5" : "flex flex-col gap-2";
   const workbenchLayout = getWorkbenchLayoutClasses();
   const emptyIsSearch = !!debouncedQuery || categoryFilter !== "all";
 
@@ -899,7 +901,7 @@ export function DocumentCenterPage({
       {(loading || actionLoading) && (
         <LoadingOverlay message={loading ? t("loading.documents") : t("loading.documentAction")} />
       )}
-      <div className="mx-auto w-full max-w-[1360px] px-6 py-6 lg:px-8 lg:py-7 xl:px-10">
+      <div className="mx-auto w-full max-w-[1600px] px-5 py-6 sm:px-6 lg:px-8 lg:py-8 2xl:px-10">
         {error && !loading && (
           <div className="mb-5">
             <LoadErrorState message={error} onRetry={() => void refreshDocuments()} compact />
@@ -1597,25 +1599,14 @@ export function DocumentCenterPage({
               ))}
             </div>
           ) : (
-            <div className="flex min-h-[300px] flex-col items-center justify-center rounded-[8px] border border-dashed border-surface-200 bg-white px-6 py-8 text-center dark:border-surface-800 dark:bg-surface-900">
+            <div className="flex min-h-[260px] flex-col items-center justify-center rounded-xl border border-dashed border-surface-200 bg-white px-6 py-8 text-center dark:border-surface-800 dark:bg-surface-900">
               <EmptyScene
                 variant="paper"
                 title={emptyIsSearch ? t("documents.searchNoResults") : t("documents.emptyTitle")}
                 description={emptyIsSearch ? t("documents.searchNoResultsHint") : t("documents.emptyDesc")}
                 compact
-                className="min-h-[180px] border-0 bg-transparent p-0 dark:bg-transparent"
+                className="min-h-[150px] border-0 bg-transparent p-0 dark:bg-transparent"
               />
-              <div className="mt-5 flex items-center gap-2">
-                {renderCreateMenu()}
-                <Button variant="outline" size="lg" className="h-11 gap-1.5" onClick={() => fileInputRef.current?.click()}>
-                  <Upload className="h-4 w-4" />
-                  <span>{t("documents.import")}</span>
-                </Button>
-                <Button variant="outline" size="lg" className="h-11 gap-1.5" onClick={onOpenAgentWrite}>
-                  <Bot className="h-4 w-4" />
-                  <span>{t("documents.aiDraft")}</span>
-                </Button>
-              </div>
             </div>
           )}
         </section>

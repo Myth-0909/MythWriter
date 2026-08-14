@@ -44,7 +44,7 @@ export function FavoritesPage({ onOpenDoc }: FavoritesPageProps) {
 
   return (
     <Scrollbar className="flex-1 bg-surface-50 dark:bg-surface-950">
-      <div className="mx-auto max-w-[1200px] px-20 py-20">
+      <div className="mx-auto w-full max-w-[1600px] px-5 py-8 sm:px-6 lg:px-8 lg:py-12 2xl:px-10">
         <div className="mb-10">
           <div className="flex items-center gap-3 mb-3">
             <Star className="h-6 w-6 text-amber-500" fill="currentColor" />
@@ -58,7 +58,7 @@ export function FavoritesPage({ onOpenDoc }: FavoritesPageProps) {
         </div>
 
         {favorites.length > 0 ? (
-          <div className="grid grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-5">
             {favorites.map((doc) => (
               <DocumentCard
                 key={doc.id}
@@ -75,7 +75,7 @@ export function FavoritesPage({ onOpenDoc }: FavoritesPageProps) {
             ))}
           </div>
         ) : (
-          <div className="flex flex-col items-center justify-center py-32 text-center">
+          <div className="flex min-h-[300px] flex-col items-center justify-center rounded-xl border border-dashed border-surface-200 bg-white px-6 py-12 text-center dark:border-surface-800 dark:bg-surface-900">
             <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-surface-100 dark:bg-surface-800">
               <Star className="h-8 w-8 text-surface-300 dark:text-surface-600" />
             </div>

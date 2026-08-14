@@ -201,10 +201,20 @@ interface AnchoredPosition {
   yPercent: number; // 0-100, percentage from top
 }
 
-function anchoredToAbsolute(anchor: AnchoredPosition): Position {
+function anchoredToAbsolute(anchor: AnchoredPosition, dockToDocumentEditor = false): Position {
   const MARGIN = 16;
   const btnSize = 62;
-  const x = anchor.side === "left" ? MARGIN : window.innerWidth - btnSize - MARGIN;
+  const maxX = window.innerWidth - btnSize - MARGIN;
+  let x = anchor.side === "left" ? MARGIN : maxX;
+  if (anchor.side === "right" && dockToDocumentEditor && window.innerWidth >= 1600) {
+    const editorSurface = document.querySelector<HTMLElement>("[data-document-editor-surface]");
+    if (editorSurface) {
+      const rect = editorSurface.getBoundingClientRect();
+      const readingCanvasWidth = Math.min(880, rect.width);
+      const canvasRight = rect.left + (rect.width + readingCanvasWidth) / 2;
+      x = Math.max(MARGIN, Math.min(maxX, canvasRight + 12));
+    }
+  }
   const maxY = window.innerHeight - btnSize - MARGIN;
   const y = Math.max(MARGIN, Math.min(maxY, MARGIN + (maxY - MARGIN) * (anchor.yPercent / 100)));
   return { x, y };
@@ -504,20 +514,24 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
         const nextAnchor: AnchoredPosition = { side: "right", yPercent: 88 };
         localStorage.setItem("chat-btn-pos-version", "2");
         localStorage.setItem("chat-btn-pos", JSON.stringify(nextAnchor));
-        return anchoredToAbsolute(nextAnchor);
+        return anchoredToAbsolute(nextAnchor, Boolean(currentDocumentId));
       }
       const saved = localStorage.getItem("chat-btn-pos");
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        // Support new edge-anchored format
-        if (parsed.side && typeof parsed.yPercent === "number") {
-          return anchoredToAbsolute(parsed as AnchoredPosition);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          // Support new edge-anchored format
+          if (parsed.side && typeof parsed.yPercent === "number") {
+            return anchoredToAbsolute(parsed as AnchoredPosition, Boolean(currentDocumentId));
+          }
+          // Normalize legacy absolute positions into the responsive edge format.
+          if (Number.isFinite(parsed.x) && Number.isFinite(parsed.y)) {
+            const anchor = absoluteToAnchored({ x: parsed.x, y: parsed.y });
+            localStorage.setItem("chat-btn-pos", JSON.stringify(anchor));
+            return anchoredToAbsolute(anchor, Boolean(currentDocumentId));
+          }
         }
-        // Legacy absolute format fallback
-        return { x: parsed.x, y: parsed.y };
-      }
     } catch {}
-    return anchoredToAbsolute({ side: "right", yPercent: 88 });
+    return anchoredToAbsolute({ side: "right", yPercent: 88 }, Boolean(currentDocumentId));
   });
   const [dragging, setDragging] = useState(false);
   const dragStart = useRef({ x: 0, y: 0 });
@@ -549,7 +563,13 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
         if (saved) {
           const parsed = JSON.parse(saved);
           if (parsed.side && typeof parsed.yPercent === "number") {
-            setPos(anchoredToAbsolute(parsed as AnchoredPosition));
+            setPos(anchoredToAbsolute(parsed as AnchoredPosition, Boolean(currentDocumentId)));
+            return;
+          }
+          if (Number.isFinite(parsed.x) && Number.isFinite(parsed.y)) {
+            const anchor = absoluteToAnchored({ x: parsed.x, y: parsed.y });
+            localStorage.setItem("chat-btn-pos", JSON.stringify(anchor));
+            setPos(anchoredToAbsolute(anchor, Boolean(currentDocumentId)));
             return;
           }
         }
@@ -561,8 +581,32 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
       }));
     };
     window.addEventListener("resize", updatePos);
-    return () => window.removeEventListener("resize", updatePos);
-  }, []);
+    const frame = window.requestAnimationFrame(updatePos);
+    let resizeObserver: ResizeObserver | null = null;
+    let mutationObserver: MutationObserver | null = null;
+    const attachEditorObserver = () => {
+      const editorSurface = document.querySelector<HTMLElement>("[data-document-editor-surface]");
+      if (!editorSurface) return false;
+      updatePos();
+      if (typeof ResizeObserver !== "undefined") {
+        resizeObserver = new ResizeObserver(updatePos);
+        resizeObserver.observe(editorSurface);
+      }
+      return true;
+    };
+    if (!attachEditorObserver() && typeof MutationObserver !== "undefined") {
+      mutationObserver = new MutationObserver(() => {
+        if (attachEditorObserver()) mutationObserver?.disconnect();
+      });
+      mutationObserver.observe(document.body, { childList: true, subtree: true });
+    }
+    return () => {
+      window.removeEventListener("resize", updatePos);
+      window.cancelAnimationFrame(frame);
+      resizeObserver?.disconnect();
+      mutationObserver?.disconnect();
+    };
+  }, [currentDocumentId]);
 
   // On close: abort any ongoing stream, save, and clean up state. On open: check API key.
   useEffect(() => {
@@ -938,11 +982,11 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
         const distRight = maxX - currentX;
         const snapX = distLeft < distRight ? MARGIN : maxX;
         const snapY = Math.max(MARGIN, Math.min(maxY, currentY));
-        const snapped = { x: snapX, y: snapY };
+        const anchored = absoluteToAnchored({ x: snapX, y: snapY });
+        const snapped = anchoredToAbsolute(anchored, Boolean(currentDocumentId));
         posRef.current = snapped;
         setPos(snapped);
         // Store as edge-anchored responsive format
-        const anchored = absoluteToAnchored(snapped);
         try { localStorage.setItem("chat-btn-pos", JSON.stringify(anchored)); } catch {}
       }
     };
@@ -954,7 +998,7 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
       window.removeEventListener("pointerup", mu);
       window.removeEventListener("pointercancel", mu);
     };
-  }, [dragging]);
+  }, [currentDocumentId, dragging]);
 
   // Core send logic — reusable for both normal send and regenerate
   const doSend = useCallback(async (text: string) => {

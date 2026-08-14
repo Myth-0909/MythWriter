@@ -36,12 +36,12 @@ export type WorkbenchLayoutClasses = {
  */
 const WORKBENCH_LAYOUT_CLASSES: WorkbenchLayoutClasses = {
   shell:
-    "grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(280px,340px)] xl:gap-5 2xl:grid-cols-[minmax(0,1.15fr)_minmax(300px,380px)]",
+    "grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(300px,360px)] xl:gap-5 2xl:grid-cols-[minmax(0,1.4fr)_minmax(340px,420px)] 2xl:gap-6",
   hero:
     "mt-5 grid min-w-0 grid-cols-1 items-start gap-3 sm:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] sm:gap-4 xl:grid-cols-[minmax(0,1.5fr)_minmax(240px,0.85fr)]",
   focusMeta: "mt-3 grid grid-cols-2 gap-2",
   focusActions: "mt-4 grid grid-cols-2 gap-2",
-  charts: "grid grid-cols-2 gap-3 xl:grid-cols-1 xl:gap-3",
+  charts: "grid grid-cols-2 gap-3 xl:grid-cols-1 xl:gap-3 2xl:gap-4",
 };
 
 export function getWorkbenchLayoutClasses(): WorkbenchLayoutClasses {

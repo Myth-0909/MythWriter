@@ -8,6 +8,7 @@ import {
   buildSearchStatus,
   getFavoriteToggleKey,
   hasProfileChanges,
+  stripRedundantLeadingTitle,
 } from "../src/lib/interactionState.ts";
 
 describe("interaction state helpers", () => {
@@ -33,6 +34,25 @@ describe("interaction state helpers", () => {
     assert.equal(preview.title, "台风指南");
     assert.equal(preview.extension, "md");
     assert.equal(preview.wordCount, 12);
+  });
+
+  it("removes only a leading H1 that duplicates the imported file title", () => {
+    assert.equal(
+      stripRedundantLeadingTitle("<h1>台风指南</h1><p>正文</p>", "台风指南"),
+      "<p>正文</p>"
+    );
+    assert.equal(
+      stripRedundantLeadingTitle("<h1>A &amp; B</h1><p>Body</p>", "A & B"),
+      "<p>Body</p>"
+    );
+    assert.equal(
+      stripRedundantLeadingTitle("<h1>Odd &#99999999;</h1><p>Body</p>", "Odd &#99999999;"),
+      "<p>Body</p>"
+    );
+    assert.equal(
+      stripRedundantLeadingTitle("<h1>章节标题</h1><p>正文</p>", "文件名"),
+      "<h1>章节标题</h1><p>正文</p>"
+    );
   });
 
   it("detects profile changes after trimming editable values", () => {
