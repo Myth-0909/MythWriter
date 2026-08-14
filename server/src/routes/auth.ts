@@ -1,7 +1,12 @@
 import { Router, Request, Response } from "express";
 import { generateToken, authMiddleware, AuthRequest } from "../middleware/auth";
-import { checkEmailExists, generateResetCode, loginUser, registerUser, resetPassword, verifyPassword } from "../services/authService";
+import { generateResetCode, loginUser, registerUser, resetPassword, verifyPassword } from "../services/authService";
 import { t } from "../lib/i18n";
+import { authLimiter } from "../middleware/rateLimiter";
+import {
+  deliverPasswordResetCode,
+  isPasswordResetDeliveryConfigured,
+} from "../services/passwordResetDeliveryService";
 
 const router = Router();
 
@@ -10,7 +15,7 @@ function requestLang(req: Request) {
 }
 
 // POST /api/auth/register
-router.post("/register", async (req: Request, res: Response) => {
+router.post("/register", authLimiter, async (req: Request, res: Response) => {
   try {
     const { name, email, password } = req.body;
     const lang = requestLang(req);
@@ -26,12 +31,19 @@ router.post("/register", async (req: Request, res: Response) => {
     }
 
     const result = await registerUser(name, email, password);
-    if ("error" in result) {
-      res.status(result.status).json({ error: result.error });
+    if ("code" in result) {
+      res.status(result.status).json({
+        error: t(lang, "该邮箱无法用于注册", "This email cannot be used to register"),
+        code: result.code,
+      });
       return;
     }
 
-    const token = generateToken({ userId: result.user.id, email: result.user.email });
+    const token = generateToken({
+      userId: result.user.id,
+      email: result.user.email,
+      sessionVersion: result.user.sessionVersion,
+    });
 
     res.status(201).json({ token, user: result.user });
   } catch (error) {
@@ -41,7 +53,7 @@ router.post("/register", async (req: Request, res: Response) => {
 });
 
 // POST /api/auth/login
-router.post("/login", async (req: Request, res: Response) => {
+router.post("/login", authLimiter, async (req: Request, res: Response) => {
   try {
     const { email, password } = req.body;
     const lang = requestLang(req);
@@ -52,12 +64,19 @@ router.post("/login", async (req: Request, res: Response) => {
     }
 
     const result = await loginUser(email, password);
-    if ("error" in result) {
-      res.status(result.status).json({ error: result.error, code: result.code });
+    if ("code" in result) {
+      res.status(result.status).json({
+        error: t(lang, "邮箱或密码不正确", "Incorrect email or password"),
+        code: result.code,
+      });
       return;
     }
 
-    const token = generateToken({ userId: result.user.id, email: result.user.email });
+    const token = generateToken({
+      userId: result.user.id,
+      email: result.user.email,
+      sessionVersion: result.user.sessionVersion,
+    });
 
     res.json({ token, user: result.user });
   } catch (error) {
@@ -67,7 +86,7 @@ router.post("/login", async (req: Request, res: Response) => {
 });
 
 // POST /api/auth/check-email - Verify email is registered
-router.post("/check-email", async (req: Request, res: Response) => {
+router.post("/check-email", authLimiter, async (req: Request, res: Response) => {
   try {
     const { email } = req.body;
     const lang = requestLang(req);
@@ -77,8 +96,7 @@ router.post("/check-email", async (req: Request, res: Response) => {
       return;
     }
 
-    const exists = await checkEmailExists(email);
-    res.json({ exists });
+    res.json({ exists: true });
   } catch (error) {
     console.error("Check email error:", error);
     res.status(500).json({ error: t(requestLang(req), "操作失败，请稍后重试", "Operation failed. Please try again later") });
@@ -86,7 +104,7 @@ router.post("/check-email", async (req: Request, res: Response) => {
 });
 
 // POST /api/auth/forgot-password - Send reset code
-router.post("/forgot-password", async (req: Request, res: Response) => {
+router.post("/forgot-password", authLimiter, async (req: Request, res: Response) => {
   try {
     const { email } = req.body;
     const lang = requestLang(req);
@@ -96,15 +114,43 @@ router.post("/forgot-password", async (req: Request, res: Response) => {
       return;
     }
 
-    const result = await generateResetCode(email);
-    if ("error" in result) {
-      res.status(result.status).json({ error: result.error, code: result.code });
+    if (!isPasswordResetDeliveryConfigured()) {
+      res.status(503).json({
+        error: t(
+          lang,
+          "密码重置邮件服务暂未配置，请联系管理员",
+          "Password reset email is not configured. Contact the administrator"
+        ),
+        code: "RESET_DELIVERY_UNAVAILABLE",
+      });
       return;
     }
 
-    res.json({
-      message: t(lang, "重置验证码已生成", "Reset code generated"),
-      code: result.code,
+    const result = await generateResetCode(email);
+    let devCode: string | undefined;
+    if (result.challenge) {
+      const explicitDevMode = process.env.NODE_ENV !== "production" && process.env.PASSWORD_RESET_DEV_MODE === "true";
+      if (explicitDevMode) {
+        try {
+          const delivery = await deliverPasswordResetCode(result.challenge);
+          if (delivery.mode === "development") devCode = delivery.code;
+        } catch (deliveryError) {
+          console.error("Password reset delivery error:", deliveryError);
+        }
+      } else {
+        void deliverPasswordResetCode(result.challenge).catch((deliveryError) => {
+          console.error("Password reset delivery error:", deliveryError);
+        });
+      }
+    }
+
+    res.status(202).json({
+      message: t(
+        lang,
+        "如果该邮箱已注册，验证码会在几分钟内发送。",
+        "If the email is registered, a code will arrive within a few minutes."
+      ),
+      ...(devCode ? { devCode } : {}),
       expiresIn: t(lang, "10分钟", "10 minutes"),
     });
   } catch (error) {
@@ -114,7 +160,7 @@ router.post("/forgot-password", async (req: Request, res: Response) => {
 });
 
 // POST /api/auth/reset-password - Reset password with code
-router.post("/reset-password", async (req: Request, res: Response) => {
+router.post("/reset-password", authLimiter, async (req: Request, res: Response) => {
   try {
     const { email, code, newPassword } = req.body;
     const lang = requestLang(req);
@@ -130,8 +176,15 @@ router.post("/reset-password", async (req: Request, res: Response) => {
     }
 
     const result = await resetPassword(email, code, newPassword);
-    if ("error" in result) {
-      res.status(result.status).json({ error: result.error });
+    if ("code" in result) {
+      res.status(result.status).json({
+        error: t(
+          lang,
+          "验证码无效或已过期，请重新获取",
+          "The verification code is invalid or expired. Request a new one"
+        ),
+        code: result.code,
+      });
       return;
     }
 

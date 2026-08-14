@@ -421,7 +421,7 @@ function readCellStyleOverridesFromHot(
 
 export const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGridProps>(
   ({ sheet, onSheetChange, onActiveCellChange, onSelectionSummaryChange }, ref) => {
-    const { lang } = useI18n();
+    const { lang, t } = useI18n();
     const hotRef = useRef<HotTableRef>(null);
     const latestSheetRef = useRef(sheet);
     const lastSelectionRef = useRef<SelectionTuple | null>(null);
@@ -873,7 +873,7 @@ export const SpreadsheetGrid = forwardRef<SpreadsheetGridHandle, SpreadsheetGrid
     }));
 
     return (
-      <div className="zn-spreadsheet-grid min-h-0 flex-1">
+      <div role="region" aria-label={t("sheets.gridLabel")} className="zn-spreadsheet-grid min-h-0 flex-1">
         <HotTable
           ref={hotRef}
           data={sheet.data}

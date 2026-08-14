@@ -16,11 +16,45 @@ import {
   saveEmbeddingConfig,
   testChatModel,
 } from "../services/userService";
+import { isAiProviderHttpUrl } from "../lib/safeOutboundUrl";
 
 const router = Router();
 
 function requestLang(req: AuthRequest) {
   return String(req.headers["accept-language"] || "").toLowerCase().startsWith("en") ? "en" : "zh";
+}
+
+/**
+ * Accepts explicit public, localhost, and LAN model endpoints while rejecting
+ * non-http protocols, embedded credentials, and metadata/special targets.
+ */
+function ensureSafeBaseUrl(url: string, res: Response, lang: string): boolean {
+  if (!/^https?:\/\//i.test(url)) {
+    res.status(400).json({ error: t(lang, "Base URL必须以http://或https://开头", "Base URL must start with http:// or https://") });
+    return false;
+  }
+  if (!isAiProviderHttpUrl(url)) {
+    res.status(400).json({ error: t(lang, "Base URL 指向了不安全或无效的地址", "Base URL points to an unsafe or invalid address") });
+    return false;
+  }
+  return true;
+}
+
+function connectivityErrorMessage(error: unknown, lang: string): string {
+  const message = error instanceof Error ? error.message : String(error || "");
+  if (/fetch failed|ECONNREFUSED|ENOTFOUND|ETIMEDOUT|ECONNRESET|network/i.test(message)) {
+    return t(lang, "无法连接模型服务，请检查网络或代理设置", "Could not reach the model service. Check your network or proxy settings.");
+  }
+  if (/returned\s+40[13]\b/i.test(message)) {
+    return t(lang, "模型服务拒绝了 API Key，请确认 Key 是否有效", "The model service rejected the API key. Check that the key is valid.");
+  }
+  if (/returned\s+404\b/i.test(message)) {
+    return t(lang, "模型接口或模型名称不存在，请检查 Base URL 和模型名称", "The model endpoint or model was not found. Check the Base URL and model name.");
+  }
+  if (/returned\s+429\b/i.test(message)) {
+    return t(lang, "模型服务请求过于频繁或额度不足，请稍后重试", "The model service is rate-limited or out of quota. Try again later.");
+  }
+  return t(lang, "模型连通性测试失败，请检查 Base URL、模型名称和 API Key", "Model connectivity test failed. Check Base URL, model, and API Key.");
 }
 
 router.use(authMiddleware);
@@ -30,13 +64,13 @@ router.get("/me", async (req: AuthRequest, res: Response) => {
   try {
     const user = await getProfile(req.user!.userId);
     if (!user) {
-      res.status(404).json({ error: "用户不存在" });
+      res.status(404).json({ error: t(requestLang(req), "用户不存在", "User not found") });
       return;
     }
     res.json({ user });
   } catch (error) {
     console.error("Get profile error:", error);
-    res.status(500).json({ error: "获取用户信息失败" });
+    res.status(500).json({ error: t(requestLang(req), "获取用户信息失败", "Failed to load profile") });
   }
 });
 
@@ -51,7 +85,7 @@ router.put("/me", async (req: AuthRequest, res: Response) => {
     res.json({ user: result.user });
   } catch (error) {
     console.error("Update profile error:", error);
-    res.status(500).json({ error: "更新用户信息失败" });
+    res.status(500).json({ error: t(requestLang(req), "更新用户信息失败", "Failed to update profile") });
   }
 });
 
@@ -60,11 +94,11 @@ router.post("/avatar", async (req: AuthRequest, res: Response) => {
   try {
     const { image } = req.body;
     if (!image) {
-      res.status(400).json({ error: "请选择图片" });
+      res.status(400).json({ error: t(requestLang(req), "请选择图片", "Choose an image") });
       return;
     }
 
-    const result = await uploadAvatar(req.user!.userId, image);
+    const result = await uploadAvatar(req.user!.userId, image, requestLang(req));
     if ("error" in result) {
       res.status(result.status).json({ error: result.error });
       return;
@@ -73,7 +107,7 @@ router.post("/avatar", async (req: AuthRequest, res: Response) => {
     res.json({ user: result.user, avatarUrl: result.avatarUrl });
   } catch (error) {
     console.error("Upload avatar error:", error);
-    res.status(500).json({ error: "上传头像失败" });
+    res.status(500).json({ error: t(requestLang(req), "上传头像失败", "Failed to upload avatar") });
   }
 });
 
@@ -83,7 +117,7 @@ router.get("/me/apikey", async (req: AuthRequest, res: Response) => {
     const result = await getApiKey(req.user!.userId);
     res.json(result);
   } catch (error) {
-    res.status(500).json({ error: t("zh", "获取API Key失败", "Failed to get API Key") });
+    res.status(500).json({ error: t(requestLang(req), "获取API Key失败", "Failed to get API Key") });
   }
 });
 
@@ -93,7 +127,7 @@ router.get("/me/apikey/history", async (req: AuthRequest, res: Response) => {
     const histories = await listApiKeyHistories(req.user!.userId);
     res.json({ histories });
   } catch (error) {
-    res.status(500).json({ error: t("zh", "获取历史配置失败", "Failed to get saved configurations") });
+    res.status(500).json({ error: t(requestLang(req), "获取历史配置失败", "Failed to get saved configurations") });
   }
 });
 
@@ -102,12 +136,12 @@ router.post("/me/apikey/history/:id/apply", async (req: AuthRequest, res: Respon
   try {
     const result = await applyApiKeyHistory(req.user!.userId, String(req.params.id));
     if (!result) {
-      res.status(404).json({ error: t("zh", "历史配置不存在", "Saved configuration not found") });
+      res.status(404).json({ error: t(requestLang(req), "历史配置不存在", "Saved configuration not found") });
       return;
     }
     res.json(result);
   } catch (error) {
-    res.status(500).json({ error: t("zh", "切换历史配置失败", "Failed to apply saved configuration") });
+    res.status(500).json({ error: t(requestLang(req), "切换历史配置失败", "Failed to apply saved configuration") });
   }
 });
 
@@ -116,13 +150,13 @@ router.delete("/me/apikey/history/:id", async (req: AuthRequest, res: Response) 
   try {
     const deleted = await deleteApiKeyHistory(req.user!.userId, String(req.params.id));
     if (!deleted) {
-      res.status(404).json({ error: t("zh", "历史配置不存在", "Saved configuration not found") });
+      res.status(404).json({ error: t(requestLang(req), "历史配置不存在", "Saved configuration not found") });
       return;
     }
     const histories = await listApiKeyHistories(req.user!.userId);
     res.json({ success: true, histories });
   } catch (error) {
-    res.status(500).json({ error: t("zh", "删除历史配置失败", "Failed to delete saved configuration") });
+    res.status(500).json({ error: t(requestLang(req), "删除历史配置失败", "Failed to delete saved configuration") });
   }
 });
 
@@ -137,16 +171,13 @@ router.post("/me/models", async (req: AuthRequest, res: Response) => {
       ? req.body.apiKey.trim()
       : await getApiKeySecret(req.user!.userId);
 
-    if (!/^https?:\/\//i.test(baseUrl)) {
-      res.status(400).json({ error: t("zh", "Base URL必须以http://或https://开头", "Base URL must start with http:// or https://") });
-      return;
-    }
+    if (!ensureSafeBaseUrl(baseUrl, res, requestLang(req))) return;
 
     const models = await fetchModels(baseUrl, apiKey);
     res.json({ models });
   } catch (error) {
     console.error("Fetch models error:", error);
-    res.status(502).json({ error: t("zh", "获取模型列表失败", "Failed to fetch model list") });
+    res.status(502).json({ error: t(requestLang(req), "获取模型列表失败", "Failed to fetch model list") });
   }
 });
 
@@ -167,16 +198,13 @@ router.post("/me/apikey/test", async (req: AuthRequest, res: Response) => {
       ? req.body.prompt.trim()
       : "你好！";
 
-    if (!/^https?:\/\//i.test(baseUrl)) {
-      res.status(400).json({ error: t("zh", "Base URL必须以http://或https://开头", "Base URL must start with http:// or https://") });
-      return;
-    }
+    if (!ensureSafeBaseUrl(baseUrl, res, requestLang(req))) return;
 
     const result = await testChatModel({ baseUrl, apiKey, model, prompt });
     res.json({ success: true, reply: result.reply, model: result.model, prompt });
   } catch (error) {
     console.error("Test chat model error:", error);
-    res.status(502).json({ error: t("zh", "模型连通性测试失败，请检查 Base URL、模型名称和 API Key", "Model connectivity test failed. Check Base URL, model, and API Key.") });
+    res.status(502).json({ error: connectivityErrorMessage(error, requestLang(req)) });
   }
 });
 
@@ -186,7 +214,7 @@ router.get("/me/embedding", async (req: AuthRequest, res: Response) => {
     const result = await getEmbeddingConfig(req.user!.userId);
     res.json(result);
   } catch (error) {
-    res.status(500).json({ error: t("zh", "获取向量模型配置失败", "Failed to get vector model configuration") });
+    res.status(500).json({ error: t(requestLang(req), "获取向量模型配置失败", "Failed to get vector model configuration") });
   }
 });
 
@@ -198,10 +226,7 @@ router.put("/me/embedding", async (req: AuthRequest, res: Response) => {
     const nextBaseUrl = typeof baseUrl === "string" && baseUrl.trim() ? baseUrl.trim() : current.baseUrl;
     const nextModel = typeof model === "string" && model.trim() ? model.trim() : current.model;
 
-    if (!/^https?:\/\//i.test(nextBaseUrl)) {
-      res.status(400).json({ error: t("zh", "Base URL必须以http://或https://开头", "Base URL must start with http:// or https://") });
-      return;
-    }
+    if (!ensureSafeBaseUrl(nextBaseUrl, res, requestLang(req))) return;
 
     await saveEmbeddingConfig(req.user!.userId, {
       ...(apiKey !== undefined && { apiKey: apiKey || "" }),
@@ -210,7 +235,7 @@ router.put("/me/embedding", async (req: AuthRequest, res: Response) => {
     });
     res.json({ success: true });
   } catch (error) {
-    res.status(500).json({ error: t("zh", "保存向量模型配置失败", "Failed to save vector model configuration") });
+    res.status(500).json({ error: t(requestLang(req), "保存向量模型配置失败", "Failed to save vector model configuration") });
   }
 });
 
@@ -222,10 +247,7 @@ router.put("/me/apikey", async (req: AuthRequest, res: Response) => {
     const nextBaseUrl = typeof baseUrl === "string" && baseUrl.trim() ? baseUrl.trim() : current.baseUrl;
     const nextModel = typeof model === "string" && model.trim() ? model.trim() : current.model;
 
-    if (!/^https?:\/\//i.test(nextBaseUrl)) {
-      res.status(400).json({ error: t("zh", "Base URL必须以http://或https://开头", "Base URL must start with http:// or https://") });
-      return;
-    }
+    if (!ensureSafeBaseUrl(nextBaseUrl, res, requestLang(req))) return;
 
     await saveApiKey(req.user!.userId, {
       ...((!current.hasKey || apiKey !== undefined) && { apiKey: apiKey || "" }),
@@ -234,7 +256,7 @@ router.put("/me/apikey", async (req: AuthRequest, res: Response) => {
     });
     res.json({ success: true });
   } catch (error) {
-    res.status(500).json({ error: t("zh", "保存API Key失败", "Failed to save API Key") });
+    res.status(500).json({ error: t(requestLang(req), "保存API Key失败", "Failed to save API Key") });
   }
 });
 

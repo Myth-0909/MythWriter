@@ -1,36 +1,37 @@
-import { useState, useEffect, useCallback } from "react";
+import { lazy, Suspense, useState, useEffect, useCallback } from "react";
 import { TopAppBar } from "@/components/TopAppBar";
 import { SideNavBar, type NavId } from "@/components/SideNavBar";
 import { PageTransition } from "@/components/PageTransition";
-import { Editor } from "@/components/Editor";
-import { DocumentList } from "@/components/DocumentList";
-import { DocumentCenterPage } from "@/pages/DocumentCenterPage";
-import { SpreadsheetCenterPage } from "@/pages/SpreadsheetCenterPage";
-import { SpreadsheetEditorPage } from "@/pages/SpreadsheetEditorPage";
-import { FavoritesPage } from "@/pages/FavoritesPage";
-import { WorkRecordsPage } from "@/pages/WorkRecordsPage";
-import { WorkRecordsListPage } from "@/pages/WorkRecordsListPage";
-import { TrashPage } from "@/pages/TrashPage";
-import { SettingsPage } from "@/pages/SettingsPage";
-import { ModelConfigPage } from "@/pages/ModelConfigPage";
-import { BrainMemoryPage } from "@/pages/BrainMemoryPage";
-import { LoginPage } from "@/pages/LoginPage";
-import { NotFoundPage } from "@/pages/NotFoundPage";
 import { ShareModal } from "@/components/ShareModal";
 import { ConfirmModal } from "@/components/ConfirmModal";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { AIChatWidget } from "@/components/AIChatWidget";
-import { AgentWritePanel } from "@/components/AgentWritePanel";
 import { useDocuments } from "@/store";
 import { useToast } from "@/components/Toast";
 import { useI18n } from "@/components/I18nProvider";
 import { useAuth, type UserInfo } from "@/auth";
-import { isLoggedIn as checkLoggedIn, clearToken, api } from "@/api";
+import { isLoggedIn as checkLoggedIn, clearToken, api, isAuthError } from "@/api";
 import { formatFullDateTime } from "@/lib/date";
 import { escapeHtml, sanitizeHtml } from "@/lib/html";
 import "./App.css";
+
+const Editor = lazy(() => import("@/components/Editor").then((module) => ({ default: module.Editor })));
+const DocumentList = lazy(() => import("@/components/DocumentList").then((module) => ({ default: module.DocumentList })));
+const DocumentCenterPage = lazy(() => import("@/pages/DocumentCenterPage").then((module) => ({ default: module.DocumentCenterPage })));
+const SpreadsheetCenterPage = lazy(() => import("@/pages/SpreadsheetCenterPage").then((module) => ({ default: module.SpreadsheetCenterPage })));
+const SpreadsheetEditorPage = lazy(() => import("@/pages/SpreadsheetEditorPage").then((module) => ({ default: module.SpreadsheetEditorPage })));
+const FavoritesPage = lazy(() => import("@/pages/FavoritesPage").then((module) => ({ default: module.FavoritesPage })));
+const WorkRecordsPage = lazy(() => import("@/pages/WorkRecordsPage").then((module) => ({ default: module.WorkRecordsPage })));
+const WorkRecordsListPage = lazy(() => import("@/pages/WorkRecordsListPage").then((module) => ({ default: module.WorkRecordsListPage })));
+const TrashPage = lazy(() => import("@/pages/TrashPage").then((module) => ({ default: module.TrashPage })));
+const SettingsPage = lazy(() => import("@/pages/SettingsPage").then((module) => ({ default: module.SettingsPage })));
+const ModelConfigPage = lazy(() => import("@/pages/ModelConfigPage").then((module) => ({ default: module.ModelConfigPage })));
+const BrainMemoryPage = lazy(() => import("@/pages/BrainMemoryPage").then((module) => ({ default: module.BrainMemoryPage })));
+const LoginPage = lazy(() => import("@/pages/LoginPage").then((module) => ({ default: module.LoginPage })));
+const NotFoundPage = lazy(() => import("@/pages/NotFoundPage").then((module) => ({ default: module.NotFoundPage })));
+const AIChatWidget = lazy(() => import("@/components/AIChatWidget").then((module) => ({ default: module.AIChatWidget })));
+const AgentWritePanel = lazy(() => import("@/components/AgentWritePanel").then((module) => ({ default: module.AgentWritePanel })));
 
 type Page = "editor" | "spreadsheet-editor" | "workbench" | "documents" | "spreadsheets" | "favorites" | "records" | "record-history" | "share" | "login" | "trash" | "settings" | "model-config" | "brain" | "notfound";
 
@@ -63,12 +64,12 @@ function safeFilename(value: string): string {
   return (value || "document").replace(/[\\/:*?"<>|]/g, "_");
 }
 
-function buildExportHtml(title: string, meta: string, content: string): string {
+function buildExportHtml(title: string, meta: string, content: string, lang: "zh" | "en"): string {
   const safeTitle = escapeHtml(title);
   const safeMeta = escapeHtml(meta);
   const safeContent = sanitizeHtml(content);
   return `<!DOCTYPE html>
-<html lang="zh">
+<html lang="${lang}">
 <head>
   <meta charset="UTF-8">
   <title>${safeTitle}</title>
@@ -77,37 +78,6 @@ function buildExportHtml(title: string, meta: string, content: string): string {
     h1 { font-size: 28px; margin-bottom: 8px; }
     .meta { color: #999; font-size: 13px; margin-bottom: 24px; }
     @media print { body { margin: 0 auto; } }
-  </style>
-</head>
-<body>
-  <h1>${safeTitle}</h1>
-  <div class="meta">${safeMeta}</div>
-  ${safeContent}
-</body>
-</html>`;
-}
-
-function buildExportWordHtml(title: string, meta: string, content: string): string {
-  const safeTitle = escapeHtml(title);
-  const safeMeta = escapeHtml(meta);
-  const safeContent = sanitizeHtml(content);
-  return `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
-<head>
-  <meta charset="UTF-8">
-  <title>${safeTitle}</title>
-  <!--[if gte mso 9]>
-  <xml>
-    <w:WordDocument>
-      <w:View>Print</w:View>
-      <w:Zoom>100</w:Zoom>
-      <w:DoNotOptimizeForBrowser/>
-    </w:WordDocument>
-  </xml>
-  <![endif]-->
-  <style>
-    body { max-width: 720px; margin: 40px auto; padding: 0 20px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 16px; line-height: 1.8; color: #333; }
-    h1 { font-size: 28px; margin-bottom: 8px; }
-    .meta { color: #999; font-size: 13px; margin-bottom: 24px; }
   </style>
 </head>
 <body>
@@ -129,17 +99,28 @@ function EditorPageContent({ activeDocId, onSelectDoc }: { activeDocId: string; 
   );
 }
 
+function PageLoading() {
+  const { t } = useI18n();
+  return (
+    <div role="status" className="flex min-h-40 flex-1 items-center justify-center px-6 text-sm text-surface-500 dark:text-surface-400">
+      {t("loading.page")}
+    </div>
+  );
+}
+
 export default function App() {
   const { toast } = useToast();
   const { t, lang } = useI18n();
   const { updateUser } = useAuth();
 
-  useEffect(() => {
-    api.updateProfile({ lang }).catch(() => {});
-  }, [lang]);
-
-  const { documents, getDocument, loadDocument, loading, refreshDocuments } = useDocuments();
+  const { getDocument, loadDocument, loading, refreshDocuments } = useDocuments();
   const [isLoggedIn, setIsLoggedIn] = useState(() => checkLoggedIn());
+
+  useEffect(() => {
+    if (!isLoggedIn) return;
+    const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+    api.updateProfile({ lang, timeZone }).catch(() => {});
+  }, [isLoggedIn, lang]);
 
   // Grouping state
   const [groups, setGroups] = useState<any[]>([]);
@@ -167,7 +148,7 @@ export default function App() {
     if (isLoggedIn) {
       fetchGroups();
     }
-  }, [isLoggedIn, documents, fetchGroups]);
+  }, [isLoggedIn, fetchGroups]);
 
   // Folder CRUD actions
   const handleOpenCreateFolder = () => {
@@ -243,15 +224,44 @@ export default function App() {
   const [shareOpen, setShareOpen] = useState(false);
   const [agentWriteOpen, setAgentWriteOpen] = useState(false);
 
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 1023px)");
+    const syncSidebar = () => {
+      if (media.matches) setSidebarCollapsed(true);
+    };
+    syncSidebar();
+    media.addEventListener("change", syncSidebar);
+    return () => media.removeEventListener("change", syncSidebar);
+  }, []);
+
   // Verify token validity on mount
   useEffect(() => {
     if (!checkLoggedIn()) return;
-    api.getProfile().catch(() => {
+    api.getProfile().catch((error) => {
+      if (isAuthError(error)) {
+        clearToken();
+        setIsLoggedIn(false);
+        setCurrentPage("login");
+        toast(t("session.expired"), "info");
+        return;
+      }
+      toast(error instanceof Error ? error.message : t("network.requestFailed"), "error");
+    });
+  }, [t, toast]);
+
+  useEffect(() => {
+    const handleUnauthorized = () => {
       clearToken();
       setIsLoggedIn(false);
       setCurrentPage("login");
-    });
-  }, []);
+      setEditorDocId("");
+      setActiveSpreadsheetId("");
+      window.location.hash = "#/login";
+      toast(t("session.expired"), "info");
+    };
+    window.addEventListener("auth:unauthorized", handleUnauthorized);
+    return () => window.removeEventListener("auth:unauthorized", handleUnauthorized);
+  }, [t, toast]);
 
   // Keep deep-linked editor pages valid after refreshes and trash moves.
   useEffect(() => {
@@ -345,14 +355,20 @@ export default function App() {
 
   const handleLogout = () => setLogoutConfirm(true);
 
-  const confirmLogout = () => {
+  const confirmLogout = async () => {
+    let revoked = true;
+    try {
+      await api.logout();
+    } catch {
+      revoked = false;
+    }
     clearToken();
     setIsLoggedIn(false);
     setCurrentPage("login");
     setEditorDocId("");
     setActiveSpreadsheetId("");
     window.location.hash = "#/login";
-    toast(t("toast.logoutSuccess"), "success");
+    toast(revoked ? t("toast.logoutSuccess") : t("session.logoutFailed"), revoked ? "success" : "info");
   };
 
   const handleLogin = (user: UserInfo) => {
@@ -365,65 +381,51 @@ export default function App() {
     refreshDocuments();
   };
 
-  const handleExport = (format: string) => {
+  const handleExport = async (format: string) => {
     const doc = getDocument(editorDocId);
     if (!doc) {
       toast(t("editor.noContent"), "error");
       return;
     }
 
-    const title = safeFilename(doc.title || "document");
+    const title = safeFilename(doc.title || t("editor.untitled"));
     const dateStr = formatFullDateTime(doc.updatedAt, lang);
     const meta = `${dateStr}${t("date.separator")}${doc.category}`;
-    let content: string;
-    let mime: string;
+    let blob: Blob;
     let ext: string;
+    try {
+      if (format === "txt") {
+        const tmp = document.createElement("div");
+        tmp.innerHTML = sanitizeHtml(doc.content);
+        blob = new Blob([`# ${title}\n${meta}\n\n${tmp.textContent || ""}`], { type: "text/plain;charset=utf-8" });
+        ext = "txt";
+      } else if (format === "md") {
+        const { htmlToMarkdown } = await import("@/lib/documentExport");
+        const markdown = await htmlToMarkdown(doc.content);
+        blob = new Blob([`# ${title}\n${meta}\n\n${markdown}`], { type: "text/markdown;charset=utf-8" });
+        ext = "md";
+      } else if (format === "word") {
+        const { htmlToDocxBlob } = await import("@/lib/documentExport");
+        blob = await htmlToDocxBlob({ title, meta, html: doc.content });
+        ext = "docx";
+      } else {
+        blob = new Blob([buildExportHtml(title, meta, doc.content, lang)], { type: "text/html;charset=utf-8" });
+        ext = "html";
+      }
 
-    if (format === "txt") {
-      const tmp = document.createElement("div");
-      tmp.innerHTML = doc.content;
-      content = `# ${title}\n${meta}\n\n${tmp.textContent || ""}`;
-      mime = "text/plain;charset=utf-8";
-      ext = "txt";
-    } else if (format === "md") {
-      let md = doc.content
-        .replace(/<h1[^>]*>(.*?)<\/h1>/gi, "# $1\n\n")
-        .replace(/<h2[^>]*>(.*?)<\/h2>/gi, "## $1\n\n")
-        .replace(/<\/p>\s*<p[^>]*>/gi, "\n\n")
-        .replace(/<p[^>]*>/gi, "")
-        .replace(/<\/p>/gi, "\n\n")
-        .replace(/<br\s*\/?>/gi, "\n")
-        .replace(/<strong[^>]*>(.*?)<\/strong>/gi, "**$1**")
-        .replace(/<b[^>]*>(.*?)<\/b>/gi, "**$1**")
-        .replace(/<em[^>]*>(.*?)<\/em>/gi, "*$1*")
-        .replace(/<i[^>]*>(.*?)<\/i>/gi, "*$1*")
-        .replace(/<code[^>]*>(.*?)<\/code>/gi, "`$1`")
-        .replace(/<pre[^>]*>(.*?)<\/pre>/gi, "```\n$1\n```\n")
-        .replace(/<[^>]+>/g, "");
-      content = `# ${title}\n${meta}\n\n${md.trim()}`;
-      mime = "text/markdown;charset=utf-8";
-      ext = "md";
-    } else if (format === "word") {
-      content = buildExportWordHtml(title, meta, doc.content);
-      mime = "application/msword;charset=utf-8";
-      ext = "doc";
-    } else {
-      content = buildExportHtml(title, meta, doc.content);
-      mime = "text/html;charset=utf-8";
-      ext = "html";
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${title}.${ext}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast(t("editor.exported"), "success");
+    } catch (error) {
+      console.error("Document export failed:", error);
+      toast(t("editor.exportFailed"), "error");
     }
-
-    const blob = new Blob([content], { type: mime });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${title}.${ext}`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-
-    toast(t("editor.exported"), "success");
   };
 
   const topBarVariant: "editor" | "documents" | "trash" | "settings" =
@@ -437,13 +439,19 @@ export default function App() {
     return <LoginPage onLogin={handleLogin} />;
   }
   if (currentPage === "login") {
-    return <LoginPage onLogin={handleLogin} />;
+    return <Suspense fallback={<PageLoading />}><LoginPage onLogin={handleLogin} /></Suspense>;
   }
 
   // Not logged in but trying to access protected pages — handled above, will show login
 
   return (
-    <div className="h-screen min-w-[1024px] overflow-x-auto bg-white dark:bg-surface-950">
+    <div className="h-[100dvh] min-w-0 overflow-hidden bg-white dark:bg-surface-950">
+      <a
+        href="#main-content"
+        className="fixed left-3 top-3 z-[100] -translate-y-20 rounded-lg bg-surface-950 px-4 py-2 text-sm font-semibold text-white shadow-lg transition-transform focus:translate-y-0 dark:bg-white dark:text-surface-950"
+      >
+        {t("common.skipToContent")}
+      </a>
       <div className="flex h-full w-full flex-col">
         {currentPage !== "notfound" && (
           <TopAppBar
@@ -457,7 +465,7 @@ export default function App() {
           />
         )}
 
-        <div className="flex flex-1 overflow-hidden">
+        <div id="main-content" role="main" tabIndex={-1} className="flex min-w-0 flex-1 overflow-hidden">
           {currentPage !== "notfound" && (
             <SideNavBar
               activeNav={activeNav}
@@ -476,6 +484,7 @@ export default function App() {
           )}
 
           <PageTransition pageKey={currentPage}>
+            <Suspense fallback={<PageLoading />}>
             {currentPage === "editor" && (
               <EditorPageContent activeDocId={editorDocId} onSelectDoc={handleOpenDoc} />
             )}
@@ -532,19 +541,24 @@ export default function App() {
             {currentPage === "notfound" && (
               <NotFoundPage onGoHome={() => navigateTo("workbench", "workbench")} />
             )}
+            </Suspense>
           </PageTransition>
         </div>
       </div>
 
       {currentPage !== "notfound" && (
-        <AIChatWidget
-          currentDocumentId={currentPage === "editor" ? editorDocId ?? undefined : undefined}
-          currentSpreadsheetId={currentPage === "spreadsheet-editor" ? activeSpreadsheetId ?? undefined : undefined}
-        />
+        <Suspense fallback={null}>
+          <AIChatWidget
+            currentDocumentId={currentPage === "editor" ? editorDocId ?? undefined : undefined}
+            currentSpreadsheetId={currentPage === "spreadsheet-editor" ? activeSpreadsheetId ?? undefined : undefined}
+          />
+        </Suspense>
       )}
 
       <ShareModal open={shareOpen} onOpenChange={setShareOpen} onExport={handleExport} />
-      <AgentWritePanel open={agentWriteOpen} onOpenChange={setAgentWriteOpen} onOpenDocument={handleOpenDoc} currentDocumentId={currentPage === "editor" ? editorDocId ?? undefined : undefined} />
+      <Suspense fallback={null}>
+        <AgentWritePanel open={agentWriteOpen} onOpenChange={setAgentWriteOpen} onOpenDocument={handleOpenDoc} currentDocumentId={currentPage === "editor" ? editorDocId ?? undefined : undefined} />
+      </Suspense>
 
       <ConfirmModal
         open={logoutConfirm}

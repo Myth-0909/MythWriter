@@ -130,58 +130,72 @@ export function TopAppBar({
         {/* Theme switcher (matches settings page) */}
         <div className="relative grid w-[116px] grid-cols-3 gap-1 rounded-lg bg-surface-100 p-1 dark:bg-surface-800">
           <div
-            className="absolute left-1 top-1 h-8 w-8 rounded-md bg-white shadow-sm transition-transform duration-300 ease-out dark:bg-surface-700"
+            className="absolute left-1 top-1 h-8 w-8 rounded-md bg-brand-50 shadow-sm ring-1 ring-brand-200 transition-transform duration-300 ease-out dark:bg-brand-500/15 dark:ring-brand-400/25"
             style={{ transform: `translateX(${themeModeIndex * 36}px)` }}
           />
           <Tooltip content={t("nav.followSystem")} delay={150}>
-            <button
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
               onClick={() => setThemeMode("system")}
               className={`relative z-10 flex h-8 w-8 items-center justify-center rounded-md transition-colors cursor-pointer ${
                 themeMode === "system"
-                  ? "text-surface-900 dark:text-surface-100"
-                  : "text-surface-400 hover:text-surface-600 dark:hover:text-surface-300"
+                  ? "text-brand-700 hover:text-brand-700 dark:text-brand-200 dark:hover:text-brand-200"
+                  : "text-surface-400 hover:text-brand-600 dark:hover:text-brand-300"
               }`}
               aria-label={t("nav.followSystem")}
             >
               <Monitor className="h-4 w-4" />
-            </button>
+            </Button>
           </Tooltip>
           <Tooltip content={t("nav.lightMode")} delay={150}>
-            <button
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
               onClick={() => setThemeMode("light")}
               className={`relative z-10 flex h-8 w-8 items-center justify-center rounded-md transition-colors cursor-pointer ${
                 themeMode === "light"
-                  ? "text-amber-500"
-                  : "text-surface-400 hover:text-surface-600 dark:hover:text-surface-300"
+                  ? "text-brand-700 hover:text-brand-700 dark:text-brand-200 dark:hover:text-brand-200"
+                  : "text-surface-400 hover:text-brand-600 dark:hover:text-brand-300"
               }`}
               aria-label={t("nav.lightMode")}
             >
               <Sun className="h-4 w-4" />
-            </button>
+            </Button>
           </Tooltip>
           <Tooltip content={t("nav.darkMode")} delay={150}>
-            <button
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
               onClick={() => setThemeMode("dark")}
               className={`relative z-10 flex h-8 w-8 items-center justify-center rounded-md transition-colors cursor-pointer ${
                 themeMode === "dark"
-                  ? "text-brand-500 dark:text-brand-400"
-                  : "text-surface-400 hover:text-surface-600 dark:hover:text-surface-300"
+                  ? "text-brand-700 hover:text-brand-700 dark:text-brand-200 dark:hover:text-brand-200"
+                  : "text-surface-400 hover:text-brand-600 dark:hover:text-brand-300"
               }`}
               aria-label={t("nav.darkMode")}
             >
               <Moon className="h-4 w-4" />
-            </button>
+            </Button>
           </Tooltip>
         </div>
 
         {/* User menu */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button className="flex items-center gap-1.5 rounded-full py-1 pl-1.5 pr-2 text-sm transition-colors hover:bg-surface-100 dark:hover:bg-surface-800 cursor-pointer">
+            <Button
+              type="button"
+              variant="ghost"
+              aria-label={t("common.openUserMenu")}
+              className="h-auto gap-1.5 rounded-full py-1 pl-1.5 pr-2 text-sm"
+            >
               {avatarUrl ? (
                 <img
                   src={avatarUrl}
-                  alt="avatar"
+                  alt={user?.name || t("common.user")}
                   className="h-7 w-7 rounded-full object-cover"
                 />
               ) : (
@@ -190,7 +204,7 @@ export function TopAppBar({
                 </div>
               )}
               <ChevronDown className="h-3.5 w-3.5 text-surface-400" />
-            </button>
+            </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-[160px]">
             {/* Logout */}

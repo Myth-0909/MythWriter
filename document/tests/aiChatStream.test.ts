@@ -4,6 +4,7 @@ import {
   canSendAssistantFeedback,
   filterApiHistoryToolCalls,
   resolveAssistantActionContent,
+  sanitizeAssistantDisplayContent,
   shouldIncludeAssistantInPrompt,
 } from "../src/lib/aiChatStream.ts";
 import { toApiMessages } from "../src/lib/aiChatApiMessages.ts";
@@ -20,6 +21,17 @@ describe("AI chat stream UX helpers", () => {
     assert.equal(canSendAssistantFeedback({ content: "partial", isTyping: true }), false);
     assert.equal(canSendAssistantFeedback({ content: "partial", interrupted: true }), false);
     assert.equal(canSendAssistantFeedback({ content: "complete answer" }), true);
+  });
+
+  it("hides reasoning tags and internal action protocol from the visible stream", () => {
+    assert.equal(
+      sanitizeAssistantDisplayContent("先给你结论。<think>内部推理", true),
+      "先给你结论。"
+    );
+    assert.equal(
+      sanitizeAssistantDisplayContent("正在准备修改<<ACTION_JSON>>{\"type\":", true),
+      "正在准备修改"
+    );
   });
 
   it("excludes interrupted assistant messages from future prompt context", () => {

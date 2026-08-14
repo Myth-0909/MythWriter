@@ -45,14 +45,14 @@ describe("embedding client", () => {
       ["alpha", "beta"],
       {
         apiKey: "test-key",
-        baseUrl: "http://embedding.local/v1/",
+        baseUrl: "https://embeddings.example.com/v1/",
         model: "embedding-model",
       },
       fetcher
     );
 
     assert.deepEqual(vectors, [[0.1, 0.2], [0.3, 0.4]]);
-    assert.equal(calls[0].url, "http://embedding.local/v1/embeddings");
+    assert.equal(calls[0].url, "https://embeddings.example.com/v1/embeddings");
     assert.equal(calls[0].init.method, "POST");
     assert.equal(calls[0].init.headers.Authorization, "Bearer test-key");
     assert.deepEqual(JSON.parse(calls[0].init.body), {
@@ -67,7 +67,7 @@ describe("embedding client", () => {
       ["alpha"],
       {
         apiKey: "test-key",
-        baseUrl: "http://embedding.local/v1",
+        baseUrl: "https://embeddings.example.com/v1",
         model: undefined,
       },
       async (url: string, init: any) => {
@@ -103,7 +103,7 @@ describe("embedding client", () => {
   });
 
   it("unwraps a single embedding vector", async () => {
-    const vector = await generateEmbedding("alpha", { apiKey: "test-key" }, async () => ({
+    const vector = await generateEmbedding("alpha", { apiKey: "test-key", baseUrl: "https://embeddings.example.com/v1" }, async () => ({
       ok: true,
       json: async () => ({ data: [{ embedding: [1, 2, 3] }] }),
     }));
@@ -129,7 +129,7 @@ describe("embedding client", () => {
 
   it("throws when the embedding service returns malformed data", async () => {
     await assert.rejects(
-      () => generateEmbeddings(["alpha"], { apiKey: "test-key" }, async () => ({
+      () => generateEmbeddings(["alpha"], { apiKey: "test-key", baseUrl: "https://embeddings.example.com/v1" }, async () => ({
         ok: true,
         json: async () => ({ data: [{ embedding: ["bad"] }] }),
       })),

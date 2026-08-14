@@ -218,8 +218,8 @@ export function ModelConfigPage() {
       });
       setTestReply(res.reply || t("apikey.testConnectivitySuccess"));
       toast(t("apikey.testConnectivitySuccess"), "success");
-    } catch {
-      toast(t("apikey.testConnectivityFailed"), "error");
+    } catch (error) {
+      toast(error instanceof Error && error.message ? error.message : t("apikey.testConnectivityFailed"), "error");
     } finally {
       setTestingKey(false);
     }
@@ -227,7 +227,7 @@ export function ModelConfigPage() {
 
   return (
     <Scrollbar className="flex-1 bg-surface-50 dark:bg-surface-950">
-      <div className="mx-auto max-w-[760px] px-20 py-20">
+      <div className="mx-auto max-w-[820px] px-4 py-8 sm:px-6 lg:px-10 lg:py-12">
         <div className="mb-8">
           <h2 className="text-[28px] font-bold leading-tight text-surface-900 dark:text-surface-100">
             {t("modelConfig.title")}
@@ -238,7 +238,7 @@ export function ModelConfigPage() {
         </div>
 
         <div className="flex flex-col gap-6">
-          <section className="rounded-xl border border-surface-200 bg-white p-6 dark:border-surface-800 dark:bg-surface-900">
+          <section className="rounded-xl border border-surface-200 bg-white p-4 sm:p-6 dark:border-surface-800 dark:bg-surface-900">
             <div className="mb-6 flex items-start gap-3">
               <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-brand-50 text-brand-600 dark:bg-brand-950/60 dark:text-brand-300">
                 <Bot className="h-5 w-5" />
@@ -259,15 +259,19 @@ export function ModelConfigPage() {
                   <span className="text-xs text-amber-700 dark:text-amber-300">
                     {t("apikey.noKeyHint")}
                   </span>
-                  <button
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={t("common.close")}
                     onClick={() => {
                       setNoKeyHintDismissed(true);
                       localStorage.setItem("apikey-hint-dismissed", "true");
                     }}
-                    className="ml-2 shrink-0 cursor-pointer text-amber-400 hover:text-amber-600"
+                    className="ml-2 shrink-0 text-amber-400 hover:bg-amber-100 hover:text-amber-600 dark:hover:bg-amber-900/40"
                   >
                     <X className="h-3.5 w-3.5" />
-                  </button>
+                  </Button>
                 </div>
               )}
 
@@ -298,8 +302,10 @@ export function ModelConfigPage() {
                               content={isCurrent ? t("apikey.historyCurrentCannotDelete") : t("apikey.deleteHistory")}
                               delay={150}
                             >
-                              <button
+                              <Button
                                 type="button"
+                                variant="ghost"
+                                size="icon-sm"
                                 disabled={deleteDisabled}
                                 aria-label={t("apikey.deleteHistory")}
                                 onPointerUp={(e) => {
@@ -316,14 +322,14 @@ export function ModelConfigPage() {
                                   if (deleteDisabled) return;
                                   setConfirmDeleteId(item.id);
                                 }}
-                                className="relative z-10 mr-1 flex h-6 w-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-surface-400 transition-colors hover:bg-red-50 hover:text-red-500 disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-surface-400 dark:hover:bg-red-950/30"
+                                className="relative z-10 mr-1 shrink-0 text-surface-400 hover:bg-red-50 hover:text-red-500 disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-surface-400 dark:hover:bg-red-950/30"
                               >
                                 {isDeleting ? (
                                   <Loader2 className="h-3.5 w-3.5 animate-spin" />
                                 ) : (
                                   <Trash2 className="h-3.5 w-3.5" />
                                 )}
-                              </button>
+                              </Button>
                             </Tooltip>
                           }
                         >
@@ -387,13 +393,17 @@ export function ModelConfigPage() {
                       disabled={isLocked}
                       className="pr-9"
                     />
-                    <button
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      aria-label={showKey ? t("common.hidePassword") : t("common.showPassword")}
                       onClick={() => setShowKey(!showKey)}
                       disabled={isLocked && !keyEditable}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 cursor-pointer text-surface-400 hover:text-surface-600 disabled:cursor-not-allowed disabled:opacity-40"
+                      className="absolute right-0 top-1/2 h-9 w-9 -translate-y-1/2 text-surface-400 hover:text-surface-600"
                     >
                       {showKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    </button>
+                    </Button>
                   </div>
                   <Button
                     variant="outline"
@@ -412,21 +422,27 @@ export function ModelConfigPage() {
                     {savingKey ? <Loader2 className="h-4 w-4 animate-spin" /> : t("apikey.save")}
                   </Button>
                   {isLocked && (
-                    <button
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
                       onClick={() => setVerifyDialogOpen(true)}
-                      className="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-surface-200 px-3 py-1.5 text-xs font-medium text-surface-600 transition-all hover:bg-surface-50 dark:border-surface-700 dark:text-surface-400 dark:hover:bg-surface-800"
+                      className="shrink-0 gap-1.5"
                     >
                       <Pencil className="h-3.5 w-3.5" />
                       {t("apikey.change")}
-                    </button>
+                    </Button>
                   )}
                   {!isLocked && maskedKey && (
-                    <button
+                    <Button
+                      type="button"
+                      variant="link"
+                      size="sm"
                       onClick={() => { setKeyEditable(false); setApiKey(""); setShowKey(false); }}
-                      className="cursor-pointer text-xs text-surface-400 hover:text-surface-600"
+                      className="h-auto p-0 text-xs text-surface-400 hover:text-surface-600"
                     >
                       {t("apikey.cancel")}
-                    </button>
+                    </Button>
                   )}
                 </div>
                 {testReply && (
@@ -439,7 +455,7 @@ export function ModelConfigPage() {
             </div>
           </section>
 
-          <section className="rounded-xl border border-surface-200 bg-white p-6 dark:border-surface-800 dark:bg-surface-900">
+          <section className="rounded-xl border border-surface-200 bg-white p-4 sm:p-6 dark:border-surface-800 dark:bg-surface-900">
             <div className="mb-6 flex items-start gap-3">
               <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-accent-50 text-accent-600 dark:bg-accent-950/50 dark:text-accent-300">
                 <Database className="h-5 w-5" />
@@ -506,13 +522,17 @@ export function ModelConfigPage() {
                       className="pr-9"
                       disabled={!embeddingEditable}
                     />
-                    <button
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      aria-label={showEmbeddingKey ? t("common.hidePassword") : t("common.showPassword")}
                       onClick={() => setShowEmbeddingKey(!showEmbeddingKey)}
                       disabled={!embeddingEditable}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 cursor-pointer text-surface-400 hover:text-surface-600 disabled:cursor-not-allowed disabled:opacity-40"
+                      className="absolute right-0 top-1/2 h-9 w-9 -translate-y-1/2 text-surface-400 hover:text-surface-600"
                     >
                       {showEmbeddingKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    </button>
+                    </Button>
                   </div>
                   {embeddingEditable ? (
                     <>
@@ -523,7 +543,10 @@ export function ModelConfigPage() {
                       >
                         {savingEmbedding ? <Loader2 className="h-4 w-4 animate-spin" /> : t("apikey.save")}
                       </Button>
-                      <button
+                      <Button
+                        type="button"
+                        variant="link"
+                        size="sm"
                         onClick={() => {
                           setEmbeddingEditable(false);
                           setShowEmbeddingKey(false);
@@ -534,19 +557,22 @@ export function ModelConfigPage() {
                             setEmbeddingApiKey(res.masked);
                           }).catch(() => {});
                         }}
-                        className="cursor-pointer text-xs text-surface-400 hover:text-surface-600"
+                        className="h-auto p-0 text-xs text-surface-400 hover:text-surface-600"
                       >
                         {t("apikey.cancel")}
-                      </button>
+                      </Button>
                     </>
                   ) : (
-                    <button
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
                       onClick={() => setEmbeddingEditable(true)}
-                      className="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-lg border border-surface-200 px-3 py-1.5 text-xs font-medium text-surface-600 transition-all hover:bg-surface-50 dark:border-surface-700 dark:text-surface-400 dark:hover:bg-surface-800"
+                      className="shrink-0 gap-1.5"
                     >
                       <Pencil className="h-3.5 w-3.5" />
                       {t("apikey.change")}
-                    </button>
+                    </Button>
                   )}
                 </div>
                 <p className="mt-1 text-xs text-surface-500">{t("modelConfig.embeddingApiKeyDesc")}</p>

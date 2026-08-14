@@ -241,10 +241,11 @@ function MarkdownTextarea({ value, onValueChange, onPaste, placeholder, classNam
             {images.map((image) => {
               const isSelected = selectedImage === image.index;
               return (
-                <button
+                <Button
                   key={`${image.index}-${image.width}-${image.height}`}
                   type="button"
-                  className={cn("markdown-image-resize relative shrink-0", isSelected && "is-selected")}
+                  variant="ghost"
+                  className={cn("markdown-image-resize relative h-auto shrink-0 whitespace-normal p-0", isSelected && "is-selected")}
                   style={{ width: Math.min(Math.max(image.width * 0.28, 112), 220) }}
                   onClick={() => setSelectedImage(image.index)}
                 >
@@ -266,7 +267,7 @@ function MarkdownTextarea({ value, onValueChange, onPaste, placeholder, classNam
                       onMouseDown={(event) => handleResizeStart(event, image.index, image.width, image.height)}
                     />
                   )}
-                </button>
+                </Button>
               );
             })}
           </div>
@@ -1001,7 +1002,7 @@ export function WorkRecordPanel({ className, view = "editor" }: { className?: st
               </div>
             </div>
 
-            <div className="mt-4 flex flex-wrap items-center gap-2">
+            <div className="sticky bottom-3 z-20 -mx-2 mt-4 flex flex-wrap items-center gap-2 rounded-xl border border-surface-200 bg-white/95 p-2 shadow-[0_-8px_24px_rgba(15,23,42,0.06)] backdrop-blur dark:border-surface-800 dark:bg-surface-950/95 dark:shadow-[0_-8px_24px_rgba(0,0,0,0.2)]">
               <Button className="h-10 gap-1.5 px-4" onClick={handleSave} disabled={saving || loading}>
                 {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
                 <span>{t("workbench.saveRecord")}</span>

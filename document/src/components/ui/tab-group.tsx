@@ -63,7 +63,7 @@ export function TabGroup({ items, value, onChange, className, size = "sm" }: Tab
     >
       {/* Sliding pill */}
       <div
-        className="absolute top-1 h-8 rounded-md bg-white shadow-sm transition-all duration-300 ease-out dark:bg-surface-700"
+        className="absolute top-1 h-8 rounded-md bg-brand-50 shadow-sm ring-1 ring-brand-200 transition-all duration-300 ease-out dark:bg-brand-500/15 dark:ring-brand-400/25"
         style={{
           left: pillStyle.left,
           width: pillStyle.width,
@@ -79,8 +79,8 @@ export function TabGroup({ items, value, onChange, className, size = "sm" }: Tab
             size === "sm" && "text-xs",
             size === "md" && "text-sm",
             item.value === value
-              ? "text-surface-900 dark:text-surface-100"
-              : "text-surface-400 hover:text-surface-600 dark:hover:text-surface-300"
+              ? "text-brand-700 dark:text-brand-200"
+              : "text-surface-400 hover:text-brand-600 dark:hover:text-brand-300"
           )}
         >
           {item.label}

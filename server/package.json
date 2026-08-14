@@ -18,6 +18,9 @@
     "setup-sqlite": "tsx scripts/setup-sqlite.ts"
   },
   "dependencies": {
+    "@langchain/core": "^1.2.3",
+    "@langchain/langgraph": "^1.4.8",
+    "@langchain/openai": "^1.5.5",
     "@prisma/client": "^6.5.0",
     "@zilliz/milvus2-sdk-node": "^2.4.0",
     "bcryptjs": "^2.4.3",

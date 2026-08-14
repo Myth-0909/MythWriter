@@ -260,7 +260,10 @@ export function DocumentLifeline({
           {steps.map((step, index) => (
             <span
               key={step}
-              className={cn(index <= Math.floor(clampPercent(progress) / 25) ? "text-surface-700 dark:text-surface-200" : "")}
+              className={cn(
+                "min-w-0 truncate",
+                index <= Math.floor(clampPercent(progress) / 25) ? "text-surface-700 dark:text-surface-200" : ""
+              )}
             >
               {step}
             </span>

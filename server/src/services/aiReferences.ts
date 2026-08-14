@@ -19,7 +19,7 @@ export function selectReferencedBrainIds(references: ChatReference[] | undefined
   for (const ref of Array.isArray(references) ? references : []) {
     if (ref?.type !== "brain" || typeof ref.id !== "string") continue;
 
-    const id = ref.id.trim();
+    const id = ref.id.trim().slice(0, 128);
     if (!id || seen.has(id)) continue;
 
     if (isAutoReference(ref)) {
@@ -29,6 +29,7 @@ export function selectReferencedBrainIds(references: ChatReference[] | undefined
 
     seen.add(id);
     ids.push(id);
+    if (ids.length >= 12) break;
   }
 
   return ids;

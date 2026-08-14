@@ -2,8 +2,13 @@ import { Router, Response } from "express";
 import { AuthRequest, authMiddleware } from "../middleware/auth";
 import prisma from "../lib/prisma";
 import { ragService } from "../services/ragService";
+import { t } from "../lib/i18n";
 
 const router = Router();
+
+function requestLang(req: AuthRequest) {
+  return String(req.headers["accept-language"] || "").toLowerCase().startsWith("en") ? "en" : "zh";
+}
 
 function queueKnowledgeReindex(knowledge: { id: string; userId: string; title: string; description: string }) {
   void ragService.reindexKnowledge(knowledge).then((result) => {
@@ -34,7 +39,7 @@ router.get("/", async (req: AuthRequest, res: Response) => {
     res.json({ knowledges });
   } catch (error) {
     console.error("List brain knowledge error:", error);
-    res.status(500).json({ error: "获取设定卡列表失败" });
+    res.status(500).json({ error: t(requestLang(req), "获取设定卡列表失败", "Failed to list knowledge cards") });
   }
 });
 
@@ -43,11 +48,11 @@ router.post("/", async (req: AuthRequest, res: Response) => {
   try {
     const { title, description, category, categoryId } = req.body;
     if (!title || typeof title !== "string") {
-      res.status(400).json({ error: "设定名称不能为空" });
+      res.status(400).json({ error: t(requestLang(req), "设定名称不能为空", "Knowledge title is required") });
       return;
     }
     if (!description || typeof description !== "string") {
-      res.status(400).json({ error: "设定内容描述不能为空" });
+      res.status(400).json({ error: t(requestLang(req), "设定内容描述不能为空", "Knowledge description is required") });
       return;
     }
 
@@ -71,7 +76,7 @@ router.post("/", async (req: AuthRequest, res: Response) => {
     res.json({ knowledge });
   } catch (error) {
     console.error("Create brain knowledge error:", error);
-    res.status(500).json({ error: "创建设定卡失败" });
+    res.status(500).json({ error: t(requestLang(req), "创建设定卡失败", "Failed to create knowledge card") });
   }
 });
 
@@ -85,7 +90,7 @@ router.put("/:id", async (req: AuthRequest, res: Response) => {
     });
 
     if (!knowledge) {
-      res.status(404).json({ error: "该设定卡不存在" });
+      res.status(404).json({ error: t(requestLang(req), "该设定卡不存在", "Knowledge card not found") });
       return;
     }
 
@@ -112,7 +117,7 @@ router.put("/:id", async (req: AuthRequest, res: Response) => {
     res.json({ knowledge: updated });
   } catch (error) {
     console.error("Update brain knowledge error:", error);
-    res.status(500).json({ error: "更新设定卡失败" });
+    res.status(500).json({ error: t(requestLang(req), "更新设定卡失败", "Failed to update knowledge card") });
   }
 });
 
@@ -124,7 +129,7 @@ router.delete("/:id", async (req: AuthRequest, res: Response) => {
     });
 
     if (!knowledge) {
-      res.status(404).json({ error: "该设定卡不存在" });
+      res.status(404).json({ error: t(requestLang(req), "该设定卡不存在", "Knowledge card not found") });
       return;
     }
 
@@ -136,7 +141,7 @@ router.delete("/:id", async (req: AuthRequest, res: Response) => {
     res.json({ success: true });
   } catch (error) {
     console.error("Delete brain knowledge error:", error);
-    res.status(500).json({ error: "删除设定卡失败" });
+    res.status(500).json({ error: t(requestLang(req), "删除设定卡失败", "Failed to delete knowledge card") });
   }
 });
 

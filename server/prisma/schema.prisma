@@ -20,9 +20,11 @@ model User {
   embeddingBaseUrl  String?    @map("embedding_base_url")
   embeddingModel    String?    @map("embedding_model")
   lang              String     @default("zh") @map("lang")
+  timeZone          String     @default("UTC") @map("time_zone")
   fontFamilyKey     String     @default("current") @map("font_family_key")
   resetToken        String?    @map("reset_token")
   resetTokenExpires DateTime?  @map("reset_token_expires")
+  sessionVersion    Int        @default(0) @map("session_version")
   createdAt         DateTime   @default(now()) @map("created_at")
   updatedAt         DateTime   @updatedAt @map("updated_at")
 
@@ -37,6 +39,7 @@ model User {
   documentVersions DocumentVersion[]
   workRecords      WorkRecord[]
   spreadsheets     Spreadsheet[]
+  writingDayStats  WritingDayStat[]
 
   @@map("users")
 }
@@ -61,6 +64,7 @@ model Document {
   title      String
   content    String           @db.LongText
   preview    String?
+  wordCount  Int              @default(0) @map("word_count")
   tags       Json?
   category   DocumentCategory @default(general)
   isFavorite Boolean          @default(false) @map("is_favorite")
@@ -191,6 +195,23 @@ model WorkRecord {
   @@index([userId])
   @@index([userId, period, targetDate])
   @@map("work_records")
+}
+
+/** Accumulated positive word deltas written on a local calendar day. */
+model WritingDayStat {
+  id            String   @id @default(uuid())
+  userId        String   @map("user_id")
+  dateKey       String   @map("date_key") // YYYY-MM-DD local
+  documentWords Int      @default(0) @map("document_words")
+  journalWords  Int      @default(0) @map("journal_words")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, dateKey])
+  @@index([userId, dateKey])
+  @@map("writing_day_stats")
 }
 
 enum WorkRecordPeriod {

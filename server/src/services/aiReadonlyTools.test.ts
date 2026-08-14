@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import {
   executeReadonlyChatTool,
   inferReadonlyToolCalls,
+  resolvePrefetchReadonlyTools,
 } from "./aiReadonlyTools";
 
 const now = new Date("2026-07-08T08:00:00.000Z");
@@ -125,6 +126,10 @@ function createMockDeps() {
         const value = item[key] instanceof Date ? item[key].getTime() : new Date(item[key]).getTime();
         if ((expected as any).gte && value < (expected as any).gte.getTime()) return false;
         if ((expected as any).lt && value >= (expected as any).lt.getTime()) return false;
+      } else if (expected instanceof Date || item[key] instanceof Date) {
+        const left = item[key] instanceof Date ? item[key].getTime() : new Date(item[key]).getTime();
+        const right = expected instanceof Date ? expected.getTime() : new Date(String(expected)).getTime();
+        if (left !== right) return false;
       } else if (item[key] !== expected) {
         return false;
       }
@@ -143,6 +148,10 @@ function createMockDeps() {
       documentVersion: { findMany: findMany(versions) },
       documentGroup: { findMany: async () => [{ ...categories[0], documents: [documents[0]], name: "正文" }], count: async () => 1 },
       workRecord: { findMany: findMany(workRecords), count: count(workRecords) },
+      writingDayStat: {
+        findUnique: async () => ({ documentWords: 12, journalWords: 5 }),
+        findMany: async () => [{ dateKey: "2026-07-08", documentWords: 12, journalWords: 5 }],
+      },
       spreadsheet: { findMany: findMany(spreadsheets), findFirst: async (args: any) => spreadsheets.find((item) => matchesWhere(item, args.where)) || null },
       aIBrainKnowledge: { findMany: findMany(knowledges), count: count(knowledges) },
       aIBrainCategory: { findMany: findMany(categories) },
@@ -191,6 +200,34 @@ describe("read-only AI chat tools", () => {
     }
   });
 
+  it("get_today_writing queries journals with DateTime targetDate and returns counts", async () => {
+    const deps = createMockDeps();
+    let capturedTargetDate: unknown;
+    const originalFindMany = deps.prisma.workRecord.findMany;
+    deps.prisma.workRecord.findMany = async (args: any = {}) => {
+      capturedTargetDate = args?.where?.targetDate;
+      if (typeof args?.where?.targetDate === "string") {
+        throw new Error(
+          "Argument `targetDate`: Invalid value. Expected DateTimeFilter or DateTime, provided String."
+        );
+      }
+      return originalFindMany(args);
+    };
+
+    const result = await executeReadonlyChatTool(
+      { name: "get_today_writing", arguments: "{}" },
+      { userId: "u1", userLang: "zh", deps }
+    );
+
+    assert.equal(result.status, "done");
+    assert.ok(capturedTargetDate instanceof Date);
+    assert.match(result.content, /今日写作统计/);
+    assert.match(result.content, /今日随记 1 条/);
+    assert.match(result.content, /今日更新文档 1 篇/);
+    assert.match(result.content, /新增 12 字/);
+    assert.match(result.content, /新增 5 字/);
+  });
+
   it("rejects write tools without mutating data", async () => {
     const result = await executeReadonlyChatTool(
       { name: "create_document", arguments: "{}" },
@@ -209,5 +246,23 @@ describe("read-only AI chat tools", () => {
     assert.deepEqual(inferReadonlyToolCalls("这周每天写了多少字？").map((tool) => tool.name), ["get_writing_range_stats"]);
     assert.deepEqual(inferReadonlyToolCalls("帮我看看有哪些表格？").map((tool) => tool.name), ["list_spreadsheets"]);
     assert.deepEqual(inferReadonlyToolCalls("表格里有没有林动？").map((tool) => tool.name), ["search_spreadsheets"]);
+  });
+
+  it("does not force tools for casual keyword mentions without query intent", () => {
+    assert.deepEqual(inferReadonlyToolCalls("我正在写一篇关于表格设计的文档"), []);
+    assert.deepEqual(inferReadonlyToolCalls("帮我把这段话润色一下，风格参考我的脑库设定"), []);
+    assert.deepEqual(inferReadonlyToolCalls("请继续写这个角色的世界观"), []);
+    assert.deepEqual(inferReadonlyToolCalls("把这段移动到分组的开头"), []);
+  });
+
+  it("skips prefetch tools for selection edits", () => {
+    assert.deepEqual(
+      resolvePrefetchReadonlyTools("今天写了多少字？", { isSelectionEdit: true }),
+      []
+    );
+    assert.deepEqual(
+      resolvePrefetchReadonlyTools("今天写了多少字？", { isSelectionEdit: false }).map((t) => t.name),
+      ["get_today_writing"]
+    );
   });
 });

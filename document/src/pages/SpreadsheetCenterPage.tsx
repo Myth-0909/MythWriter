@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { FileSpreadsheet, Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
+import { FileSpreadsheet, Pencil, Plus, Search, Trash2, Upload } from "lucide-react";
 import { api } from "@/api";
 import { ConfirmModal } from "@/components/ConfirmModal";
 import { useI18n } from "@/components/I18nProvider";
@@ -10,6 +10,8 @@ import { Input } from "@/components/ui/input";
 import { createDefaultWorkbook } from "@/lib/spreadsheetWorkbook";
 import { cn } from "@/lib/utils";
 import type { Spreadsheet } from "@/types";
+import { workbookFromXlsxArrayBuffer } from "@/lib/spreadsheetImportExport";
+import { LoadErrorState } from "@/components/LoadErrorState";
 
 interface SpreadsheetCenterPageProps {
   onOpenSpreadsheet: (id: string) => void;
@@ -29,14 +31,18 @@ export function SpreadsheetCenterPage({ onOpenSpreadsheet }: SpreadsheetCenterPa
   const [editingSpreadsheet, setEditingSpreadsheet] = useState<Spreadsheet | null>(null);
   const [formTitle, setFormTitle] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<Spreadsheet | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
+  const importInputRef = useRef<HTMLInputElement>(null);
 
   const loadSpreadsheets = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const res = await api.listSpreadsheets();
       setSpreadsheets(res.spreadsheets || []);
     } catch (error: any) {
-      toast(error.message || t("sheets.loadFailed"), "error");
+      setLoadError(error.message || t("sheets.loadFailed"));
     } finally {
       setLoading(false);
     }
@@ -102,6 +108,25 @@ export function SpreadsheetCenterPage({ onOpenSpreadsheet }: SpreadsheetCenterPa
     }
   };
 
+  const handleImport = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    setImporting(true);
+    try {
+      const data = workbookFromXlsxArrayBuffer(await file.arrayBuffer());
+      const title = file.name.replace(/\.[^/.]+$/, "") || t("sheets.defaultName");
+      const res = await api.createSpreadsheet({ title, data });
+      setSpreadsheets((items) => [res.spreadsheet, ...items]);
+      toast(t("sheets.importSuccess"), "success");
+      onOpenSpreadsheet(res.spreadsheet.id);
+    } catch (error: any) {
+      toast(error.message || t("sheets.importFailed"), "error");
+    } finally {
+      setImporting(false);
+    }
+  };
+
   return (
     <main className="min-h-0 flex-1 overflow-y-auto bg-white px-6 py-5 dark:bg-surface-950">
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-5">
@@ -110,10 +135,25 @@ export function SpreadsheetCenterPage({ onOpenSpreadsheet }: SpreadsheetCenterPa
             <h1 className="text-2xl font-semibold text-surface-950 dark:text-surface-50">{t("sheets.title")}</h1>
             <p className="mt-1 text-sm text-surface-500 dark:text-surface-400">{t("sheets.subtitle")}</p>
           </div>
-          <Button type="button" onClick={openCreateDialog} className="gap-2">
-            <Plus className="h-4 w-4" />
-            {t("sheets.new")}
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Input
+              ref={importInputRef}
+              type="file"
+              accept=".xlsx,.xls"
+              onChange={handleImport}
+              className="hidden"
+              tabIndex={-1}
+              aria-hidden="true"
+            />
+            <Button type="button" variant="outline" onClick={() => importInputRef.current?.click()} disabled={importing} className="gap-2">
+              <Upload className="h-4 w-4" />
+              {importing ? t("sheets.importing") : t("sheets.importXlsx")}
+            </Button>
+            <Button type="button" onClick={openCreateDialog} className="gap-2">
+              <Plus className="h-4 w-4" />
+              {t("sheets.new")}
+            </Button>
+          </div>
         </header>
 
         <div className="flex items-center gap-3">
@@ -132,6 +172,10 @@ export function SpreadsheetCenterPage({ onOpenSpreadsheet }: SpreadsheetCenterPa
             </Button>
           )}
         </div>
+
+        {loadError && !loading && (
+          <LoadErrorState message={loadError} onRetry={() => void loadSpreadsheets()} compact />
+        )}
 
         <section className="grid grid-cols-1 gap-3 lg:grid-cols-2 2xl:grid-cols-3">
           {filtered.map((spreadsheet) => (
@@ -173,17 +217,23 @@ export function SpreadsheetCenterPage({ onOpenSpreadsheet }: SpreadsheetCenterPa
           ))}
         </section>
 
-        {!loading && filtered.length === 0 && (
+        {!loading && !loadError && filtered.length === 0 && (
           <div className="flex min-h-[260px] flex-col items-center justify-center rounded-lg border border-dashed border-surface-300 bg-surface-50 p-8 text-center dark:border-surface-700 dark:bg-surface-900">
             <FileSpreadsheet className="h-10 w-10 text-surface-400" />
             <h2 className="mt-4 text-sm font-semibold text-surface-900 dark:text-surface-100">
               {query ? t("sheets.noResults") : t("sheets.emptyTitle")}
             </h2>
             <p className="mt-2 max-w-md text-xs leading-5 text-surface-500 dark:text-surface-400">{t("sheets.emptyDesc")}</p>
-            <Button type="button" onClick={openCreateDialog} className="mt-4 gap-2">
-              <Plus className="h-4 w-4" />
-              {t("sheets.new")}
-            </Button>
+            <div className="mt-4 flex flex-wrap justify-center gap-2">
+              <Button type="button" variant="outline" onClick={() => importInputRef.current?.click()} disabled={importing} className="gap-2">
+                <Upload className="h-4 w-4" />
+                {t("sheets.importXlsx")}
+              </Button>
+              <Button type="button" onClick={openCreateDialog} className="gap-2">
+                <Plus className="h-4 w-4" />
+                {t("sheets.new")}
+              </Button>
+            </div>
           </div>
         )}
 

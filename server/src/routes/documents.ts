@@ -7,7 +7,7 @@ import {
   permanentlyDelete, emptyTrash, createDocumentVersion, listDocumentVersions,
   restoreDocumentVersion,
 } from "../services/documentService";
-import { ragService } from "../services/ragService";
+import { documentIndexQueue } from "../services/documentIndexQueue";
 import {
   documentVectorActionForMutation,
   type DocumentVectorMutation,
@@ -20,19 +20,11 @@ function requestLang(req: AuthRequest) {
 }
 
 function queueDocumentReindex(document: { id: string; userId: string; content: string }) {
-  void ragService.reindexDocument(document).then((result) => {
-    if (!result.indexed) {
-      console.warn(`[RAG] Failed to index document ${document.id}: ${result.error}`);
-    }
-  });
+  documentIndexQueue.reindex(document);
 }
 
 function queueDocumentVectorDelete(documentId: string) {
-  void ragService.deleteDocumentVectors(documentId).then((result) => {
-    if (!result.deleted) {
-      console.warn(`[RAG] Failed to delete document vector ${documentId}: ${result.error}`);
-    }
-  });
+  documentIndexQueue.remove(documentId);
 }
 
 function queueDocumentVectorMutation(

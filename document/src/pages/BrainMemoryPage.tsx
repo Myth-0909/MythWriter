@@ -24,6 +24,7 @@ import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/compone
 import { TabGroup } from "@/components/ui/tab-group";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { useI18n, type TranslationKey } from "@/components/I18nProvider";
 import { useToast } from "@/components/Toast";
 import { api } from "@/api";
@@ -104,14 +105,17 @@ function CategoryListItem({ category, index, onEdit, onDelete, t }: CategoryList
         {String(index + 1).padStart(2, "0")}
       </span>
 
-      <button
+      <Button
         type="button"
-        className="flex h-9 w-9 shrink-0 items-center justify-center cursor-grab rounded-lg text-surface-400 hover:bg-surface-100 active:cursor-grabbing dark:hover:bg-surface-800"
+        variant="ghost"
+        size="icon"
+        aria-label={t("brain.categoryDragHint")}
+        className="h-9 w-9 shrink-0 cursor-grab active:cursor-grabbing"
         {...attributes}
         {...listeners}
       >
         <GripVertical className="h-4 w-4" />
-      </button>
+      </Button>
 
       <div
         className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-xs font-bold text-white"
@@ -476,12 +480,12 @@ export function BrainMemoryPage() {
 
   return (
     <Scrollbar className="flex-1 bg-surface-50 dark:bg-surface-950">
-      <div className="mx-auto max-w-[1200px] px-16 py-16">
+      <div className="mx-auto max-w-[1200px] px-4 py-8 sm:px-6 lg:px-10 lg:py-12">
         {/* Header Section */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6 mb-10">
           <div>
             <div className="flex items-center gap-3 mb-2.5">
-              <Brain className="h-7 w-7 text-brand-500 animate-pulse animate-duration-3000" />
+              <Brain className="h-7 w-7 animate-pulse text-brand-500 motion-reduce:animate-none" />
               <h2 className="text-[28px] font-bold leading-tight text-surface-900 dark:text-surface-100">
                 {t("brain.title")}
               </h2>
@@ -491,21 +495,25 @@ export function BrainMemoryPage() {
             </p>
           </div>
           <div className="flex items-center gap-2 self-start">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={handleReindexAll}
-              disabled={reindexAllLoading || cards.length === 0}
-              className="h-9 gap-1.5 text-xs"
-            >
-              {reindexAllLoading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <RefreshCw className="h-4 w-4" />
-              )}
-              <span>{reindexAllLoading ? t("rag.reindexing") : t("rag.reindexAll")}</span>
-            </Button>
+            <Tooltip content={!ragAvailable ? t("rag.reindexUnavailableReason") : cards.length === 0 ? t("brain.noCards") : t("rag.reindexAll")} delay={150}>
+              <span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleReindexAll}
+                  disabled={reindexAllLoading || cards.length === 0 || !ragAvailable}
+                  className="h-9 gap-1.5 text-xs"
+                >
+                  {reindexAllLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-4 w-4" />
+                  )}
+                  <span>{reindexAllLoading ? t("rag.reindexing") : t("rag.reindexAll")}</span>
+                </Button>
+              </span>
+            </Tooltip>
             <Button
               type="button"
               variant="outline"
@@ -587,7 +595,7 @@ export function BrainMemoryPage() {
           </div>
         </div>
 
-        {!loading && <WorldviewStarMap nodes={starMapNodes} className="mb-8" />}
+        {!loading && cards.length > 0 && <WorldviewStarMap nodes={starMapNodes} className="mb-8" />}
 
         {/* Cards Grid */}
         {loading ? (
@@ -668,20 +676,28 @@ export function BrainMemoryPage() {
                       </Button>
                     </Tooltip>
                     <Tooltip content={t("brain.edit")} delay={150}>
-                      <button
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        aria-label={t("brain.edit")}
                         onClick={() => handleOpenEdit(card)}
-                        className="p-1.5 text-surface-400 hover:text-brand-500 hover:bg-surface-100 rounded-md transition-colors cursor-pointer dark:hover:bg-surface-800"
+                        className="h-8 w-8 text-surface-400 hover:text-brand-500"
                       >
                         <Edit2 className="h-3.5 w-3.5" />
-                      </button>
+                      </Button>
                     </Tooltip>
                     <Tooltip content={t("brain.delete")} delay={150}>
-                      <button
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        aria-label={t("brain.delete")}
                         onClick={() => setDeleteTargetId(card.id)}
-                        className="p-1.5 text-surface-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors cursor-pointer dark:hover:bg-red-950/30"
+                        className="h-8 w-8 text-surface-400 hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-950/30"
                       >
                         <Trash2 className="h-3.5 w-3.5" />
-                      </button>
+                      </Button>
                     </Tooltip>
                     </div>
                   </div>
@@ -710,13 +726,13 @@ export function BrainMemoryPage() {
               <label className="text-xs font-semibold text-surface-600 dark:text-surface-300">
                 {t("brain.cardTitle")}
               </label>
-              <input
+              <Input
                 type="text"
                 required
                 value={formTitle}
                 onChange={(e) => setFormTitle(e.target.value)}
                 placeholder={t("brain.cardTitlePlaceholder")}
-                className="w-full px-3 py-2 text-xs border border-surface-200 bg-white rounded-lg focus:outline-none focus:ring-1 focus:ring-brand-500 dark:border-surface-800 dark:bg-surface-900 dark:text-surface-100 placeholder-surface-400"
+                className="text-xs"
               />
             </div>
 
@@ -752,32 +768,33 @@ export function BrainMemoryPage() {
               <label className="text-xs font-semibold text-surface-600 dark:text-surface-300">
                 {t("brain.cardDesc")}
               </label>
-              <textarea
+              <Textarea
                 required
                 rows={5}
                 value={formDesc}
                 onChange={(e) => setFormDesc(e.target.value)}
                 placeholder={t("brain.cardDescPlaceholder")}
-                className="w-full px-3 py-2 text-xs border border-surface-200 bg-white rounded-lg focus:outline-none focus:ring-1 focus:ring-brand-500 dark:border-surface-800 dark:bg-surface-900 dark:text-surface-100 placeholder-surface-400 resize-none leading-relaxed"
+                className="resize-none text-xs leading-relaxed"
               />
             </div>
 
             <div className="flex items-center justify-end gap-2 mt-4">
-              <button
+              <Button
                 type="button"
+                variant="outline"
+                size="sm"
                 onClick={() => setDialogOpen(false)}
-                className="px-3.5 py-1.5 text-xs font-semibold text-surface-600 hover:bg-surface-100 border border-surface-200 rounded-md cursor-pointer dark:text-surface-300 dark:hover:bg-surface-800 dark:border-surface-800"
               >
                 {t("brain.cancel")}
-              </button>
-              <button
+              </Button>
+              <Button
                 type="submit"
+                size="sm"
                 disabled={saveLoading}
-                className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-white bg-brand-500 hover:bg-brand-600 disabled:opacity-50 rounded-md cursor-pointer transition-colors"
               >
                 {saveLoading && <Loader2 className="h-3 w-3 animate-spin" />}
                 <span>{t("brain.confirm")}</span>
-              </button>
+              </Button>
             </div>
           </form>
         </DialogContent>
@@ -852,9 +869,9 @@ export function BrainMemoryPage() {
                     {categoryOrderStatus === "saving" && t("brain.orderSaving")}
                     {categoryOrderStatus === "saved" && t("brain.orderSaved")}
                     {categoryOrderStatus === "failed" && (
-                      <button type="button" onClick={persistCategoryOrder} className="underline underline-offset-2">
+                      <Button type="button" variant="link" size="sm" onClick={persistCategoryOrder} className="h-auto p-0 text-inherit underline underline-offset-2">
                         {t("brain.orderRetry")}
-                      </button>
+                      </Button>
                     )}
                   </span>
                 </>

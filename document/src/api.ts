@@ -1,5 +1,6 @@
 import type { Document, DocumentVersion, Spreadsheet, SpreadsheetWorkbook, WorkRecord, WorkRecordPeriod } from "@/types";
 import { API_BASE } from "@/lib/apiBase";
+import { translate } from "@/components/I18nProvider";
 import type { FontFamilyKey } from "@/lib/fontCatalog";
 
 export interface ApiUser {
@@ -53,7 +54,7 @@ export interface RagSearchResponse<T> {
 export type AgentStage = "analyze" | "research" | "plan" | "draft" | "review" | "publish";
 
 export interface AgentSource {
-  type: "brain" | "document" | "web";
+  type: "brain" | "document" | "journal" | "web";
   id: string;
   title: string;
   excerpt: string;
@@ -93,7 +94,7 @@ export interface AgentAnalysis {
 }
 
 export interface AgentDoneEvent {
-  docId: string;
+  docId: string | null;
   title: string;
   content: string;
   analysis: AgentAnalysis;
@@ -109,6 +110,7 @@ export interface AgentWriteRequest {
   includeBrain?: boolean;
   includeDocuments?: boolean;
   includeJournal?: boolean;
+  includeWeb?: boolean;
   referenceDocIds?: string[];
   referenceBrainIds?: string[];
   referenceJournalIds?: string[];
@@ -130,21 +132,68 @@ export function isLoggedIn(): boolean {
   return !!getToken();
 }
 
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public readonly status: number,
+    public readonly code?: string
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
+export function isAuthError(error: unknown): boolean {
+  return error instanceof ApiError && (error.status === 401 || error.status === 403);
+}
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const token = getToken();
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
+    "Accept-Language": localStorage.getItem("lang") === "en" ? "en" : "zh",
     ...(options.headers as Record<string, string> || {}),
   };
   if (token) {
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+  const controller = new AbortController();
+  let timedOut = false;
+  const abortFromCaller = () => controller.abort();
+  options.signal?.addEventListener("abort", abortFromCaller, { once: true });
+  const timeout = globalThis.setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, 15_000);
+
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}${path}`, {
+      ...options,
+      headers,
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (options.signal?.aborted) throw error;
+    if (timedOut) {
+      throw new ApiError(translate("network.timeout"), 0, "REQUEST_TIMEOUT");
+    }
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      throw new ApiError(translate("network.offline"), 0, "NETWORK_OFFLINE");
+    }
+    throw new ApiError(translate("network.requestFailed"), 0, "NETWORK_ERROR");
+  } finally {
+    globalThis.clearTimeout(timeout);
+    options.signal?.removeEventListener("abort", abortFromCaller);
+  }
 
   if (!res.ok) {
-    const error = await res.json().catch(() => ({ error: "网络错误" }));
-    throw new Error(error.error || `HTTP ${res.status}`);
+    const error = await res.json().catch(() => ({})) as { error?: string; code?: string };
+    if ((res.status === 401 || res.status === 403) && token && !path.startsWith("/auth/")) {
+      window.dispatchEvent(new CustomEvent("auth:unauthorized"));
+    }
+    throw new ApiError(error.error || translate("network.requestFailed"), res.status, error.code);
   }
 
   return res.json();
@@ -153,7 +202,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 function parseSseBlock(block: string): { event: string; data: string } | null {
   let event = "message";
   const dataLines: string[] = [];
-  for (const line of block.split("\n")) {
+  for (const line of block.split(/\r?\n/)) {
     if (!line || line.startsWith(":")) continue;
     if (line.startsWith("event:")) {
       event = line.slice(6).trim();
@@ -188,10 +237,10 @@ export async function streamAgentWrite(
   });
 
   if (!res.ok) {
-    const error = await res.json().catch(() => ({ error: "网络错误" }));
+    const error = await res.json().catch(() => ({ error: translate("network.requestFailed") }));
     throw new Error(error.error || `HTTP ${res.status}`);
   }
-  if (!res.body) throw new Error("No response body");
+  if (!res.body) throw new Error(translate("ai.streamIncomplete"));
 
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
@@ -201,14 +250,19 @@ export async function streamAgentWrite(
   const handleBlock = (block: string) => {
     const parsed = parseSseBlock(block);
     if (!parsed) return;
-    const payload = JSON.parse(parsed.data);
+    let payload: any;
+    try {
+      payload = JSON.parse(parsed.data);
+    } catch {
+      throw new Error(translate("ai.streamInvalid"));
+    }
     if (parsed.event === "progress") {
       handlers.onProgress(payload);
     } else if (parsed.event === "done") {
       doneEvent = payload;
       handlers.onDone(payload);
     } else if (parsed.event === "error") {
-      const message = String(payload?.error || "Agent write failed");
+      const message = String(payload?.error || translate("ai.streamFailed"));
       handlers.onError?.(message);
       throw new Error(message);
     }
@@ -218,13 +272,15 @@ export async function streamAgentWrite(
     const { done, value } = await reader.read();
     if (done) break;
     buffer += decoder.decode(value, { stream: true });
-    const blocks = buffer.split("\n\n");
+    const blocks = buffer.split(/\r?\n\r?\n/);
     buffer = blocks.pop() || "";
     for (const block of blocks) {
       if (block.trim()) handleBlock(block);
     }
   }
+  buffer += decoder.decode();
   if (buffer.trim()) handleBlock(buffer);
+  if (!doneEvent && !signal?.aborted) throw new Error(translate("ai.streamIncomplete"));
   return doneEvent;
 }
 
@@ -245,7 +301,7 @@ export const api = {
       "/users/me"
     ),
 
-  updateProfile: (data: { name?: string; avatar?: string; password?: string; newPassword?: string; lang?: string; fontFamilyKey?: FontFamilyKey }) =>
+  updateProfile: (data: { name?: string; avatar?: string; password?: string; newPassword?: string; lang?: string; timeZone?: string; fontFamilyKey?: FontFamilyKey }) =>
     request<{ user: ApiUser & { createdAt: string } }>(
       "/users/me", { method: "PUT", body: JSON.stringify(data) }
     ),
@@ -262,7 +318,7 @@ export const api = {
   getDocument: (id: string) =>
     request<{ document: Document }>(`/documents/${id}`),
 
-  createDocument: (data?: { title?: string; content?: string; preview?: string; category?: string; groupId?: string | null }) =>
+  createDocument: (data?: { title?: string; content?: string; preview?: string; category?: string; groupId?: string | null; trackWriting?: boolean }) =>
     request<{ document: Document }>("/documents", {
       method: "POST",
       body: JSON.stringify(data || {}),
@@ -325,7 +381,7 @@ export const api = {
     request<{ success: boolean }>(`/spreadsheets/${id}`, { method: "DELETE" }),
 
   forgotPassword: (data: { email: string }) =>
-    request<{ message: string; code: string; expiresIn: string }>(
+    request<{ message: string; devCode?: string; expiresIn: string }>(
       "/auth/forgot-password", { method: "POST", body: JSON.stringify(data) }
     ),
 
@@ -345,7 +401,16 @@ export const api = {
     ),
 
   getWeeklyStats: () =>
-    request<{ stats: { dayIndex: number; date: string; words: number }[] }>("/stats/weekly"),
+    request<{
+      stats: {
+        dayIndex: number;
+        date: string;
+        words: number;
+        documentWords: number;
+        journalWords: number;
+      }[];
+      week?: { start: string; end: string };
+    }>("/stats/weekly"),
 
   listWorkRecords: (params?: { period?: WorkRecordPeriod; limit?: number }) => {
     const query = new URLSearchParams();
@@ -400,7 +465,7 @@ export const api = {
     ),
 
   getConversations: () =>
-    request<{ conversations: { id: string; messages: any[]; personality: string; createdAt: string }[] }>(
+    request<{ conversations: { id: string; messages: any[]; personality: string; createdAt: string; updatedAt?: string }[] }>(
       "/ai/conversations"
     ),
 
@@ -412,6 +477,11 @@ export const api = {
   deleteConversations: () =>
     request<{ success: boolean }>(
       "/ai/conversations", { method: "DELETE" }
+    ),
+
+  deleteConversation: (id: string) =>
+    request<{ success: boolean }>(
+      `/ai/conversations/${encodeURIComponent(id)}`, { method: "DELETE" }
     ),
 
   sendFeedback: (data: { messageContent: string; feedbackType: string; rating?: number; reason?: string }) =>

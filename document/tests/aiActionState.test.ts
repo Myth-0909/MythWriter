@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   buildToolMemoryContent,
+  isDocumentActionBaselineCurrent,
+  isSpreadsheetActionBaselineCurrent,
   resolveActionDisplayContent,
   resolveActionFailureContent,
   resolveActionSuccessContent,
@@ -36,6 +38,16 @@ describe("AI action state helpers", () => {
     assert.equal(content, "已生成修改预览，请确认应用。");
   });
 
+  it("uses dedicated preview wording for local document patches", () => {
+    const content = resolveActionDisplayContent(
+      { type: "patch_document", docId: "doc-1", operations: [] },
+      "已改完",
+      { ...labels, patchPreview: "已生成局部修改预览，请确认应用。" }
+    );
+
+    assert.equal(content, "已生成局部修改预览，请确认应用。");
+  });
+
   it("formats verified action success and failure messages", () => {
     assert.equal(
       resolveActionSuccessContent({ type: "create_document", title: "台风指南" }, labels),
@@ -56,5 +68,29 @@ describe("AI action state helpers", () => {
 
     assert.match(content, /最新预警/);
     assert.match(content, /交通调整/);
+  });
+
+  it("blocks stale document and spreadsheet previews", () => {
+    assert.equal(
+      isDocumentActionBaselineCurrent(
+        { title: "原标题", content: "新编辑" },
+        { title: "原标题", content: "旧正文" }
+      ),
+      false
+    );
+    assert.equal(
+      isSpreadsheetActionBaselineCurrent(
+        { title: "表格", data: { version: 1, rows: [[2]] } },
+        { title: "表格", data: { version: 1, rows: [[1]] } }
+      ),
+      false
+    );
+    assert.equal(
+      isSpreadsheetActionBaselineCurrent(
+        { title: "表格", data: { version: 1, rows: [[1]] } },
+        { title: "表格", data: { version: 1, rows: [[1]] } }
+      ),
+      true
+    );
   });
 });

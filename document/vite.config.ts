@@ -16,6 +16,24 @@ export default defineConfig(async () => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          const normalized = id.replaceAll("\\", "/");
+          if (!normalized.includes("/node_modules/")) return undefined;
+          if (/\/(?:@handsontable|handsontable|hyperformula)\//.test(normalized)) return "vendor-spreadsheet";
+          if (/\/(?:echarts|zrender)\//.test(normalized)) return "vendor-charts";
+          if (normalized.includes("/three/")) return "vendor-three";
+          if (normalized.includes("/gsap/")) return "vendor-motion";
+          if (/\/(?:@tiptap|prosemirror-)/.test(normalized)) return "vendor-editor";
+          if (/\/(?:antd|@ant-design)\//.test(normalized)) return "vendor-ant";
+          if (normalized.includes("/docx/")) return "vendor-docx";
+          return undefined;
+        },
+      },
+    },
+  },
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //

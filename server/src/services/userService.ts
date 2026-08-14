@@ -14,6 +14,8 @@ import {
   defaultChatBaseUrl,
   defaultChatModel,
 } from "../lib/aiProviderDefaults";
+import { assertAiProviderHttpUrl } from "../lib/safeOutboundUrl";
+import { decryptSecret, encryptSecret } from "../lib/secretCipher";
 
 const UPLOADS_DIR = path.join(__dirname, "../../uploads");
 
@@ -33,10 +35,10 @@ export async function getProfile(userId: string) {
 }
 
 export async function updateProfile(userId: string, data: {
-  name?: string; lang?: string; password?: string; newPassword?: string; fontFamilyKey?: string;
+  name?: string; lang?: string; timeZone?: string; password?: string; newPassword?: string; fontFamilyKey?: string;
 }, responseLang = "zh"): Promise<{ error: string; status: number } | { user: NonNullable<Awaited<ReturnType<typeof getProfile>>> }> {
   const user = await prisma.user.findUnique({ where: { id: userId } });
-  if (!user) return { error: "用户不存在", status: 404 };
+  if (!user) return { error: t(responseLang, "用户不存在", "User not found"), status: 404 };
 
   const nextFontFamilyKey = data.fontFamilyKey === undefined
     ? undefined
@@ -48,11 +50,19 @@ export async function updateProfile(userId: string, data: {
     };
   }
 
+  if (data.timeZone !== undefined) {
+    try {
+      new Intl.DateTimeFormat("en-US", { timeZone: data.timeZone }).format();
+    } catch {
+      return { error: t(responseLang, "时区设置无效", "Invalid time zone"), status: 400 };
+    }
+  }
+
   if (data.newPassword) {
-    if (!data.password) return { error: "请输入当前密码", status: 400 };
+    if (!data.password) return { error: t(responseLang, "请输入当前密码", "Enter your current password"), status: 400 };
     const valid = await bcrypt.compare(data.password, user.password);
-    if (!valid) return { error: "当前密码错误", status: 401 };
-    if (data.newPassword.length < 6) return { error: "新密码至少6位", status: 400 };
+    if (!valid) return { error: t(responseLang, "当前密码错误", "Current password is incorrect"), status: 401 };
+    if (data.newPassword.length < 6) return { error: t(responseLang, "新密码至少6位", "New password must be at least 6 characters"), status: 400 };
   }
 
   const updated = await prisma.user.update({
@@ -60,8 +70,10 @@ export async function updateProfile(userId: string, data: {
     data: {
       ...(data.name !== undefined && { name: data.name }),
       ...(data.lang !== undefined && { lang: data.lang }),
+      ...(data.timeZone !== undefined && { timeZone: data.timeZone }),
       ...(nextFontFamilyKey !== undefined && { fontFamilyKey: nextFontFamilyKey }),
       ...(data.newPassword && { password: await bcrypt.hash(data.newPassword, 10) }),
+      ...(data.newPassword && { sessionVersion: { increment: 1 } }),
     },
     select: {
       id: true,
@@ -82,35 +94,56 @@ export async function updateProfile(userId: string, data: {
   };
 }
 
-export async function uploadAvatar(userId: string, image: string): Promise<
+export async function uploadAvatar(userId: string, image: string, responseLang = "zh"): Promise<
   { error: string; status: number } | { user: { id: string; name: string; email: string; avatar: string | null; createdAt: Date }; avatarUrl: string }
 > {
-  const matches = image.match(/^data:image\/([a-zA-Z]+);base64,(.+)$/);
-  if (!matches) return { error: "图片格式不正确", status: 400 };
+  const matches = image.match(/^data:image\/(png|jpe?g|webp);base64,([A-Za-z0-9+/]+={0,2})$/i);
+  if (!matches) {
+    return { error: t(responseLang, "仅支持 PNG、JPEG 或 WebP 图片", "Only PNG, JPEG, or WebP images are supported"), status: 400 };
+  }
 
-  const ext = matches[1] === "png" ? "png" : "jpg";
+  const declaredType = matches[1].toLowerCase();
+  const buffer = Buffer.from(matches[2], "base64");
+  if (buffer.length === 0 || buffer.length > 2 * 1024 * 1024) {
+    return { error: t(responseLang, "图片大小不能超过 2MB", "Image must be no larger than 2MB"), status: 400 };
+  }
+  const isPng = buffer.length >= 8 && buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+  const isJpeg = buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
+  const isWebp = buffer.length >= 12 && buffer.toString("ascii", 0, 4) === "RIFF" && buffer.toString("ascii", 8, 12) === "WEBP";
+  const typeMatches = declaredType === "png" ? isPng : declaredType === "webp" ? isWebp : isJpeg;
+  if (!typeMatches) {
+    return { error: t(responseLang, "图片内容与文件格式不匹配", "Image content does not match its file type"), status: 400 };
+  }
+
+  const ext = declaredType === "png" ? "png" : declaredType === "webp" ? "webp" : "jpg";
   const filename = `avatar-${userId}-${Date.now()}.${ext}`;
   const filepath = path.join(UPLOADS_DIR, filename);
+  const temporaryPath = `${filepath}.${process.pid}.tmp`;
 
-  if (!fs.existsSync(UPLOADS_DIR)) {
-    fs.mkdirSync(UPLOADS_DIR, { recursive: true });
-  }
+  await fs.promises.mkdir(UPLOADS_DIR, { recursive: true });
 
   const currentUser = await prisma.user.findUnique({
     where: { id: userId }, select: { avatar: true },
   });
-  if (currentUser?.avatar) {
-    const oldPath = path.join(UPLOADS_DIR, currentUser.avatar);
-    if (fs.existsSync(oldPath)) fs.unlinkSync(oldPath);
+  await fs.promises.writeFile(temporaryPath, buffer, { flag: "wx" });
+  await fs.promises.rename(temporaryPath, filepath);
+
+  let user;
+  try {
+    user = await prisma.user.update({
+      where: { id: userId },
+      data: { avatar: filename },
+      select: { id: true, name: true, email: true, avatar: true, createdAt: true },
+    });
+  } catch (error) {
+    await fs.promises.unlink(filepath).catch(() => {});
+    throw error;
   }
 
-  fs.writeFileSync(filepath, Buffer.from(matches[2], "base64"));
-
-  const user = await prisma.user.update({
-    where: { id: userId },
-    data: { avatar: filename },
-    select: { id: true, name: true, email: true, avatar: true, createdAt: true },
-  });
+  if (currentUser?.avatar && path.basename(currentUser.avatar) === currentUser.avatar) {
+    const oldPath = path.join(UPLOADS_DIR, currentUser.avatar);
+    await fs.promises.unlink(oldPath).catch(() => {});
+  }
 
   return { user, avatarUrl: `/uploads/${filename}` };
 }
@@ -248,7 +281,7 @@ export async function getApiKey(userId: string): Promise<{
     });
   }
 
-  const key = defaultChatApiKey(user?.apiKey);
+  const key = defaultChatApiKey(decryptSecret(user?.apiKey));
   if (key) {
     await saveApiKeyHistory(userId, {
       apiKey: key,
@@ -276,21 +309,28 @@ export async function saveApiKey(userId: string, data: {
     where: { id: userId },
     select: { apiKey: true, apiBaseUrl: true, aiModel: true },
   });
-  const nextApiKey = data.apiKey !== undefined ? data.apiKey.trim() || null : current?.apiKey || null;
+  // When apiKey is provided we store its encrypted form; when omitted we keep
+  // the existing (already-encrypted) value untouched to avoid double-encryption.
+  const plainApiKey = data.apiKey !== undefined
+    ? (data.apiKey.trim() || null)
+    : (decryptSecret(current?.apiKey) || null);
+  const storedApiKey = data.apiKey !== undefined
+    ? (plainApiKey ? encryptSecret(plainApiKey) : null)
+    : (current?.apiKey || null);
   const nextBaseUrl = data.baseUrl !== undefined ? data.baseUrl.trim() || defaultBaseUrl() : defaultBaseUrl(current?.apiBaseUrl);
   const nextModel = data.model !== undefined ? data.model.trim() || defaultModel() : defaultModel(current?.aiModel);
 
   await prisma.user.update({
     where: { id: userId },
     data: {
-      apiKey: nextApiKey,
+      apiKey: storedApiKey,
       apiBaseUrl: nextBaseUrl,
       aiModel: nextModel,
     },
   });
-  if (nextApiKey) {
+  if (plainApiKey) {
     await saveApiKeyHistory(userId, {
-      apiKey: nextApiKey,
+      apiKey: plainApiKey,
       baseUrl: nextBaseUrl,
       model: nextModel,
     });
@@ -313,7 +353,7 @@ export async function getEmbeddingConfig(userId: string): Promise<{
   });
   const baseUrl = defaultEmbeddingBaseUrl(user?.embeddingBaseUrl);
   const model = defaultEmbeddingModel(user?.embeddingModel);
-  const key = user?.embeddingApiKey?.trim() || DEFAULT_EMBEDDING_API_KEY;
+  const key = decryptSecret(user?.embeddingApiKey).trim() || DEFAULT_EMBEDDING_API_KEY;
 
   if (user && (user.embeddingBaseUrl !== baseUrl || user.embeddingModel !== model)) {
     await prisma.user.update({
@@ -342,9 +382,10 @@ export async function saveEmbeddingConfig(userId: string, data: {
     where: { id: userId },
     select: { embeddingApiKey: true, embeddingBaseUrl: true, embeddingModel: true },
   });
-  const nextApiKey = data.apiKey !== undefined
-    ? data.apiKey.trim() || null
-    : current?.embeddingApiKey || null;
+  // Encrypt a newly provided key; otherwise keep the stored (encrypted) value.
+  const storedApiKey = data.apiKey !== undefined
+    ? (data.apiKey.trim() ? encryptSecret(data.apiKey.trim()) : null)
+    : (current?.embeddingApiKey || null);
   const nextBaseUrl = data.baseUrl !== undefined
     ? data.baseUrl.trim() || DEFAULT_EMBEDDING_BASE_URL
     : defaultEmbeddingBaseUrl(current?.embeddingBaseUrl);
@@ -355,7 +396,7 @@ export async function saveEmbeddingConfig(userId: string, data: {
   await prisma.user.update({
     where: { id: userId },
     data: {
-      embeddingApiKey: nextApiKey,
+      embeddingApiKey: storedApiKey,
       embeddingBaseUrl: nextBaseUrl,
       embeddingModel: nextModel,
     },
@@ -363,14 +404,14 @@ export async function saveEmbeddingConfig(userId: string, data: {
 }
 
 async function saveApiKeyHistory(userId: string, data: { apiKey: string; baseUrl: string; model: string }) {
-  const existing = await prisma.apiKeyConfigHistory.findFirst({
-    where: {
-      userId,
-      apiKey: data.apiKey,
-      apiBaseUrl: data.baseUrl,
-      aiModel: data.model,
-    },
-  });
+  // apiKey arrives as plaintext; stored ciphertext uses a random IV so we can
+  // not dedup with a DB equality filter — decrypt candidates and compare.
+  const candidates: Array<{ id: string; apiKey: string; apiBaseUrl: string; aiModel: string }> =
+    await prisma.apiKeyConfigHistory.findMany({
+      where: { userId, apiBaseUrl: data.baseUrl, aiModel: data.model },
+      select: { id: true, apiKey: true, apiBaseUrl: true, aiModel: true },
+    });
+  const existing = candidates.find((item) => decryptSecret(item.apiKey) === data.apiKey);
 
   if (existing) {
     await prisma.apiKeyConfigHistory.update({
@@ -383,7 +424,7 @@ async function saveApiKeyHistory(userId: string, data: { apiKey: string; baseUrl
   await prisma.apiKeyConfigHistory.create({
     data: {
       userId,
-      apiKey: data.apiKey,
+      apiKey: encryptSecret(data.apiKey),
       apiBaseUrl: data.baseUrl,
       aiModel: data.model,
     },
@@ -400,7 +441,7 @@ export async function listApiKeyHistories(userId: string) {
 
   return histories.map((item: ApiKeyHistoryRecord) => ({
     id: item.id,
-    masked: maskApiKey(item.apiKey),
+    masked: maskApiKey(decryptSecret(item.apiKey)),
     baseUrl: item.apiBaseUrl,
     model: item.aiModel,
     updatedAt: item.updatedAt,
@@ -414,19 +455,22 @@ export async function applyApiKeyHistory(userId: string, historyId: string) {
   });
   if (!history) return null;
 
+  const plainApiKey = decryptSecret(history.apiKey);
   await prisma.user.update({
     where: { id: userId },
     data: {
-      apiKey: history.apiKey,
+      apiKey: plainApiKey ? encryptSecret(plainApiKey) : null,
       apiBaseUrl: history.apiBaseUrl,
       aiModel: history.aiModel,
     },
   });
-  await saveApiKeyHistory(userId, {
-    apiKey: history.apiKey,
-    baseUrl: history.apiBaseUrl,
-    model: history.aiModel,
-  });
+  if (plainApiKey) {
+    await saveApiKeyHistory(userId, {
+      apiKey: plainApiKey,
+      baseUrl: history.apiBaseUrl,
+      model: history.aiModel,
+    });
+  }
 
   return getApiKey(userId);
 }
@@ -450,11 +494,12 @@ export async function getApiKeySecret(userId: string): Promise<string> {
     where: { id: userId },
     select: { apiKey: true },
   });
-  return defaultChatApiKey(user?.apiKey);
+  return defaultChatApiKey(decryptSecret(user?.apiKey));
 }
 
 export async function fetchModels(baseUrl: string, apiKey?: string): Promise<string[]> {
   const key = defaultChatApiKey(apiKey);
+  assertAiProviderHttpUrl(baseUrl);
   const response = await fetch(buildModelsUrl(baseUrl), {
     method: "GET",
     headers: {
@@ -489,6 +534,7 @@ export async function testChatModel(params: {
 }): Promise<{ reply: string; model: string }> {
   const key = defaultChatApiKey(params.apiKey);
   const model = defaultChatModel(params.model);
+  assertAiProviderHttpUrl(params.baseUrl);
   const response = await fetch(buildChatCompletionsUrl(params.baseUrl), {
     method: "POST",
     headers: {

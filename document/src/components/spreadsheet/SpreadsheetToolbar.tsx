@@ -138,6 +138,7 @@ function ToolbarIconButton({
         onMouseDown={preserveSpreadsheetSelection}
         onClick={onClick}
         aria-label={label}
+        className={active ? "ring-1 ring-brand-200 dark:ring-brand-400/25" : undefined}
       >
         {children}
       </Button>
@@ -250,9 +251,11 @@ function ColorPaletteButton({
             </div>
             <div className="grid grid-cols-6 gap-1.5">
               {CUSTOM_COLOR_PALETTE.map((color) => (
-                <button
+                <Button
                   key={color}
                   type="button"
+                  variant="ghost"
+                  size="icon"
                   className="h-7 rounded-md border border-surface-200 shadow-sm transition-transform hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-300 dark:border-surface-700"
                   style={{ backgroundColor: color }}
                   aria-label={`${label} ${color}`}

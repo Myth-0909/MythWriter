@@ -1,7 +1,7 @@
 import prisma from "../lib/prisma";
 import { t } from "../lib/i18n";
 import { ragService } from "./ragService";
-import { formatLocalDateKey, getLocalDayRange } from "./writingStats";
+import { formatLocalDateKey, getLocalCalendarWeekRange, getLocalDayRange } from "./writingStats";
 import { normalizeTargetDate, type WorkRecordPeriod } from "./workRecordSummaryService";
 import type { AssistantToolCall, AssistantToolResult } from "./aiToolConversation";
 import { buildSpreadsheetPreview, normalizeSpreadsheetWorkbook, type SpreadsheetSheet, type SpreadsheetWorkbook } from "./spreadsheetWorkbook";
@@ -87,6 +87,13 @@ function wordCount(value: string | null | undefined): number {
   return stripHtml(value).replace(/\s+/g, "").length;
 }
 
+function documentWordCount(doc: { wordCount?: number | null; content?: string | null }): number {
+  if (typeof doc.wordCount === "number" && Number.isFinite(doc.wordCount)) {
+    return Math.max(0, Math.round(doc.wordCount));
+  }
+  return wordCount(doc.content);
+}
+
 function dateKey(value: Date | string | null | undefined): string {
   if (!value) return "";
   const date = value instanceof Date ? value : new Date(value);
@@ -108,7 +115,7 @@ function compactDocLine(doc: any, index: number, lang: string): string {
     doc.isDeleted ? t(lang, "回收站", "trash") : "",
   ].filter(Boolean).join(t(lang, "，", ", "));
   const meta = [
-    t(lang, `${wordCount(doc.content)} 字`, `${wordCount(doc.content)} words`),
+    t(lang, `${documentWordCount(doc)} 字`, `${documentWordCount(doc)} words`),
     doc.category ? t(lang, `分类 ${doc.category}`, `category ${doc.category}`) : "",
     flags,
     t(lang, `更新 ${dateKey(doc.updatedAt)}`, `updated ${dateKey(doc.updatedAt)}`),
@@ -252,75 +259,84 @@ async function listDocumentsByWhere(deps: ReadonlyToolDeps, userId: string, name
 async function getTodayWriting(deps: ReadonlyToolDeps, userId: string, name: string, lang: string) {
   const range = getLocalDayRange(deps.now?.() || new Date());
   const todayStr = formatLocalDateKey(range.start);
-  const [todayDocs, createdDocCount, todayJournals] = await Promise.all([
-    deps.prisma.document.findMany({
-      where: { userId, isDeleted: false, updatedAt: { gte: range.start, lt: range.end } },
-      select: { content: true },
-    }),
+  // WorkRecord.targetDate is DateTime (UTC date-only). Never pass a YYYY-MM-DD string —
+  // Prisma rejects it and the tool surfaces as a failed call in chat.
+  const todayTargetDate = normalizeTargetDate("daily", todayStr);
+  const [createdDocCount, updatedDocCount, todayJournals, dayStat] = await Promise.all([
     deps.prisma.document.count({
       where: { userId, isDeleted: false, createdAt: { gte: range.start, lt: range.end } },
     }),
-    deps.prisma.workRecord.findMany({
-      where: { userId, targetDate: todayStr },
-      select: { content: true },
+    deps.prisma.document.count({
+      where: { userId, isDeleted: false, updatedAt: { gte: range.start, lt: range.end } },
     }),
+    deps.prisma.workRecord.findMany({
+      where: { userId, period: "daily", targetDate: todayTargetDate },
+      select: { id: true },
+    }),
+    deps.prisma.writingDayStat?.findUnique
+      ? deps.prisma.writingDayStat.findUnique({
+          where: { userId_dateKey: { userId, dateKey: todayStr } },
+          select: { documentWords: true, journalWords: true },
+        })
+      : Promise.resolve(null),
   ]);
-  const docWords = todayDocs.reduce((sum: number, doc: any) => sum + wordCount(doc.content), 0);
-  const journalWords = todayJournals.reduce((sum: number, record: any) => sum + wordCount(record.content), 0);
+  const docWords = Number(dayStat?.documentWords) || 0;
+  const journalWords = Number(dayStat?.journalWords) || 0;
   return makeResult(
     name,
     "done",
     t(
       lang,
-      `今日写作统计（${todayStr}）：\n- 今日新建文档 ${createdDocCount} 篇\n- 今日更新文档 ${todayDocs.length} 篇，当前共 ${docWords} 字\n- 今日随记 ${todayJournals.length} 条，共 ${journalWords} 字\n- 可确认合计 ${docWords + journalWords} 字`,
-      `Today's writing (${todayStr}):\n- ${createdDocCount} documents created today\n- ${todayDocs.length} documents updated today, ${docWords} current document words\n- ${todayJournals.length} work records today, ${journalWords} words\n- Confirmed total: ${docWords + journalWords} words`
+      `今日写作统计（${todayStr}）：\n- 今日新建文档 ${createdDocCount} 篇\n- 今日更新文档 ${updatedDocCount} 篇，新增 ${docWords} 字\n- 今日随记 ${todayJournals.length} 条，新增 ${journalWords} 字\n- 今日新增合计 ${docWords + journalWords} 字`,
+      `Today's writing (${todayStr}):\n- ${createdDocCount} documents created today\n- ${updatedDocCount} documents updated today, ${docWords} words added\n- ${todayJournals.length} work records today, ${journalWords} words added\n- Total words added today: ${docWords + journalWords}`
     ),
-    `${createdDocCount} docs created, ${todayDocs.length} docs touched, ${todayJournals.length} journals, ${docWords + journalWords} words in touched items today`
+    `${createdDocCount} docs created, ${updatedDocCount} docs touched, ${todayJournals.length} journals, ${docWords + journalWords} words added today`
   );
 }
 
 async function getWritingRangeStats(deps: ReadonlyToolDeps, userId: string, name: string, args: Record<string, any>, lang: string) {
-  const days = clamp(args.days, 7, 31);
-  const end = getLocalDayRange(deps.now?.() || new Date()).end;
-  const start = new Date(end);
-  start.setDate(end.getDate() - days);
-  const docs = await deps.prisma.document.findMany({
-    where: { userId, isDeleted: false, updatedAt: { gte: start, lt: end } },
-    select: { content: true, updatedAt: true, createdAt: true },
-  });
-  const records = await deps.prisma.workRecord.findMany({
-    where: { userId, targetDate: { gte: start, lt: end } },
-    select: { content: true, targetDate: true, period: true },
-  });
-  const byDate = new Map<string, { docs: number; created: number; docWords: number; records: number; recordWords: number }>();
-  for (let i = days - 1; i >= 0; i -= 1) {
-    const day = new Date(end);
-    day.setDate(end.getDate() - i - 1);
-    byDate.set(formatLocalDateKey(day), { docs: 0, created: 0, docWords: 0, records: 0, recordWords: 0 });
+  const useCalendarWeek = name === "get_weekly_writing_stats";
+  const days = useCalendarWeek ? 7 : clamp(args.days, 7, 31);
+  const now = deps.now?.() || new Date();
+  const week = useCalendarWeek ? getLocalCalendarWeekRange(now) : null;
+  const dateKeys = week
+    ? week.days
+    : (() => {
+        const end = getLocalDayRange(now).end;
+        const keys: string[] = [];
+        for (let i = days - 1; i >= 0; i -= 1) {
+          const day = new Date(end);
+          day.setDate(end.getDate() - i - 1);
+          keys.push(formatLocalDateKey(day));
+        }
+        return keys;
+      })();
+
+  let byDate = new Map<string, { documentWords: number; journalWords: number }>();
+  if (deps.prisma.writingDayStat?.findMany) {
+    const rows = await deps.prisma.writingDayStat.findMany({
+      where: { userId, dateKey: { in: dateKeys } },
+      select: { dateKey: true, documentWords: true, journalWords: true },
+    });
+    byDate = new Map(rows.map((row: any) => [row.dateKey, {
+      documentWords: Number(row.documentWords) || 0,
+      journalWords: Number(row.journalWords) || 0,
+    }]));
   }
-  for (const doc of docs) {
-    const key = formatLocalDateKey(doc.updatedAt);
-    const item = byDate.get(key);
-    if (!item) continue;
-    item.docs += 1;
-    item.docWords += wordCount(doc.content);
-    if (formatLocalDateKey(doc.createdAt) === key) item.created += 1;
-  }
-  for (const record of records) {
-    const key = formatLocalDateKey(record.targetDate);
-    const item = byDate.get(key);
-    if (!item) continue;
-    item.records += 1;
-    item.recordWords += wordCount(record.content);
-  }
-  const lines = Array.from(byDate.entries()).map(([key, item]) => (
-    t(
+
+  const heading = useCalendarWeek
+    ? t(lang, `本周写作统计（${dateKeys[0]} ~ ${dateKeys[dateKeys.length - 1]}）`, `This week's writing (${dateKeys[0]} ~ ${dateKeys[dateKeys.length - 1]})`)
+    : t(lang, `近 ${days} 天写作统计`, `Writing stats for the last ${days} days`);
+
+  const lines = dateKeys.map((key) => {
+    const item = byDate.get(key) || { documentWords: 0, journalWords: 0 };
+    return t(
       lang,
-      `- ${key}：新建 ${item.created} 篇，更新 ${item.docs} 篇，文档 ${item.docWords} 字，随记 ${item.records} 条 ${item.recordWords} 字`,
-      `- ${key}: ${item.created} created, ${item.docs} updated, ${item.docWords} document words, ${item.records} records with ${item.recordWords} words`
-    )
-  ));
-  return makeResult(name, "done", t(lang, `近 ${days} 天写作统计：\n${lines.join("\n")}`, `Writing stats for the last ${days} days:\n${lines.join("\n")}`), `${days} days writing stats`);
+      `- ${key}：文档新增 ${item.documentWords} 字，随记新增 ${item.journalWords} 字`,
+      `- ${key}: ${item.documentWords} document words added, ${item.journalWords} journal words added`
+    );
+  });
+  return makeResult(name, "done", `${heading}：\n${lines.join("\n")}`, `${dateKeys.length} days writing stats`);
 }
 
 export async function executeReadonlyChatTool(
@@ -395,8 +411,8 @@ export async function executeReadonlyChatTool(
       "done",
       t(
         lang,
-        `文档摘要：\n- 标题：《${doc.title}》\n- 分类：${doc.category}\n- 字数：${wordCount(doc.content)} 字\n- 创建：${dateKey(doc.createdAt)}\n- 更新：${dateKey(doc.updatedAt)}\n- 收藏：${boolText(lang, Boolean(doc.isFavorite))}\n- 摘要：${excerpt(doc.content)}`,
-        `Document summary:\n- Title: "${doc.title}"\n- Category: ${doc.category}\n- Words: ${wordCount(doc.content)}\n- Created: ${dateKey(doc.createdAt)}\n- Updated: ${dateKey(doc.updatedAt)}\n- Favorite: ${boolText(lang, Boolean(doc.isFavorite))}\n- Excerpt: ${excerpt(doc.content)}`
+        `文档摘要：\n- 标题：《${doc.title}》\n- 分类：${doc.category}\n- 字数：${documentWordCount(doc)} 字\n- 创建：${dateKey(doc.createdAt)}\n- 更新：${dateKey(doc.updatedAt)}\n- 收藏：${boolText(lang, Boolean(doc.isFavorite))}\n- 摘要：${excerpt(doc.content)}`,
+        `Document summary:\n- Title: "${doc.title}"\n- Category: ${doc.category}\n- Words: ${documentWordCount(doc)}\n- Created: ${dateKey(doc.createdAt)}\n- Updated: ${dateKey(doc.updatedAt)}\n- Favorite: ${boolText(lang, Boolean(doc.isFavorite))}\n- Excerpt: ${excerpt(doc.content)}`
       ),
       doc.title
     );
@@ -613,10 +629,30 @@ function tool(name: string, args: Record<string, any> = {}): AssistantToolCall {
   return { id: "", name, arguments: JSON.stringify(args) };
 }
 
+// Interrogative / request markers. We only force a read-only tool when the
+// user is clearly asking a question or requesting a listing — not when a
+// keyword merely appears in unrelated prose (e.g. writing about spreadsheets).
+const QUERY_INTENT_PATTERN = /有没有|有多少|多少|哪些|哪几|几篇|几个|几条|几张|什么|吗|呢|？|\?|查询|查一下|查查|查看|看看|看一下|列出|列一下|列表|显示|展示|搜索|检索|查找|找一下|找找|统计|help|list|find|search|show|howmany|what|which|\bany\b/;
+
+function hasQueryIntent(text: string): boolean {
+  return QUERY_INTENT_PATTERN.test(text);
+}
+
+export function resolvePrefetchReadonlyTools(
+  content: string,
+  options: { isSelectionEdit?: boolean } = {}
+): AssistantToolCall[] {
+  if (options.isSelectionEdit) return [];
+  return inferReadonlyToolCalls(content);
+}
+
 export function inferReadonlyToolCalls(content: string): AssistantToolCall[] {
   const text = String(content || "").toLowerCase().replace(/\s+/g, "");
   const raw = String(content || "");
   if (!text) return [];
+  // Require a clear question/listing intent before forcing any read-only tool.
+  if (!hasQueryIntent(text)) return [];
+
   if (/今天|今日|today/.test(text) && /多少|几|一共|总共|合计|howmany|count/.test(text) && /文章|文档|篇|字|writing|written|wrote|article|document|doc/.test(text)) {
     return [tool("get_today_writing")];
   }

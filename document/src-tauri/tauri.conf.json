@@ -6,7 +6,7 @@
   "build": {
     "beforeDevCommand": "pnpm dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "pnpm build",
+    "beforeBuildCommand": "pnpm build:desktop",
     "frontendDist": "../dist"
   },
   "app": {
@@ -15,7 +15,7 @@
         "title": "ZNWriter",
         "width": 1280,
         "height": 800,
-        "minWidth": 960,
+        "minWidth": 720,
         "minHeight": 600
       }
     ],

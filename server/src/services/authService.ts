@@ -3,14 +3,17 @@ import prisma from "../lib/prisma";
 import { DEFAULT_FONT_FAMILY_KEY } from "../lib/fontPreferences";
 
 export async function registerUser(name: string, email: string, password: string): Promise<UserResult | ErrorResult> {
-  const existing = await prisma.user.findUnique({ where: { email } });
+  const normalizedEmail = email.trim().toLowerCase();
+  const existing = await prisma.user.findUnique({ where: { email: normalizedEmail } });
   if (existing) {
-    return { error: "该邮箱已被注册", status: 409 };
+    return { code: "EMAIL_IN_USE", status: 409 };
   }
 
   const hashedPassword = await bcrypt.hash(password, 10);
   const user = await prisma.user.create({
-    data: { name, email, password: hashedPassword },
+    // `api_key` was non-nullable in early installations. Writing the empty
+    // sentinel keeps registration compatible while secrets remain unconfigured.
+    data: { name: name.trim(), email: normalizedEmail, password: hashedPassword, apiKey: "" },
   });
 
   return {
@@ -20,6 +23,7 @@ export async function registerUser(name: string, email: string, password: string
       email: user.email,
       avatar: user.avatar,
       fontFamilyKey: user.fontFamilyKey || DEFAULT_FONT_FAMILY_KEY,
+      sessionVersion: user.sessionVersion,
     },
   };
 }
@@ -31,19 +35,23 @@ type UserResult = {
     email: string;
     avatar: string | null;
     fontFamilyKey: string;
+    sessionVersion: number;
   };
 };
-type ErrorResult = { error: string; code?: string; status: number };
+type ErrorResult = {
+  code: "EMAIL_IN_USE" | "INVALID_CREDENTIALS" | "INVALID_RESET_CODE";
+  status: number;
+};
 
 export async function loginUser(email: string, password: string): Promise<UserResult | ErrorResult> {
-  const user = await prisma.user.findUnique({ where: { email } });
+  const user = await prisma.user.findUnique({ where: { email: email.trim().toLowerCase() } });
   if (!user) {
-    return { error: "该邮箱尚未注册", code: "NOT_REGISTERED", status: 404 };
+    return { code: "INVALID_CREDENTIALS", status: 401 };
   }
 
   const valid = await bcrypt.compare(password, user.password);
   if (!valid) {
-    return { error: "密码错误，请重试", code: "WRONG_PASSWORD", status: 401 };
+    return { code: "INVALID_CREDENTIALS", status: 401 };
   }
 
   return {
@@ -53,50 +61,75 @@ export async function loginUser(email: string, password: string): Promise<UserRe
       email: user.email,
       avatar: user.avatar,
       fontFamilyKey: user.fontFamilyKey || DEFAULT_FONT_FAMILY_KEY,
+      sessionVersion: user.sessionVersion,
     },
   };
 }
 
-export async function generateResetCode(email: string): Promise<ErrorResult | { code: string }> {
-  const user = await prisma.user.findUnique({ where: { email } });
-  if (!user) {
-    return { error: "该邮箱尚未注册", code: "NOT_REGISTERED", status: 404 };
-  }
-
+export async function generateResetCode(email: string): Promise<{
+  accepted: true;
+  challenge?: { email: string; code: string; lang: "zh" | "en" };
+}> {
+  const normalizedEmail = email.trim().toLowerCase();
+  const user = await prisma.user.findUnique({ where: { email: normalizedEmail } });
   const crypto = await import("crypto");
-  const code = crypto.randomInt(100000, 999999).toString();
+  const code = crypto.randomInt(100000, 1_000_000).toString();
+  const hashedCode = await bcrypt.hash(code, 10);
   const expires = new Date(Date.now() + 10 * 60 * 1000);
+
+  // Keep the expensive work on both paths so response timing does not reveal
+  // whether an account exists.
+  if (!user) {
+    return { accepted: true };
+  }
 
   await prisma.user.update({
     where: { id: user.id },
-    data: { resetToken: code, resetTokenExpires: expires },
+    data: { resetToken: hashedCode, resetTokenExpires: expires },
   });
 
-  return { code };
+  return {
+    accepted: true,
+    challenge: {
+      email: user.email,
+      code,
+      lang: user.lang === "en" ? "en" : "zh",
+    },
+  };
 }
 
 export async function resetPassword(email: string, code: string, newPassword: string): Promise<ErrorResult | { success: true }> {
-  const user = await prisma.user.findUnique({ where: { email } });
+  const user = await prisma.user.findUnique({ where: { email: email.trim().toLowerCase() } });
   if (!user) {
-    return { error: "该邮箱尚未注册", status: 404 };
+    return { code: "INVALID_RESET_CODE", status: 400 };
   }
 
   if (!user.resetToken || !user.resetTokenExpires) {
-    return { error: "请先获取验证码", status: 400 };
+    return { code: "INVALID_RESET_CODE", status: 400 };
   }
 
   if (new Date() > user.resetTokenExpires) {
-    return { error: "验证码已过期，请重新获取", status: 400 };
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { resetToken: null, resetTokenExpires: null },
+    });
+    return { code: "INVALID_RESET_CODE", status: 400 };
   }
 
-  if (user.resetToken !== code) {
-    return { error: "验证码错误", status: 400 };
+  const validCode = await bcrypt.compare(code, user.resetToken);
+  if (!validCode) {
+    return { code: "INVALID_RESET_CODE", status: 400 };
   }
 
   const hashedPassword = await bcrypt.hash(newPassword, 10);
   await prisma.user.update({
     where: { id: user.id },
-    data: { password: hashedPassword, resetToken: null, resetTokenExpires: null },
+    data: {
+      password: hashedPassword,
+      resetToken: null,
+      resetTokenExpires: null,
+      sessionVersion: { increment: 1 },
+    },
   });
 
   return { success: true };
@@ -112,6 +145,6 @@ export async function verifyPassword(userId: string, password: string): Promise<
 }
 
 export async function checkEmailExists(email: string): Promise<boolean> {
-  const user = await prisma.user.findUnique({ where: { email } });
+  const user = await prisma.user.findUnique({ where: { email: email.trim().toLowerCase() } });
   return user !== null;
 }

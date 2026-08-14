@@ -88,14 +88,14 @@ if [ ! -d "$BACKEND_DIR" ]; then
   exit 1
 fi
 
-# 关闭已占用的端口
-kill_port() {
+# 拒绝覆盖非本项目进程，避免误杀用户正在运行的服务。
+assert_port_free() {
   local port=$1
   local pid=$(lsof -ti :"$port" 2>/dev/null)
   if [ -n "$pid" ]; then
-    echo "[端口] 检测到端口 $port 已被占用 (PID: $pid)，正在释放..."
-    kill -9 $pid 2>/dev/null
-    sleep 0.5
+    echo "[端口/Port] $port 已被其他进程占用 / is already in use (PID: $pid)"
+    echo "请先停止该进程后重试 / Stop that process and try again."
+    exit 1
   fi
 }
 
@@ -148,8 +148,8 @@ fi
 
 # 释放端口
 cleanup_project_dev_processes
-kill_port $BACKEND_PORT
-kill_port $FRONTEND_PORT
+assert_port_free $BACKEND_PORT
+assert_port_free $FRONTEND_PORT
 LAN_IP="$(get_lan_ip)"
 
 # 启动 Redis（如果本地未运行）
@@ -201,7 +201,10 @@ echo "[数据库] 就绪"
 
 # 启动后端
 echo "[后端] 启动 API 服务 (port $BACKEND_PORT)..."
-cd "$BACKEND_DIR" && NODE_USE_ENV_PROXY="${NODE_USE_ENV_PROXY:-1}" HOST=0.0.0.0 npm run dev:watch &
+# Do not opt Node into shell proxy variables by default. A stale local proxy
+# makes every model request fail even when the provider itself is reachable.
+# Users who need a proxy can still explicitly launch with NODE_USE_ENV_PROXY=1.
+cd "$BACKEND_DIR" && NODE_USE_ENV_PROXY="${NODE_USE_ENV_PROXY:-0}" HOST=0.0.0.0 npm run dev:watch &
 BACKEND_PID=$!
 
 # 启动前端

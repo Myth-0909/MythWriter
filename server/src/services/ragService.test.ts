@@ -191,4 +191,15 @@ describe("rag service", () => {
     assert.match(context, /关联背景设定库/);
     assert.match(context, /\* \[World\] Alpha: Lore/);
   });
+
+  it("bounds brain context before adding it to model prompts", () => {
+    const context = formatBrainKnowledgeContext(Array.from({ length: 20 }, (_, index) => ({
+      title: `Knowledge ${index}`,
+      description: "x".repeat(3_000),
+      category: "World",
+    })));
+
+    assert.ok(context.length <= 12_000);
+    assert.doesNotMatch(context, /Knowledge 12/);
+  });
 });

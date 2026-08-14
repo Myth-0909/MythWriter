@@ -1,8 +1,13 @@
 import { Router, Response } from "express";
 import { AuthRequest, authMiddleware } from "../middleware/auth";
 import prisma from "../lib/prisma";
+import { t } from "../lib/i18n";
 
 const router = Router();
+
+function requestLang(req: AuthRequest) {
+  return String(req.headers["accept-language"] || "").toLowerCase().startsWith("en") ? "en" : "zh";
+}
 
 router.use(authMiddleware);
 
@@ -16,7 +21,7 @@ router.get("/", async (req: AuthRequest, res: Response) => {
     res.json({ categories });
   } catch (error) {
     console.error("List brain categories error:", error);
-    res.status(500).json({ error: "Failed to list categories" });
+    res.status(500).json({ error: t(requestLang(req), "获取分类失败", "Failed to list categories") });
   }
 });
 
@@ -25,7 +30,7 @@ router.post("/", async (req: AuthRequest, res: Response) => {
   try {
     const { name, color } = req.body;
     if (!name || typeof name !== "string" || !name.trim()) {
-      res.status(400).json({ error: "Category name cannot be empty" });
+      res.status(400).json({ error: t(requestLang(req), "分类名称不能为空", "Category name cannot be empty") });
       return;
     }
     // Auto-assign sortOrder as the next available position
@@ -45,7 +50,7 @@ router.post("/", async (req: AuthRequest, res: Response) => {
     res.json({ category });
   } catch (error) {
     console.error("Create brain category error:", error);
-    res.status(500).json({ error: "Failed to create category" });
+    res.status(500).json({ error: t(requestLang(req), "创建分类失败", "Failed to create category") });
   }
 });
 
@@ -55,12 +60,12 @@ router.put("/reorder", async (req: AuthRequest, res: Response) => {
     const { items }: { items: { id: string; sortOrder: number }[] } = req.body;
     console.log("[reorder] items:", JSON.stringify(items));
     if (!Array.isArray(items) || items.length === 0) {
-      res.status(400).json({ error: "Items array is required" });
+      res.status(400).json({ error: t(requestLang(req), "排序项目不能为空", "Items array is required") });
       return;
     }
     if (!req.user?.userId) {
       console.error("[reorder] Missing user ID");
-      res.status(401).json({ error: "Unauthorized" });
+      res.status(401).json({ error: t(requestLang(req), "未登录", "Unauthorized") });
       return;
     }
     const userId = req.user.userId;
@@ -75,8 +80,7 @@ router.put("/reorder", async (req: AuthRequest, res: Response) => {
     res.json({ success: true });
   } catch (error) {
     console.error("Reorder brain categories error:", error);
-    const message = error instanceof Error ? error.message : String(error);
-    res.status(500).json({ error: `Failed to reorder categories: ${message}` });
+    res.status(500).json({ error: t(requestLang(req), "分类排序失败", "Failed to reorder categories"), code: "CATEGORY_REORDER_FAILED" });
   }
 });
 
@@ -88,7 +92,7 @@ router.put("/:id", async (req: AuthRequest, res: Response) => {
       where: { id: String(req.params.id), userId: req.user!.userId },
     });
     if (!existing) {
-      res.status(404).json({ error: "Category not found" });
+      res.status(404).json({ error: t(requestLang(req), "分类不存在", "Category not found") });
       return;
     }
     const nextName = typeof name === "string" && name.trim() ? name.trim() : existing.name;
@@ -118,7 +122,7 @@ router.put("/:id", async (req: AuthRequest, res: Response) => {
     res.json({ category: updated });
   } catch (error) {
     console.error("Update brain category error:", error);
-    res.status(500).json({ error: "Failed to update category" });
+    res.status(500).json({ error: t(requestLang(req), "更新分类失败", "Failed to update category") });
   }
 });
 
@@ -129,7 +133,7 @@ router.delete("/:id", async (req: AuthRequest, res: Response) => {
       where: { id: String(req.params.id), userId: req.user!.userId },
     });
     if (!existing) {
-      res.status(404).json({ error: "Category not found" });
+      res.status(404).json({ error: t(requestLang(req), "分类不存在", "Category not found") });
       return;
     }
     await prisma.aIBrainCategory.delete({
@@ -138,7 +142,7 @@ router.delete("/:id", async (req: AuthRequest, res: Response) => {
     res.json({ success: true });
   } catch (error) {
     console.error("Delete brain category error:", error);
-    res.status(500).json({ error: "Failed to delete category" });
+    res.status(500).json({ error: t(requestLang(req), "删除分类失败", "Failed to delete category") });
   }
 });
 

@@ -19,13 +19,29 @@ export type PageTransitionProfile = {
 export type WorkbenchLayoutClasses = {
   shell: string;
   hero: string;
+  focusMeta: string;
+  focusActions: string;
+  charts: string;
 };
 
+/**
+ * Resolution-tier workbench layout (viewport breakpoints).
+ * App shell is min 1024px with a ~240px sidebar, so content is often ~780–1100px.
+ * Use flexible fr columns (no large fixed mins) so the focus card stays readable
+ * on small/medium panes, then densify on xl/2xl.
+ *
+ * - small (< xl): main column only; hero 2-up; charts 2-up under the hero
+ * - medium (xl): writer's flow rail beside main (charts stack in the rail)
+ * - large (2xl): slightly wider rail, roomier hero split
+ */
 const WORKBENCH_LAYOUT_CLASSES: WorkbenchLayoutClasses = {
   shell:
-    "grid gap-5 min-[1180px]:grid-cols-[minmax(0,1fr)_minmax(320px,400px)] min-[1440px]:grid-cols-[minmax(0,1.25fr)_420px]",
+    "grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(280px,340px)] xl:gap-5 2xl:grid-cols-[minmax(0,1.15fr)_minmax(300px,380px)]",
   hero:
-    "mt-6 grid items-stretch gap-4 min-[1120px]:grid-cols-[minmax(0,1fr)_minmax(300px,340px)]",
+    "mt-5 grid min-w-0 grid-cols-1 items-start gap-3 sm:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)] sm:gap-4 xl:grid-cols-[minmax(0,1.5fr)_minmax(240px,0.85fr)]",
+  focusMeta: "mt-3 grid grid-cols-2 gap-2",
+  focusActions: "mt-4 grid grid-cols-2 gap-2",
+  charts: "grid grid-cols-2 gap-3 xl:grid-cols-1 xl:gap-3",
 };
 
 export function getWorkbenchLayoutClasses(): WorkbenchLayoutClasses {

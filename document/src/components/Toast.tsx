@@ -1,6 +1,8 @@
 import { createContext, useContext, useState, useCallback, useRef, useEffect, type ReactNode } from "react";
 import { X, CheckCircle, AlertCircle, Info } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { useI18n } from "@/components/I18nProvider";
 
 type ToastType = "success" | "error" | "info";
 
@@ -34,6 +36,7 @@ const colors: Record<ToastType, string> = {
 };
 
 function ToastItem({ t, onRemove }: { t: Toast; onRemove: (id: number) => void }) {
+  const { t: translate } = useI18n();
   const [exiting, setExiting] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -62,12 +65,16 @@ function ToastItem({ t, onRemove }: { t: Toast; onRemove: (id: number) => void }
     >
       <Icon className="h-4 w-4 shrink-0" />
       <span className="flex-1 text-sm font-medium">{t.message}</span>
-      <button
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-sm"
+        aria-label={translate("common.close")}
         onClick={handleRemove}
-        className="shrink-0 opacity-60 hover:opacity-100 transition-opacity cursor-pointer"
+        className="shrink-0 opacity-60 hover:opacity-100"
       >
         <X className="h-3.5 w-3.5" />
-      </button>
+      </Button>
     </div>
   );
 }

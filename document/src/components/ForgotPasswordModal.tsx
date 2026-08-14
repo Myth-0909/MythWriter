@@ -58,19 +58,14 @@ export function ForgotPasswordModal({ open, onOpenChange, defaultEmail = "" }: F
 
   const handleCheckEmail = async () => {
     if (!email.trim()) {
-      setEmailError("请输入邮箱地址");
+      setEmailError(t("forgot.emailPlaceholder"));
       return;
     }
     setLoading(true);
     setEmailError("");
     try {
-      const { exists } = await api.checkEmail(email.trim());
-      if (!exists) {
-        setEmailError(t("forgot.emailNotFound"));
-        return;
-      }
       const res = await api.forgotPassword({ email: email.trim() });
-      setReturnedCode(res.code);
+      setReturnedCode(res.devCode || "");
       setPhase("reset");
     } catch (error: any) {
       setEmailError(error.message || t("toast.saveFailed"));
@@ -197,10 +192,13 @@ export function ForgotPasswordModal({ open, onOpenChange, defaultEmail = "" }: F
               {/* ===== RESET PHASE: expanding password form ===== */}
               {phase === "reset" && (
                 <div className="mt-4 space-y-3 animate-[modalIn_0.35s_cubic-bezier(0.16,1,0.3,1)_forwards]">
-                  {/* Dev mode banner */}
+                  <p className="rounded-lg bg-surface-100 px-3 py-2 text-xs leading-5 text-surface-600 dark:bg-surface-800 dark:text-surface-300">
+                    {t("forgot.sentGeneric")}
+                  </p>
+
                   {returnedCode && (
                     <div className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:bg-amber-950 dark:text-amber-300">
-                      {t("forgot.codePlaceholder").replace("请输入6位验证码", "验证码")}:{" "}
+                      {t("forgot.devCodeLabel")}: {" "}
                       <span className="font-mono font-bold text-sm">{returnedCode}</span>
                       <span className="block mt-0.5 opacity-70">({t("forgot.devNotice")})</span>
                     </div>

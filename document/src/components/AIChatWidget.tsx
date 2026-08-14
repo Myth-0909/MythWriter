@@ -1,9 +1,9 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import { BrainCircuit, Check, CheckCircle2, ChevronDown, Clock3, Copy, CopyCheck, FileSpreadsheet, FileText, History, Pencil, RotateCcw, Smile, Sparkles, Star, ThumbsDown, ThumbsUp, Trash2, X, XCircle } from "lucide-react";
+import { Check, CheckCircle2, ChevronDown, Clock3, Copy, CopyCheck, FileSpreadsheet, FileText, History, MessageSquarePlus, Pencil, RotateCcw, SendHorizontal, Smile, Sparkles, Square, Star, ThumbsDown, ThumbsUp, Trash2, X, XCircle } from "lucide-react";
 import catAvatar from "@/assets/cat-avatar.png";
-import { Sender } from "@ant-design/x";
 import { ConfirmModal } from "@/components/ConfirmModal";
 import { Scrollbar } from "@/components/ui/scrollbar";
 import { InlineLoading } from "@/components/LoadingSpinner";
@@ -15,7 +15,7 @@ import { useAuth } from "@/auth";
 import { api } from "@/api";
 import { renderAiChatHtml } from "@/lib/aiChatHtml";
 import { markdownToHtml } from "@/lib/markdown";
-import { API_BASE, getServerAssetUrl } from "@/lib/apiBase";
+import { getServerAssetUrl } from "@/lib/apiBase";
 import {
   AI_CHAT_TYPEWRITER_INTERVAL_MS,
   canSendAssistantFeedback,
@@ -23,18 +23,62 @@ import {
   normalizeChatToolCallId,
   resolveAssistantActionContent,
   resolveChatFinalContent,
+  sanitizeAssistantDisplayContent,
   resolveStoredAssistantContent,
-  shouldIncludeAssistantInPrompt,
 } from "@/lib/aiChatStream";
-import { toApiMessages, type ToolCallEvent } from "@/lib/aiChatApiMessages";
+import { streamChat } from "@/lib/aiChatClient";
+import { buildDiffLines, htmlToPlainText, summarizeDiff, type DiffLine } from "@/lib/aiChatDiff";
+import {
+  escapeRegExp,
+  getBrainQuery,
+  getMentionQuery,
+  getSlashQuery,
+  parseToolArguments,
+  textMentionsTitle,
+} from "@/lib/aiChatInputQueries";
+import { shouldAttachCurrentWorkspace } from "@/lib/aiChatIntent";
+import {
+  cancelPendingDocumentAutosave,
+  notifyDocumentExternalWrite,
+  requestDocumentAutosaveFlush,
+} from "@/lib/documentSaveCoordinator";
+import { type ToolCallEvent } from "@/lib/aiChatApiMessages";
+import {
+  buildConversationTitle,
+  clearLegacyUnscopedAiChatCache,
+  clearLocalMemoryCache,
+  createClientConversationId,
+  hasMeaningfulUserTurn,
+  hydrateMessagesFromServer,
+  loadActiveConversationId,
+  loadLocalMemoryCache,
+  saveActiveConversationId,
+  saveLocalMemoryCache,
+  shouldPreferServerConversation,
+} from "@/lib/aiChatMemory";
+import {
+  openAiModelConfig,
+  resolveAiReadiness,
+  type AiReadinessStatus,
+} from "@/lib/aiReadiness";
+import { applyDocumentPatchesPreferHtml } from "@/lib/documentAiPatch";
 import { applySpreadsheetPatch, type SpreadsheetPatchAction } from "@/lib/spreadsheetAiPatch";
 import {
   buildToolMemoryContent,
+  isDocumentActionBaselineCurrent,
+  isSpreadsheetActionBaselineCurrent,
   resolveActionDisplayContent,
   resolveActionFailureContent,
-  resolveActionSuccessContent,
 } from "@/lib/aiActionState";
 import { Tooltip } from "@/components/ui/tooltip";
+import { Toggle } from "@/components/ui/toggle";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { AIChatSessionsMenu } from "@/components/ai-chat/AIChatSessionsMenu";
 import { SpreadsheetPatchPreview } from "@/components/spreadsheet/SpreadsheetPatchPreview";
 import type { DocumentVersion, Spreadsheet, SpreadsheetWorkbook } from "@/types";
 import type { OverlayScrollbarsComponentRef } from "overlayscrollbars-react";
@@ -49,19 +93,19 @@ function safePersonality(raw: string | null): Personality {
   return "normal";
 }
 
-const PERSONALITY_OPTIONS: { key: Personality; label: string; emoji: string }[] = [
-  { key: "normal", label: "正常", emoji: "✨" },
-  { key: "cute", label: "可爱", emoji: "🌸" },
-  { key: "catgirl", label: "猫娘", emoji: "🐱" },
-  { key: "serious", label: "严肃", emoji: "📋" },
-  { key: "silly", label: "搞怪", emoji: "🤪" },
+const PERSONALITY_OPTIONS = [
+  { key: "normal" as const, labelKey: "ai.personality.normal" as const, emoji: "✨" },
+  { key: "cute" as const, labelKey: "ai.personality.cute" as const, emoji: "🌸" },
+  { key: "catgirl" as const, labelKey: "ai.personality.catgirl" as const, emoji: "🐱" },
+  { key: "serious" as const, labelKey: "ai.personality.serious" as const, emoji: "📋" },
+  { key: "silly" as const, labelKey: "ai.personality.silly" as const, emoji: "🤪" },
 ];
 
-const MEMORY_KEY = "znwriter_ai_memory";
 const PERSONALITY_KEY = "znwriter_ai_personality";
 const AUTO_RAG_KEY = "znwriter_ai_auto_rag";
-const MAX_MEMORY_MESSAGES = 20;
+const WORKSPACE_CONTEXT_KEY = "znwriter_ai_workspace_context";
 const AUTO_RAG_SCORE_THRESHOLD = 0.3;
+const MAX_CHAT_INPUT_CHARS = 12_000;
 
 interface Message {
   role: "user" | "assistant" | "tool";
@@ -108,14 +152,11 @@ type SlashCommand = {
 
 type TaskStage = "idle" | "analyzing" | "generating" | "preview" | "snapshot" | "verify" | "done";
 
-type DiffLine = {
-  type: "added" | "removed" | "unchanged";
-  text: string;
-};
-
 type PendingDocumentUpdate = {
   docId: string;
   title: string;
+  previousTitle: string;
+  previousHtml: string;
   nextMarkdown: string;
   nextHtml: string;
   diffLines: DiffLine[];
@@ -126,6 +167,13 @@ type PendingDocumentUpdate = {
   };
 };
 
+type PendingCreateDocument = {
+  title: string;
+  markdown: string;
+  html: string;
+  createdDocId?: string;
+};
+
 type PendingSpreadsheetPatch = {
   spreadsheetId: string;
   title: string;
@@ -133,6 +181,14 @@ type PendingSpreadsheetPatch = {
   nextWorkbook: SpreadsheetWorkbook;
   summary: string;
   operationCount: number;
+};
+
+type SpreadsheetUndoState = {
+  spreadsheetId: string;
+  title: string;
+  workbook: SpreadsheetWorkbook;
+  expectedCurrentTitle: string;
+  expectedCurrentWorkbook: SpreadsheetWorkbook;
 };
 
 interface Position {
@@ -164,95 +220,9 @@ function absoluteToAnchored(pos: Position): AnchoredPosition {
   return { side, yPercent };
 }
 
-function loadMemory(): Message[] {
-  try { return JSON.parse(localStorage.getItem(MEMORY_KEY) || "[]"); } catch { return []; }
-}
-
-function saveMemory(messages: Message[]) {
-  localStorage.setItem(MEMORY_KEY, JSON.stringify(messages.slice(-MAX_MEMORY_MESSAGES)));
-}
-
-function htmlToPlainText(html: string): string {
-  const withLineBreaks = html
-    .replace(/<br\s*\/?>/gi, "\n")
-    .replace(/<\/(p|div|h[1-6]|li|blockquote)>/gi, "\n");
-  if (typeof window === "undefined") return withLineBreaks.replace(/<[^>]*>/g, "");
-  const container = window.document.createElement("div");
-  container.innerHTML = withLineBreaks;
-  return container.textContent || "";
-}
-
-function splitComparableLines(value: string): string[] {
-  const lines = value
-    .replace(/\r\n/g, "\n")
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean);
-  return lines.length > 0 ? lines : [value.trim()].filter(Boolean);
-}
-
-function buildDiffLines(beforeText: string, afterText: string): PendingDocumentUpdate["diffLines"] {
-  const before = splitComparableLines(beforeText);
-  const after = splitComparableLines(afterText);
-  if (before.length === 0 && after.length === 0) return [];
-
-  // Keep the preview lightweight for very long documents.
-  if (before.length * after.length > 40000) {
-    const rows: DiffLine[] = [];
-    const max = Math.max(before.length, after.length);
-    for (let i = 0; i < max; i += 1) {
-      if (before[i] === after[i]) {
-        rows.push({ type: "unchanged", text: before[i] });
-      } else {
-        if (before[i]) rows.push({ type: "removed", text: before[i] });
-        if (after[i]) rows.push({ type: "added", text: after[i] });
-      }
-    }
-    return rows;
-  }
-
-  const dp = Array.from({ length: before.length + 1 }, () => Array(after.length + 1).fill(0));
-  for (let i = before.length - 1; i >= 0; i -= 1) {
-    for (let j = after.length - 1; j >= 0; j -= 1) {
-      dp[i][j] = before[i] === after[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
-    }
-  }
-
-  const rows: DiffLine[] = [];
-  let i = 0;
-  let j = 0;
-  while (i < before.length && j < after.length) {
-    if (before[i] === after[j]) {
-      rows.push({ type: "unchanged", text: before[i] });
-      i += 1;
-      j += 1;
-    } else if (dp[i + 1][j] >= dp[i][j + 1]) {
-      rows.push({ type: "removed", text: before[i] });
-      i += 1;
-    } else {
-      rows.push({ type: "added", text: after[j] });
-      j += 1;
-    }
-  }
-  while (i < before.length) {
-    rows.push({ type: "removed", text: before[i] });
-    i += 1;
-  }
-  while (j < after.length) {
-    rows.push({ type: "added", text: after[j] });
-    j += 1;
-  }
-  return rows;
-}
-
-function summarizeDiff(lines: DiffLine[]) {
-  return lines.reduce(
-    (stats, line) => {
-      stats[line.type] += 1;
-      return stats;
-    },
-    { added: 0, removed: 0, unchanged: 0 }
-  );
+function saveMemory(scope: string, messages: Message[]) {
+  // Local storage is a write-through cache only; server Conversation is source of truth.
+  saveLocalMemoryCache(scope, messages as Array<{ role: string; content: string; finalContent?: string; isTyping?: boolean }>);
 }
 
 function uniqueReferences<T extends ChatReference>(refs: T[]) {
@@ -272,181 +242,6 @@ function formatTimestamp(): string {
   return `${yy}/${mm}/${dd} ${hh}:${min}:${ss}`;
 }
 
-function buildMemoryContext(memory: Message[]): string {
-  if (memory.length === 0) return "";
-  return memory.filter((m) => (
-    m.role !== "assistant" ||
-    shouldIncludeAssistantInPrompt({
-      content: m.content,
-      finalContent: m.finalContent,
-      interrupted: m.interrupted,
-    })
-  )).map((m) => {
-    if (m.role === "tool") {
-      return `[工具结果: ${m.content.slice(0, 500)}]`;
-    }
-    const role = m.role === "user" ? "用户" : "小安";
-    const toolNote = m.toolCalls && m.toolCalls.length > 0
-      ? ` [使用了工具: ${m.toolCalls.map(tc => tc.name).join(", ")}]`
-      : "";
-    return `${role}: ${m.content.slice(0, 2000)}${toolNote}`;
-  }).join("\n");
-}
-
-function getMentionQuery(value: string): { query: string; start: number } | null {
-  const match = value.match(/(^|\s)@([^\s@]*)$/);
-  if (!match || match.index === undefined) return null;
-  return { query: match[2] || "", start: match.index + match[1].length };
-}
-
-function getSlashQuery(value: string): { query: string; start: number } | null {
-  const match = value.match(/(^|\s)\/([^\s/]*)$/);
-  if (!match || match.index === undefined) return null;
-  return { query: match[2] || "", start: match.index + match[1].length };
-}
-
-function getBrainQuery(value: string): { query: string; start: number } | null {
-  const match = value.match(/(^|\s)#([^\s#]*)$/);
-  if (!match || match.index === undefined) return null;
-  return { query: match[2] || "", start: match.index + match[1].length };
-}
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-
-function parseToolArguments(value?: string): Record<string, unknown> {
-  if (!value) return {};
-  try {
-    const parsed = JSON.parse(value);
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
-  } catch {
-    return {};
-  }
-}
-
-async function streamChat(
-  data: { messages: Message[]; personality: string; memoryContext: string; references?: ChatReference[] },
-  onDelta: (delta: string) => void,
-  onThinking: (delta: string) => void,
-  onToolCall: (tc: ToolCallEvent) => void,
-  signal: AbortSignal
-): Promise<{ reply: string; action: any; thinking?: string; toolCalls?: ToolCallEvent[] }> {
-  const token = localStorage.getItem("token");
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (token) headers["Authorization"] = `Bearer ${token}`;
-
-  const res = await fetch(`${API_BASE}/ai/chat`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({ ...data, messages: toApiMessages(data.messages) }),
-    signal,
-  });
-
-  const ct = res.headers.get("content-type") || "";
-
-  if (!res.ok) {
-    if (ct.includes("application/json")) {
-      const err = await res.json();
-      throw new Error(err.error || `HTTP ${res.status}`);
-    }
-    throw new Error(`HTTP ${res.status}`);
-  }
-
-  if (ct.includes("application/json")) {
-    const json = await res.json();
-    if (json.error) throw new Error(json.error);
-    return { reply: json.reply || "", action: json.action || null };
-  }
-
-  const reader = res.body?.getReader();
-  if (!reader) throw new Error("No response body");
-
-  const decoder = new TextDecoder();
-  let buffer = "";
-  let currentEvent = "";
-  let fullContent = "";
-  let finalReply = "";
-  let finalAction: any = null;
-  let thinking = "";
-  const toolCalls: ToolCallEvent[] = [];
-
-  function dispatchEvent(event: string, data: any) {
-    if (event === "delta" && data.delta) {
-      fullContent += data.delta;
-      onDelta(data.delta);
-    } else if (event === "thinking" && data.delta) {
-      thinking += data.delta;
-      onThinking(data.delta);
-    } else if (event === "tool_call" && data.name) {
-      const existing = toolCalls.findIndex(tc => tc.index === data.index);
-      if (existing >= 0) {
-        toolCalls[existing] = data;
-      } else {
-        toolCalls.push(data);
-      }
-      onToolCall(data);
-    } else if (event === "done") {
-      finalReply = data.reply;
-      finalAction = data.action;
-      if (data.thinking) thinking = data.thinking;
-      if (data.toolCalls) toolCalls.splice(0, toolCalls.length, ...data.toolCalls);
-    } else if (event === "delta" || event === "message") {
-      // Legacy: raw data: without event: prefix
-      if (data.delta) {
-        fullContent += data.delta;
-        onDelta(data.delta);
-      }
-      if (data.done) {
-        finalReply = data.reply;
-        finalAction = data.action;
-      }
-    }
-  }
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-
-    buffer += decoder.decode(value, { stream: true });
-    const lines = buffer.split("\n");
-    buffer = lines.pop() || "";
-
-    for (const line of lines) {
-      if (!line || line.startsWith(":")) continue;
-      if (line.startsWith("event: ")) {
-        currentEvent = line.slice(7).trim();
-        continue;
-      }
-      if (line.startsWith("data: ")) {
-        const dataStr = line.slice(6);
-        if (currentEvent) {
-          try {
-            const parsed = JSON.parse(dataStr);
-            dispatchEvent(currentEvent, parsed);
-          } catch {
-            // Skip malformed JSON
-          }
-          currentEvent = "";
-        } else {
-          // Legacy format: no event: prefix
-          try {
-            const parsed = JSON.parse(dataStr);
-            if (parsed.error) throw new Error(parsed.error);
-            dispatchEvent("message", parsed);
-          } catch (e: any) {
-            if (!(e instanceof SyntaxError)) throw e;
-          }
-        }
-      }
-    }
-  }
-
-  if (!finalReply && fullContent) finalReply = fullContent;
-  return { reply: finalReply, action: finalAction, thinking: thinking || undefined, toolCalls: toolCalls.length > 0 ? toolCalls : undefined };
-}
-
 export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChatWidgetProps) {
   const { t } = useI18n();
   const { toast } = useToast();
@@ -462,6 +257,7 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
     refreshDocuments,
   } = useDocuments();
   const { user } = useAuth();
+  const memoryScope = user?.id || "";
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -473,7 +269,7 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
   );
   const personalityRef = useRef(personality);
   const [personalityOpen, setPersonalityOpen] = useState(false);
-  const memoryRef = useRef<Message[]>(loadMemory());
+  const memoryRef = useRef<Message[]>([]);
   const abortRef = useRef<AbortController | null>(null);
   const typewriterControlRef = useRef<{ skip: () => void } | null>(null);
   const sentHistoryRef = useRef<string[]>([]);
@@ -487,19 +283,25 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
   const [closingRating, setClosingRating] = useState(false);
   const [closingDislike, setClosingDislike] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [, setSaving] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [selectedMsgs, setSelectedMsgs] = useState<Set<number>>(new Set());
   const [deleteMsgConfirm, setDeleteMsgConfirm] = useState(false);
-  const [conversationId, setConversationId] = useState<string | null>(null);
+  const [conversationId, setConversationId] = useState<string>(() => createClientConversationId());
+  const conversationIdRef = useRef(conversationId);
+  conversationIdRef.current = conversationId;
+  const [sessions, setSessions] = useState<Array<{ id: string; title: string; updatedAt?: string }>>([]);
+  const [sessionsOpen, setSessionsOpen] = useState(false);
   const feedbackDoneRef = useRef<Set<number>>(new Set());
   const restoredRef = useRef(false);
   const [keyOk, setKeyOk] = useState(false);
+  const [readinessStatus, setReadinessStatus] = useState<"checking" | AiReadinessStatus>("checking");
   const [references, setReferences] = useState<DocumentReference[]>([]);
   const [activeSpreadsheet, setActiveSpreadsheet] = useState<Spreadsheet | null>(null);
   const [brainReferences, setBrainReferences] = useState<BrainReference[]>([]);
   const [autoBrainReferences, setAutoBrainReferences] = useState<BrainReference[]>([]);
   const [autoReferenceEnabled, setAutoReferenceEnabled] = useState(() => localStorage.getItem(AUTO_RAG_KEY) !== "0");
+  const [workspaceContextEnabled, setWorkspaceContextEnabled] = useState(() => localStorage.getItem(WORKSPACE_CONTEXT_KEY) !== "0");
   const [autoReferenceLoading, setAutoReferenceLoading] = useState(false);
   const [brainKnowledges, setBrainKnowledges] = useState<BrainKnowledge[]>([]);
   const [mentionOpen, setMentionOpen] = useState(false);
@@ -513,14 +315,36 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
   const commandIdxRef = useRef(0);
   const [pendingUpdate, setPendingUpdate] = useState<PendingDocumentUpdate | null>(null);
   const [applyingUpdate, setApplyingUpdate] = useState(false);
+  const [pendingCreate, setPendingCreate] = useState<PendingCreateDocument | null>(null);
+  const [applyingCreate, setApplyingCreate] = useState(false);
   const [pendingSpreadsheetPatch, setPendingSpreadsheetPatch] = useState<PendingSpreadsheetPatch | null>(null);
   const [applyingSpreadsheetPatch, setApplyingSpreadsheetPatch] = useState(false);
+  const [spreadsheetUndo, setSpreadsheetUndo] = useState<SpreadsheetUndoState | null>(null);
+  const [confirmClosePending, setConfirmClosePending] = useState(false);
+  const saveChainRef = useRef<Promise<void>>(Promise.resolve());
+  const pendingSaveCountRef = useRef(0);
+  const chatViewEpochRef = useRef(0);
   const [versionDialogOpen, setVersionDialogOpen] = useState(false);
   const [versionLoading, setVersionLoading] = useState(false);
   const [versions, setVersions] = useState<DocumentVersion[]>([]);
   const [restoringVersionId, setRestoringVersionId] = useState<string | null>(null);
   const [taskStage, setTaskStage] = useState<TaskStage>("idle");
   const autoSearchSeq = useRef(0);
+
+  useEffect(() => {
+    if (memoryScope) clearLegacyUnscopedAiChatCache();
+    chatViewEpochRef.current += 1;
+    abortRef.current?.abort();
+    restoredRef.current = false;
+    const scopedConversationId = loadActiveConversationId(memoryScope) || createClientConversationId();
+    setConversationId(scopedConversationId);
+    setMessages([]);
+    memoryRef.current = [];
+    setSessions([]);
+    setLoading(false);
+    setStreaming(false);
+    setIsActing(false);
+  }, [memoryScope]);
 
   // Automatically clear references when the corresponding document is deleted/removed
   useEffect(() => {
@@ -562,9 +386,17 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
 
   useEffect(() => {
     const query = input.trim();
-    if (!open || !autoReferenceEnabled || loading || streaming || query.length < 4) {
-      setAutoBrainReferences([]);
+    const brainQuery = getBrainQuery(input);
+    // Only embed while the user is actively picking brain refs (#…), not on every keystroke.
+    if (!open || !autoReferenceEnabled || loading || streaming || !brainQuery || brainQuery.query.length < 1) {
+      if (!brainQuery) setAutoBrainReferences([]);
       setAutoReferenceLoading(false);
+      return;
+    }
+
+    const searchQuery = brainQuery.query.trim() || query;
+    if (searchQuery.length < 1) {
+      setAutoBrainReferences([]);
       return;
     }
 
@@ -573,7 +405,7 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
       autoSearchSeq.current = seq;
       setAutoReferenceLoading(true);
       try {
-        const res = await api.searchRagKnowledge({ query, topK: 3 });
+        const res = await api.searchRagKnowledge({ query: searchQuery, topK: 3 });
         if (autoSearchSeq.current !== seq) return;
         const manualIds = new Set(brainReferences.map((ref) => ref.id));
         const suggestions = (res.degraded ? [] : res.results)
@@ -598,9 +430,47 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
     return () => window.clearTimeout(timer);
   }, [input, open, autoReferenceEnabled, loading, streaming, brainReferences]);
 
+  const queueConversationSave = useCallback(async (
+    normalizedMessages: Message[],
+    targetConversationId: string,
+    targetPersonality: Personality
+  ) => {
+    pendingSaveCountRef.current += 1;
+    setSaving(true);
+
+    const queuedSave = saveChainRef.current.then(async () => {
+      try {
+        const res = await api.saveConversation({
+          messages: normalizedMessages,
+          personality: targetPersonality,
+          conversationId: targetConversationId,
+        });
+        if (res.conversation?.id) {
+          const title = buildConversationTitle(normalizedMessages, t("ai.sessionUntitled"));
+          setSessions((prev) => {
+            const rest = prev.filter((item) => item.id !== res.conversation.id);
+            return [{ id: res.conversation.id, title, updatedAt: new Date().toISOString() }, ...rest].slice(0, 30);
+          });
+          if (conversationIdRef.current === targetConversationId) {
+            setConversationId(res.conversation.id);
+            saveActiveConversationId(memoryScope, res.conversation.id);
+            saveMemory(memoryScope, normalizedMessages as Message[]);
+          }
+        }
+      } catch (err) {
+        console.warn("[ai] Failed to save conversation:", err);
+      } finally {
+        pendingSaveCountRef.current = Math.max(0, pendingSaveCountRef.current - 1);
+        if (pendingSaveCountRef.current === 0) setSaving(false);
+      }
+    });
+    saveChainRef.current = queuedSave;
+    await queuedSave;
+  }, [memoryScope, t]);
+
   // Save conversation to DB (filters out incomplete streaming messages)
   const saveConversation = useCallback(async () => {
-    if (messages.length === 0 || saving) return;
+    if (messages.length === 0) return;
     // If currently streaming, exclude the last incomplete assistant message
     const msgsToSave = (loading || streaming)
       ? messages.filter((m, i) => {
@@ -609,7 +479,7 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
           return true;
         })
       : messages;
-    if (msgsToSave.length === 0) return;
+    if (msgsToSave.length === 0 || !hasMeaningfulUserTurn(msgsToSave)) return;
     const normalizedMessages = msgsToSave.map((message) => {
       if (message.role !== "assistant") return message;
       const { finalContent, isTyping, ...rest } = message;
@@ -621,25 +491,21 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
         }),
       };
     });
-    setSaving(true);
-    try {
-      const res = await api.saveConversation({
-        messages: normalizedMessages,
-        personality: personalityRef.current,
-        conversationId: conversationId || undefined,
-      });
-      if (res.conversation?.id) {
-        setConversationId(res.conversation.id);
-      }
-    } catch (err) {
-      console.warn("[ai] Failed to save conversation:", err);
-    }
-    setSaving(false);
-  }, [conversationId, messages, loading, streaming, saving]);
+    saveMemory(memoryScope, normalizedMessages as Message[]);
+    await queueConversationSave(normalizedMessages as Message[], conversationId, personalityRef.current);
+  }, [conversationId, loading, messages, queueConversationSave, streaming]);
 
-  // Drag - restore saved position or default bottom-left
+  // Drag - restore saved position. Older left-side defaults are migrated once so
+  // the launcher no longer sits on top of the primary navigation.
   const [pos, setPos] = useState<Position>(() => {
     try {
+      const storageVersion = localStorage.getItem("chat-btn-pos-version");
+      if (storageVersion !== "2") {
+        const nextAnchor: AnchoredPosition = { side: "right", yPercent: 88 };
+        localStorage.setItem("chat-btn-pos-version", "2");
+        localStorage.setItem("chat-btn-pos", JSON.stringify(nextAnchor));
+        return anchoredToAbsolute(nextAnchor);
+      }
       const saved = localStorage.getItem("chat-btn-pos");
       if (saved) {
         const parsed = JSON.parse(saved);
@@ -651,7 +517,7 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
         return { x: parsed.x, y: parsed.y };
       }
     } catch {}
-    return anchoredToAbsolute({ side: "left", yPercent: 90 });
+    return anchoredToAbsolute({ side: "right", yPercent: 88 });
   });
   const [dragging, setDragging] = useState(false);
   const dragStart = useRef({ x: 0, y: 0 });
@@ -665,6 +531,7 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
   const scrollFrameRef = useRef<number | null>(null);
   const scrollTimersRef = useRef<number[]>([]);
   const senderRef = useRef<HTMLDivElement>(null);
+  const chatInputRef = useRef<HTMLTextAreaElement>(null);
   const posRef = useRef(pos);
   posRef.current = pos;
 
@@ -700,6 +567,7 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
   // On close: abort any ongoing stream, save, and clean up state. On open: check API key.
   useEffect(() => {
     if (!open) {
+      chatViewEpochRef.current += 1;
       // Abort any ongoing stream first
       if (abortRef.current) {
         abortRef.current.abort();
@@ -709,6 +577,7 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
       // Clean up all UI state
       restoredRef.current = false;
       setKeyOk(false);
+      setReadinessStatus("checking");
       setPendingUpdate(null);
       setTaskStage("idle");
       setLoading(false);
@@ -716,57 +585,92 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
       setIsActing(false);
       return;
     }
-    // Verify API key before proceeding
-    api.getApiKey().then((res) => {
-      if (!res.hasKey) {
-        toast(t("ai.needApiKey"), "error");
-        setOpen(false);
-      } else {
-        setKeyOk(true);
+    let cancelled = false;
+    setReadinessStatus("checking");
+    resolveAiReadiness(() => api.getApiKey()).then((status) => {
+      if (!cancelled) {
+        setReadinessStatus(status);
+        setKeyOk(status === "ready");
       }
-    }).catch(() => {
-      toast(t("ai.needApiKey"), "error");
-      setOpen(false);
     });
+    return () => {
+      cancelled = true;
+    };
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // On keyOk: restore from DB or greet. On personality change: re-greet.
   useEffect(() => {
-    if (!open || !keyOk) return;
+    if (!open || !keyOk || !memoryScope) return;
     // Log open
     api.logActivity({ action: "chat_open", detail: personalityRef.current }).catch(() => {});
 
-    // Try to restore last conversation from DB (only once per open)
+    // Prefer server conversations; local cache is fallback only.
     if (!restoredRef.current) {
       restoredRef.current = true;
+      const requestEpoch = chatViewEpochRef.current + 1;
+      chatViewEpochRef.current = requestEpoch;
+      const preferredId = loadActiveConversationId(memoryScope);
+      const localCache = loadLocalMemoryCache(memoryScope) as Message[];
       api.getConversations().then((res) => {
-        if (res.conversations.length > 0) {
-          const last = res.conversations[0];
-          const msgs = last.messages as Message[];
-          if (msgs.length > 0) {
-            setConversationId(last.id);
-            setMessages(msgs);
-            memoryRef.current = msgs;
-            return;
-          }
+        if (requestEpoch !== chatViewEpochRef.current) return;
+        const list = (res.conversations || [])
+          .filter((item) => hasMeaningfulUserTurn(item.messages))
+          .map((item) => ({
+          id: item.id,
+          title: buildConversationTitle(item.messages as Message[], t("ai.sessionUntitled")),
+          updatedAt: item.updatedAt || item.createdAt,
+          messages: hydrateMessagesFromServer(item.messages) as Message[],
+        }));
+        setSessions(list.map(({ id, title, updatedAt }) => ({ id, title, updatedAt })));
+
+        const preferred = preferredId ? list.find((item) => item.id === preferredId) : undefined;
+        const chosen = preferred || list[0];
+        if (chosen && shouldPreferServerConversation(chosen.messages, localCache, !!preferred)) {
+          setConversationId(chosen.id);
+          saveActiveConversationId(memoryScope, chosen.id);
+          setMessages(chosen.messages);
+          memoryRef.current = chosen.messages;
+          saveMemory(memoryScope, chosen.messages);
+          return;
         }
-        setConversationId(null);
-        // No saved conversation — greet
-        greetUser();
+        if (localCache.length > 0) {
+          const localConversationId = preferredId || createClientConversationId();
+          setConversationId(localConversationId);
+          saveActiveConversationId(memoryScope, localConversationId);
+          setMessages(localCache);
+          memoryRef.current = localCache;
+          return;
+        }
+        const nextConversationId = createClientConversationId();
+        setConversationId(nextConversationId);
+        saveActiveConversationId(memoryScope, nextConversationId);
+        greetUser(requestEpoch);
       }).catch(() => {
-        setConversationId(null);
-        greetUser();
+        if (requestEpoch !== chatViewEpochRef.current) return;
+        if (localCache.length > 0) {
+          const localConversationId = preferredId || createClientConversationId();
+          setConversationId(localConversationId);
+          saveActiveConversationId(memoryScope, localConversationId);
+          setMessages(localCache);
+          memoryRef.current = localCache;
+          return;
+        }
+        const nextConversationId = createClientConversationId();
+        setConversationId(nextConversationId);
+        saveActiveConversationId(memoryScope, nextConversationId);
+        greetUser(requestEpoch);
       });
     }
-  }, [open, keyOk]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [keyOk, memoryScope, open]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // When personality changes mid-conversation, add a subtle system note.
   // Do NOT re-greet — that would clear the current conversation.
   useEffect(() => {
     if (!open || !restoredRef.current) return;
+    if (!hasMeaningfulUserTurn(memoryRef.current)) return;
     const pers = personalityRef.current;
     const option = PERSONALITY_OPTIONS.find((o) => o.key === pers);
-    const note = t("ai.personalityChanged").replace("{emoji}", option?.emoji || "").replace("{label}", option?.label || pers);
+    const note = t("ai.personalityChanged").replace("{emoji}", option?.emoji || "").replace("{label}", option ? t(option.labelKey) : pers);
     setMessages((prev) => {
       // Don't add duplicate notes if the last message is already a personality change note
       const lastMsg = prev[prev.length - 1];
@@ -775,14 +679,21 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
     });
   }, [personality]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const greetUser = useCallback(() => {
+  const greetUser = useCallback((requestEpoch?: number) => {
+    const greetingEpoch = requestEpoch ?? (chatViewEpochRef.current + 1);
+    chatViewEpochRef.current = greetingEpoch;
     const pers = personalityRef.current;
     const ts = formatTimestamp();
+    const applyGreeting = (content: string) => {
+      if (greetingEpoch !== chatViewEpochRef.current) return;
+      const greeting = { role: "assistant" as const, content, timestamp: ts };
+      setMessages([greeting]);
+      memoryRef.current = [greeting];
+      saveMemory(memoryScope, memoryRef.current);
+    };
     api.aiGreeting({ userName: user?.name || "", personality: pers })
       .then((res) => {
-        setMessages([{ role: "assistant", content: res.greeting, timestamp: ts }]);
-        memoryRef.current = [{ role: "assistant", content: res.greeting, timestamp: ts }];
-        saveMemory(memoryRef.current);
+        applyGreeting(res.greeting);
       })
       .catch(() => {
         const name = user?.name || t("common.user");
@@ -794,9 +705,9 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
           serious: formatGreeting(t("ai.fallbackGreetingSerious")),
           silly: formatGreeting(t("ai.fallbackGreetingSilly")),
         };
-        setMessages([{ role: "assistant", content: fallbacks[pers] || fallbacks.normal, timestamp: ts }]);
+        applyGreeting(fallbacks[pers] || fallbacks.normal);
       });
-  }, [t, user?.name]);
+  }, [memoryScope, t, user?.name]);
 
   // Handle scroll events for smart scroll detection
   const handleScrollEvent = useCallback((_instance: any, event: Event) => {
@@ -869,37 +780,139 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
     if (loading) userScrolledUpRef.current = false;
   }, [loading]);
 
-  // Sender handles its own auto-resize
+  useEffect(() => {
+    const inputElement = chatInputRef.current;
+    if (!inputElement) return;
+    inputElement.style.height = "0px";
+    inputElement.style.height = `${Math.max(52, Math.min(160, inputElement.scrollHeight))}px`;
+  }, [input, open]);
 
   useEffect(() => {
     const handler = (event: Event) => {
       const detail = (event as CustomEvent<{ text?: string }>).detail;
       if (!detail?.text) return;
-      setInput(detail.text);
+      setInput(detail.text.slice(0, MAX_CHAT_INPUT_CHARS));
       setOpen(true);
     };
     window.addEventListener("znwriter-ai-chat-prefill", handler);
     return () => window.removeEventListener("znwriter-ai-chat-prefill", handler);
   }, []);
 
+  const startNewChat = useCallback(async () => {
+    if (loading || streaming) return;
+    if (pendingUpdate || pendingCreate || pendingSpreadsheetPatch) {
+      toast(t("ai.finishPreviewFirst"), "info");
+      return;
+    }
+    await saveConversation();
+    const nextConversationId = createClientConversationId();
+    const requestEpoch = chatViewEpochRef.current + 1;
+    chatViewEpochRef.current = requestEpoch;
+    setConversationId(nextConversationId);
+    saveActiveConversationId(memoryScope, nextConversationId);
+    setMessages([]);
+    memoryRef.current = [];
+    saveMemory(memoryScope, []);
+    setSessionsOpen(false);
+    setPendingUpdate(null);
+    setPendingCreate(null);
+    setPendingSpreadsheetPatch(null);
+    setEditMode(false);
+    setSelectedMsgs(new Set());
+    greetUser(requestEpoch);
+  }, [greetUser, loading, memoryScope, pendingCreate, pendingSpreadsheetPatch, pendingUpdate, saveConversation, streaming, t, toast]);
+
+  const switchConversation = useCallback(async (id: string) => {
+    if (loading || streaming || id === conversationId) {
+      setSessionsOpen(false);
+      return;
+    }
+    if (pendingUpdate || pendingCreate || pendingSpreadsheetPatch) {
+      setSessionsOpen(false);
+      toast(t("ai.finishPreviewFirst"), "info");
+      return;
+    }
+    await saveConversation();
+    const requestEpoch = chatViewEpochRef.current + 1;
+    chatViewEpochRef.current = requestEpoch;
+    try {
+      const res = await api.getConversations();
+      if (requestEpoch !== chatViewEpochRef.current) return;
+      const match = (res.conversations || []).find((item) => item.id === id);
+      if (!match) {
+        toast(t("ai.sessionDeleteFailed"), "error");
+        return;
+      }
+      const msgs = hydrateMessagesFromServer(match.messages) as Message[];
+      setConversationId(match.id);
+      saveActiveConversationId(memoryScope, match.id);
+      setMessages(msgs);
+      memoryRef.current = msgs;
+      saveMemory(memoryScope, msgs);
+      setSessionsOpen(false);
+      toast(t("ai.sessionSwitched"), "success");
+    } catch {
+      if (requestEpoch !== chatViewEpochRef.current) return;
+      toast(t("ai.sessionDeleteFailed"), "error");
+    }
+  }, [conversationId, loading, memoryScope, pendingCreate, pendingSpreadsheetPatch, pendingUpdate, saveConversation, streaming, t, toast]);
+
+  const deleteSession = useCallback(async (id: string) => {
+    if (id === conversationId && (pendingUpdate || pendingCreate || pendingSpreadsheetPatch)) {
+      toast(t("ai.finishPreviewFirst"), "info");
+      return;
+    }
+    try {
+      await saveChainRef.current;
+      await api.deleteConversation(id);
+      setSessions((prev) => prev.filter((item) => item.id !== id));
+      if (conversationId === id) {
+        const nextConversationId = createClientConversationId();
+        const requestEpoch = chatViewEpochRef.current + 1;
+        chatViewEpochRef.current = requestEpoch;
+        setConversationId(nextConversationId);
+        saveActiveConversationId(memoryScope, nextConversationId);
+        setMessages([]);
+        memoryRef.current = [];
+        saveMemory(memoryScope, []);
+        greetUser(requestEpoch);
+      }
+      toast(t("ai.sessionDeleted"), "success");
+    } catch {
+      toast(t("ai.sessionDeleteFailed"), "error");
+    }
+  }, [conversationId, greetUser, memoryScope, pendingCreate, pendingSpreadsheetPatch, pendingUpdate, t, toast]);
+
   const changePersonality = useCallback((p: Personality) => {
     personalityRef.current = p;
     setPersonality(p);
     setPersonalityOpen(false);
     localStorage.setItem(PERSONALITY_KEY, p);
-  }, []);
+    if (!hasMeaningfulUserTurn(memoryRef.current)) {
+      const requestEpoch = chatViewEpochRef.current + 1;
+      chatViewEpochRef.current = requestEpoch;
+      setMessages([]);
+      memoryRef.current = [];
+      greetUser(requestEpoch);
+    }
+  }, [greetUser]);
 
-  const handleMouseDown = (e: React.MouseEvent) => {
+  const handlePointerDown = (e: React.PointerEvent) => {
     if (open) return;
     setDragging(true);
     hasMoved.current = false;
     dragStart.current = { x: e.clientX, y: e.clientY };
     posStart.current = { ...posRef.current };
+    try {
+      (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+    } catch {
+      // ignore capture failures on older webviews
+    }
   };
 
   useEffect(() => {
     if (!dragging) return;
-    const mm = (e: MouseEvent) => {
+    const mm = (e: PointerEvent) => {
       const dx = e.clientX - dragStart.current.x;
       const dy = e.clientY - dragStart.current.y;
       if (Math.abs(dx) > 3 || Math.abs(dy) > 3) hasMoved.current = true;
@@ -909,7 +922,7 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
       posRef.current = { x: newX, y: newY };
       setPos({ x: newX, y: newY });
     };
-    const mu = (e: MouseEvent) => {
+    const mu = (e: PointerEvent) => {
       setDragging(false);
       if (!hasMoved.current) {
         setOpen(true);
@@ -933,14 +946,22 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
         try { localStorage.setItem("chat-btn-pos", JSON.stringify(anchored)); } catch {}
       }
     };
-    window.addEventListener("mousemove", mm);
-    window.addEventListener("mouseup", mu);
-    return () => { window.removeEventListener("mousemove", mm); window.removeEventListener("mouseup", mu); };
+    window.addEventListener("pointermove", mm);
+    window.addEventListener("pointerup", mu);
+    window.addEventListener("pointercancel", mu);
+    return () => {
+      window.removeEventListener("pointermove", mm);
+      window.removeEventListener("pointerup", mu);
+      window.removeEventListener("pointercancel", mu);
+    };
   }, [dragging]);
 
   // Core send logic — reusable for both normal send and regenerate
   const doSend = useCallback(async (text: string) => {
     if (!text || loading || streaming) return;
+    const requestEpoch = chatViewEpochRef.current + 1;
+    chatViewEpochRef.current = requestEpoch;
+    const isCurrentRequest = () => chatViewEpochRef.current === requestEpoch;
 
     // Intercept /write command: open agent panel instead of sending to chat
     const writeMatch = text.match(/^\/write\s+(.+)/);
@@ -951,21 +972,29 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
     }
 
     const currentDocument = currentDocumentId ? getDocument(currentDocumentId) : undefined;
-    const currentReference = currentDocument && !currentDocument.isDeleted
+    const hasManualReferences =
+      references.length > 0 ||
+      brainReferences.length > 0 ||
+      autoBrainReferences.length > 0 ||
+      documents.some((doc) => textMentionsTitle(text, doc.title, "@")) ||
+      brainKnowledges.some((item) => textMentionsTitle(text, item.title, "#"));
+    const attachWorkspace = workspaceContextEnabled && shouldAttachCurrentWorkspace(text, { hasManualReferences });
+    const currentReference = attachWorkspace && currentDocument && !currentDocument.isDeleted
       ? [{ type: "document" as const, id: currentDocument.id, title: currentDocument.title }]
       : [];
-    const currentSpreadsheet = currentSpreadsheetId
+    const currentSpreadsheet = attachWorkspace && currentSpreadsheetId
       ? activeSpreadsheet || await api.getSpreadsheet(currentSpreadsheetId).then((res) => res.spreadsheet).catch(() => null)
       : null;
+    if (!isCurrentRequest()) return;
     if (currentSpreadsheet) setActiveSpreadsheet(currentSpreadsheet);
     const currentSpreadsheetReference = currentSpreadsheet && !currentSpreadsheet.isDeleted
       ? [{ type: "spreadsheet" as const, id: currentSpreadsheet.id, title: currentSpreadsheet.title }]
       : [];
     const referencedByText = documents
-      .filter((doc) => text.includes(`@${doc.title}`))
+      .filter((doc) => textMentionsTitle(text, doc.title, "@"))
       .map((doc) => ({ type: "document" as const, id: doc.id, title: doc.title }));
     const referencedBrainsByText = brainKnowledges
-      .filter((item) => text.includes(`#${item.title}`))
+      .filter((item) => textMentionsTitle(text, item.title, "#"))
       .map((item) => ({ type: "brain" as const, id: item.id, title: item.title }));
     const requestReferences: ChatReference[] = uniqueReferences([...currentReference, ...currentSpreadsheetReference, ...references, ...referencedByText, ...brainReferences, ...autoBrainReferences, ...referencedBrainsByText]);
 
@@ -992,17 +1021,21 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
     const abort = new AbortController();
     abortRef.current = abort;
     let typewriterTimer: number | null = null;
+    let streamedPartial = "";
+    let activeTypewriterControl: { skip: () => void } | null = null;
 
     try {
-      const memoryContext = buildMemoryContext(memory);
+      // The full conversation is already sent as structured `messages`; avoid
+      // duplicating it as a text blob in the system prompt (halves token cost).
+      const memoryContext = "";
       let fullContent = "";
-      let fullThinking = "";
       let latestToolCalls: ToolCallEvent[] = [];
       let assistantStarted = false;
       let displayedContent = "";
       let targetContent = "";
 
       const upsertAssistantMessage = (patch: Partial<Message>) => {
+        if (!isCurrentRequest()) return;
         setMessages((prev) => {
           const next = [...prev];
           const last = next[next.length - 1];
@@ -1025,6 +1058,7 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
         if (typewriterTimer !== null) return;
         typewriterTimer = window.setTimeout(() => {
           typewriterTimer = null;
+          if (!isCurrentRequest()) return;
           if (displayedContent === targetContent) return;
           const remaining = targetContent.length - displayedContent.length;
           const step = getTypewriterChunkSize(remaining);
@@ -1037,6 +1071,7 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
       };
 
       const queueAssistantContent = (nextContent: string) => {
+        if (!isCurrentRequest()) return;
         if (!assistantStarted) {
           assistantStarted = true;
           setStreaming(true);
@@ -1051,6 +1086,7 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
       };
 
       const skipTypewriter = () => {
+        if (!isCurrentRequest()) return;
         if (typewriterTimer !== null) {
           window.clearTimeout(typewriterTimer);
           typewriterTimer = null;
@@ -1058,28 +1094,23 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
         displayedContent = targetContent;
         upsertAssistantMessage({ content: displayedContent, finalContent: targetContent || undefined, isTyping: false });
       };
-      typewriterControlRef.current = { skip: skipTypewriter };
+      activeTypewriterControl = { skip: skipTypewriter };
+      typewriterControlRef.current = activeTypewriterControl;
 
-      const waitForTypewriterIdle = async () => {
-        while (displayedContent !== targetContent) {
-          await new Promise((resolve) => window.setTimeout(resolve, AI_CHAT_TYPEWRITER_INTERVAL_MS));
-        }
-      };
-
-      const { reply, action, thinking, toolCalls } = await streamChat(
+      const { reply, action, toolCalls } = await streamChat(
         { messages: [...memory], personality: personalityRef.current, memoryContext, references: requestReferences },
         (delta) => {
+          if (!isCurrentRequest()) return;
           fullContent += delta;
+          streamedPartial = fullContent;
           if (/<<ACTION_JSON>>|<<DOC_BEGIN>>|<<UPDATE_DOC:/.test(fullContent)) {
             setIsActing(true);
           }
-          queueAssistantContent(fullContent);
+          queueAssistantContent(sanitizeAssistantDisplayContent(fullContent, true));
         },
-        (tDelta) => {
-          fullThinking += tDelta;
-          upsertAssistantMessage({ thinking: fullThinking });
-        },
+        () => {},
         (tc) => {
+          if (!isCurrentRequest()) return;
           latestToolCalls = [...latestToolCalls.filter(t => t.index !== tc.index), tc];
           setIsActing(true);
           assistantStarted = true;
@@ -1088,16 +1119,17 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
         },
         abort.signal
       );
+      if (!isCurrentRequest()) return;
 
-      const hasAction = !!(action && (action.type === "create_document" || action.type === "update_document" || action.type === "spreadsheet_patch"));
+      const hasAction = !!(action && (action.type === "create_document" || action.type === "update_document" || action.type === "patch_document" || action.type === "spreadsheet_patch"));
       setIsActing(hasAction);
 
       const finalToolCalls = toolCalls || latestToolCalls;
-      const finalContent = resolveChatFinalContent({
+      const finalContent = sanitizeAssistantDisplayContent(resolveChatFinalContent({
         streamedContent: fullContent,
         finalReply: reply,
         hasToolCalls: finalToolCalls.length > 0,
-      });
+      }));
       if (!finalContent.trim()) {
         throw new Error(t("ai.emptyReply"));
       }
@@ -1106,34 +1138,39 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
         createSuccess: t("ai.docCreatedConfirmed"),
         createFailed: t("ai.docCreateFailedDetailed"),
         updatePreview: t("ai.docUpdatePreviewReady"),
+        patchPreview: t("ai.docPatchPreviewReady"),
+        spreadsheetPreview: t("ai.spreadsheetPatchReady"),
         genericFailure: t("ai.menu.failed"),
         fallbackTitle: t("editor.untitled"),
       };
-      const displayContent = action?.type === "spreadsheet_patch"
-        ? t("ai.spreadsheetPatchReady")
-        : resolveActionDisplayContent(action, finalContent, actionLabels);
-      queueAssistantContent(displayContent);
-      upsertAssistantMessage({
-        finalContent: displayContent,
-        isTyping: true,
-        thinking: thinking || fullThinking,
-        toolCalls: finalToolCalls,
-      });
-      await waitForTypewriterIdle();
-      upsertAssistantMessage({
-        content: displayContent,
-        finalContent: displayContent,
-        isTyping: false,
-        thinking: thinking || fullThinking,
-        toolCalls: finalToolCalls,
-      });
+      const displayContent = resolveActionDisplayContent(action, finalContent, actionLabels);
+      if (hasAction) {
+        // Skip cosmetic typewriter delay so create/patch/update previews appear immediately.
+        queueAssistantContent(displayContent);
+        skipTypewriter();
+        upsertAssistantMessage({
+          content: displayContent,
+          finalContent: displayContent,
+          isTyping: false,
+          toolCalls: finalToolCalls,
+        });
+      } else {
+        // Stream already delivered the text — finalize immediately (no post-stream typewriter lag).
+        queueAssistantContent(displayContent);
+        skipTypewriter();
+        upsertAssistantMessage({
+          content: displayContent,
+          finalContent: displayContent,
+          isTyping: false,
+          toolCalls: finalToolCalls,
+        });
+      }
 
       const replaceLastAssistantMessage = (content: string) => {
         upsertAssistantMessage({
           content,
           finalContent: content,
           isTyping: false,
-          thinking: thinking || fullThinking,
           toolCalls: finalToolCalls,
         });
       };
@@ -1157,7 +1194,7 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
           }
         }
         memoryRef.current = [...memory, ...assistantMemory];
-        saveMemory(memoryRef.current);
+        saveMemory(memoryScope, memoryRef.current);
       };
 
       const documentToolCalls = finalToolCalls.filter((tc) =>
@@ -1165,6 +1202,7 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
       );
       if (documentToolCalls.length > 0) {
         await refreshDocuments();
+        if (!isCurrentRequest()) return;
         const updatedDocIds = Array.from(new Set(
           documentToolCalls
             .filter((tc) => tc.name === "update_document")
@@ -1172,42 +1210,85 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
             .filter(Boolean)
         ));
         await Promise.all(updatedDocIds.map((docId) => loadDocument(docId)));
+        if (!isCurrentRequest()) return;
       }
 
-      // Handle create_document action
+      // Handle create_document action — preview first, never auto-write.
       if (action?.type === "create_document") {
+        const nextContent = typeof action.content === "string" ? action.content.trim() : "";
+        if (!nextContent) {
+          const message = resolveActionFailureContent(action, actionLabels);
+          replaceLastAssistantMessage(message);
+          saveAssistantTurn(message);
+          toast(t("ai.menu.emptyResult"), "error");
+          return;
+        }
+        const title = typeof action.title === "string" && action.title.trim() ? action.title.trim() : t("editor.untitled");
+        setPendingCreate({
+          title,
+          markdown: nextContent,
+          html: markdownToHtml(nextContent),
+        });
+        setTaskStage("preview");
+        const previewMessage = t("ai.createPreviewDesc");
+        replaceLastAssistantMessage(previewMessage);
+        saveAssistantTurn(previewMessage);
+        return;
+      }
+
+      // Handle patch_document action (local find/replace, then reuse update preview)
+      if (action?.type === "patch_document") {
         try {
-          const nextContent = typeof action.content === "string" ? action.content.trim() : "";
-          if (!nextContent) {
-            const message = resolveActionFailureContent(action, actionLabels);
-            replaceLastAssistantMessage(message);
-            saveAssistantTurn(message);
-            toast(t("ai.menu.emptyResult"), "error");
-            return;
-          }
-          const title = typeof action.title === "string" && action.title.trim() ? action.title.trim() : t("editor.untitled");
-          const docId = await createDocument("general", title, markdownToHtml(nextContent));
-          const verifiedDoc = await loadDocument(docId);
-          if (!verifiedDoc) {
-            const message = t("ai.docCreateVerifyFailed");
+          const actionDocId = typeof action.docId === "string" ? action.docId.trim() : "";
+          const docReferences = requestReferences.filter((ref): ref is DocumentReference => ref.type === "document");
+          const fallbackDocId = docReferences.length === 1 ? docReferences[0].id : "";
+          const targetDocId = actionDocId || fallbackDocId;
+          const targetDoc = targetDocId ? getDocument(targetDocId) || await loadDocument(targetDocId) : null;
+          if (!isCurrentRequest()) return;
+          if (!targetDoc) {
+            const message = t("ai.docUpdateTargetMissing");
             replaceLastAssistantMessage(message);
             saveAssistantTurn(message);
             toast(message, "error");
             return;
           }
-          await refreshDocuments();
-          const successMessage = resolveActionSuccessContent({ ...action, title }, actionLabels);
-          replaceLastAssistantMessage(successMessage);
-          saveAssistantTurn(successMessage);
-          const docNote = { role: "assistant" as const, content: `[系统] 已为用户创建文档「${title}」[doc:${docId}]。内容摘要：${nextContent.slice(0, 200)}...` };
-          memoryRef.current = [...memoryRef.current, docNote];
-          saveMemory(memoryRef.current);
-          toast(t("ai.docCreated"), "success");
-        } catch {
-          const message = resolveActionFailureContent(action, actionLabels);
+          const patched = applyDocumentPatchesPreferHtml(
+            targetDoc.content,
+            Array.isArray(action.operations) ? action.operations : []
+          );
+          if (patched.applied === 0) {
+            const message = t("ai.patchEmpty");
+            replaceLastAssistantMessage(message);
+            saveAssistantTurn(message);
+            toast(message, "error");
+            return;
+          }
+          const nextHtml = patched.html;
+          const sourceText = htmlToPlainText(targetDoc.content);
+          const diffLines = buildDiffLines(sourceText, htmlToPlainText(nextHtml));
+          const stats = summarizeDiff(diffLines);
+          setPendingUpdate({
+            docId: targetDoc.id,
+            title: targetDoc.title,
+            previousTitle: targetDoc.title,
+            previousHtml: targetDoc.content,
+            nextMarkdown: htmlToPlainText(nextHtml),
+            nextHtml,
+            diffLines,
+            stats,
+          });
+          setTaskStage("preview");
+          toast(
+            patched.errors.length > 0 ? t("ai.patchPartial") : t("ai.patchReady"),
+            patched.errors.length > 0 ? "info" : "info"
+          );
+          saveAssistantTurn(displayContent);
+        } catch (err: any) {
+          console.error("[patch_doc] error:", err);
+          const message = t("ai.patchFailed");
           replaceLastAssistantMessage(message);
           saveAssistantTurn(message);
-          toast(t("ai.docCreateFailed"), "error");
+          toast(message, "error");
         }
         return;
       }
@@ -1228,6 +1309,7 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
           const fallbackDocId = docReferences.length === 1 ? docReferences[0].id : "";
           const targetDocId = actionDocId || fallbackDocId;
           const targetDoc = targetDocId ? getDocument(targetDocId) || await loadDocument(targetDocId) : null;
+          if (!isCurrentRequest()) return;
           if (!targetDoc) {
             const message = t("ai.docUpdateTargetMissing");
             replaceLastAssistantMessage(message);
@@ -1244,6 +1326,8 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
           setPendingUpdate({
             docId: targetDoc.id,
             title: targetDoc.title,
+            previousTitle: targetDoc.title,
+            previousHtml: targetDoc.content,
             nextMarkdown: nextContent,
             nextHtml,
             diffLines,
@@ -1275,6 +1359,7 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
               ? activeSpreadsheet
               : await api.getSpreadsheet(targetSpreadsheetId).then((res) => res.spreadsheet).catch(() => null)
             : null;
+          if (!isCurrentRequest()) return;
           if (!targetSpreadsheet) {
             const message = t("ai.spreadsheetPatchTargetMissing");
             replaceLastAssistantMessage(message);
@@ -1313,14 +1398,44 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
 
       saveAssistantTurn(displayContent);
     } catch (error: any) {
+      if (!isCurrentRequest()) return;
       if (error.name === "AbortError") return;
+      if (error?.message === "CHAT_STREAM_INCOMPLETE" && streamedPartial.trim()) {
+        const partial = sanitizeAssistantDisplayContent(
+          resolveAssistantActionContent({ content: streamedPartial })
+        ).trim();
+        const frozen: Message = {
+          role: "assistant",
+          content: partial,
+          finalContent: partial || undefined,
+          isTyping: false,
+          interrupted: true,
+          timestamp: formatTimestamp(),
+        };
+        setMessages((prev) => {
+          const next = [...prev];
+          if (next[next.length - 1]?.role === "assistant") next[next.length - 1] = frozen;
+          else next.push(frozen);
+          return next;
+        });
+        memoryRef.current = [...memory, frozen];
+        saveMemory(memoryScope, memoryRef.current);
+        toast(t("ai.streamInterrupted"), "error");
+        return;
+      }
+      const errorMessage = error?.message === "CHAT_STREAM_INCOMPLETE"
+        || error?.name === "TypeError"
+        || error?.message === "No response body"
+        || /^HTTP \d+$/.test(String(error?.message || ""))
+        ? t("ai.serviceUnavailable")
+        : error.message || t("ai.serviceUnavailable");
       setMessages((prev) => {
         const next = [...prev];
         const last = next[next.length - 1];
         if (last && last.role === "assistant" && !last.content) {
-          next[next.length - 1] = { role: "assistant", content: error.message || t("ai.serviceUnavailable"), timestamp: formatTimestamp() };
+          next[next.length - 1] = { role: "assistant", content: errorMessage, timestamp: formatTimestamp() };
         } else {
-          next.push({ role: "assistant", content: error.message || t("ai.serviceUnavailable"), timestamp: formatTimestamp() });
+          next.push({ role: "assistant", content: errorMessage, timestamp: formatTimestamp() });
         }
         return next;
       });
@@ -1328,13 +1443,16 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
       if (typewriterTimer !== null) {
         window.clearTimeout(typewriterTimer);
       }
-      typewriterControlRef.current = null;
-      setLoading(false);
-      setStreaming(false);
-      setIsActing(false);
-      setTaskStage((stage) => (stage === "preview" ? stage : "idle"));
+      if (isCurrentRequest()) {
+        if (typewriterControlRef.current === activeTypewriterControl) typewriterControlRef.current = null;
+        if (abortRef.current === abort) abortRef.current = null;
+        setLoading(false);
+        setStreaming(false);
+        setIsActing(false);
+        setTaskStage((stage) => (stage === "preview" ? stage : "idle"));
+      }
     }
-  }, [loading, streaming, currentDocumentId, currentSpreadsheetId, activeSpreadsheet, createDocument, toast, t, documents, references, brainReferences, autoBrainReferences, brainKnowledges, getDocument, loadDocument, refreshDocuments, updateDocument]);
+  }, [loading, streaming, currentDocumentId, currentSpreadsheetId, activeSpreadsheet, createDocument, toast, t, documents, references, brainReferences, autoBrainReferences, brainKnowledges, getDocument, loadDocument, memoryScope, refreshDocuments, updateDocument, workspaceContextEnabled]);
 
   const handleSend = useCallback(async () => {
     const text = input.trim();
@@ -1342,9 +1460,8 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
     await doSend(text);
   }, [input, loading, streaming, doSend]);
 
-  const handleStop = useCallback(() => {
+  const finalizeInterruptedAssistant = useCallback(() => {
     typewriterControlRef.current?.skip();
-    abortRef.current?.abort();
     setMessages((prev) => {
       const next = [...prev];
       const last = next[next.length - 1];
@@ -1353,25 +1470,88 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
         content: last.content,
         finalContent: last.finalContent,
       });
-      next[next.length - 1] = {
+      const frozen = {
         ...last,
         content,
         finalContent: content || undefined,
         isTyping: false,
         interrupted: true,
       };
+      next[next.length - 1] = frozen;
+      // Keep memory aligned with UI so close/save does not drop the draft.
+      if (memoryRef.current.length > 0) {
+        const mem = [...memoryRef.current];
+        const memLast = mem[mem.length - 1];
+        if (memLast?.role === "assistant") {
+          mem[mem.length - 1] = {
+            ...memLast,
+            content: frozen.content,
+            finalContent: frozen.finalContent,
+            isTyping: false,
+            interrupted: true,
+          };
+          memoryRef.current = mem;
+          saveMemory(memoryScope, mem);
+        } else if (frozen.content.trim()) {
+          memoryRef.current = [...memoryRef.current, frozen];
+          saveMemory(memoryScope, memoryRef.current);
+        }
+      } else if (frozen.content.trim()) {
+        memoryRef.current = [frozen];
+        saveMemory(memoryScope, memoryRef.current);
+      }
       return next;
     });
     setLoading(false);
     setStreaming(false);
     setIsActing(false);
-  }, []);
+  }, [memoryScope]);
+
+  const handleStop = useCallback(() => {
+    abortRef.current?.abort();
+    finalizeInterruptedAssistant();
+    typewriterControlRef.current = null;
+    chatViewEpochRef.current += 1;
+    abortRef.current = null;
+  }, [finalizeInterruptedAssistant]);
+
+  const handleContinue = useCallback(() => {
+    const lastMem = memoryRef.current[memoryRef.current.length - 1];
+    const partial =
+      lastMem?.role === "assistant" && lastMem.interrupted
+        ? String(lastMem.finalContent || lastMem.content || "").trim()
+        : "";
+    setMessages((prev) => {
+      const next = [...prev];
+      const last = next[next.length - 1];
+      if (last?.role === "assistant" && last.interrupted) {
+        const resumed = { ...last, interrupted: false, isTyping: false };
+        next[next.length - 1] = resumed;
+        const mem = [...memoryRef.current];
+        if (mem.length > 0 && mem[mem.length - 1]?.role === "assistant") {
+          mem[mem.length - 1] = { ...mem[mem.length - 1], interrupted: false, isTyping: false };
+          memoryRef.current = mem;
+          saveMemory(memoryScope, mem);
+        }
+      }
+      return next;
+    });
+    setTimeout(() => {
+      const prompt = partial
+        ? `${t("ai.continuePrompt")}\n\n${t("ai.continuePartialHint")}\n${partial.slice(-2500)}`
+        : t("ai.continuePrompt");
+      void doSend(prompt);
+    }, 0);
+  }, [doSend, memoryScope, t]);
 
   const handleRegenerate = useCallback(() => {
     // Abort any in-progress stream
+    chatViewEpochRef.current += 1;
     if (abortRef.current) {
       abortRef.current.abort();
+      abortRef.current = null;
     }
+    typewriterControlRef.current = null;
     setLoading(false);
     setStreaming(false);
     setIsActing(false);
@@ -1387,8 +1567,14 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
       if (lastUserIdx < 0) return prev;
       const lastUserMsg = prev[lastUserIdx];
       const text = lastUserMsg.content;
-      // Trim memoryRef to before the last user message
-      const memIdx = memoryRef.current.findIndex((m) => m.role === "user" && m.content === text);
+      // Trim memoryRef to before the last user message (match from the end)
+      let memIdx = -1;
+      for (let i = memoryRef.current.length - 1; i >= 0; i--) {
+        if (memoryRef.current[i].role === "user" && memoryRef.current[i].content === text) {
+          memIdx = i;
+          break;
+        }
+      }
       if (memIdx >= 0) {
         memoryRef.current = memoryRef.current.slice(0, memIdx);
       }
@@ -1398,54 +1584,152 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
     });
   }, [doSend]);
 
+  const applyPendingCreate = useCallback(async () => {
+    if (!pendingCreate || applyingCreate) return;
+    const draft = pendingCreate;
+    setApplyingCreate(true);
+    try {
+      const docId = draft.createdDocId || await createDocument("general", draft.title, draft.html, null, false);
+      if (!draft.createdDocId) {
+        setPendingCreate((current) => current ? { ...current, createdDocId: docId } : current);
+      }
+      if (draft.createdDocId) {
+        await updateDocument(docId, { title: draft.title, content: draft.html });
+      }
+      const verifiedDoc = await loadDocument(docId);
+      if (!verifiedDoc || verifiedDoc.title !== draft.title || verifiedDoc.content !== draft.html) {
+        setPendingCreate((current) => current ? { ...current, createdDocId: docId } : current);
+        toast(t("ai.docCreateVerifyFailed"), "error");
+        return;
+      }
+      setPendingCreate(null);
+      setTaskStage("done");
+      toast(t("ai.docCreated"), "success");
+      await refreshDocuments().catch(() => {});
+    } catch {
+      toast(t("ai.docCreateFailed"), "error");
+    } finally {
+      setApplyingCreate(false);
+      setTimeout(() => setTaskStage("idle"), 1200);
+    }
+  }, [applyingCreate, createDocument, loadDocument, pendingCreate, refreshDocuments, t, toast, updateDocument]);
+
   const applyPendingUpdate = useCallback(async () => {
     if (!pendingUpdate || applyingUpdate) return;
     const update = pendingUpdate; // 缓存当前值，避免中途关闭弹窗后被清空
     setApplyingUpdate(true);
+    let snapshot: DocumentVersion | undefined;
+    let writeAttempted = false;
+
+    const rollbackToSnapshot = async () => {
+      if (!snapshot) throw new Error("Missing AI edit snapshot");
+      cancelPendingDocumentAutosave(update.docId);
+      const restored = await restoreDocumentVersion(update.docId, snapshot.id);
+      if (!restored || restored.content !== snapshot.content) {
+        throw new Error("AI edit rollback verification failed");
+      }
+      notifyDocumentExternalWrite(update.docId, restored.content);
+    };
+
     try {
+      const flushed = await requestDocumentAutosaveFlush(update.docId);
+      if (!flushed) {
+        toast(t("ai.docFlushFailed"), "error");
+        return;
+      }
+      const currentDoc = await loadDocument(update.docId);
+      if (!isDocumentActionBaselineCurrent(currentDoc, {
+        title: update.previousTitle,
+        content: update.previousHtml,
+      })) {
+        setPendingUpdate(null);
+        toast(t("ai.docUpdateStale"), "error");
+        return;
+      }
       try {
         setTaskStage("snapshot");
-        await createDocumentVersion(update.docId, "ai_edit");
+        cancelPendingDocumentAutosave(update.docId);
+        snapshot = await createDocumentVersion(update.docId, "ai_edit");
+        if (!snapshot) throw new Error("AI edit snapshot was not created");
       } catch (err) {
         console.error("[version_snapshot] error:", err);
         toast(t("ai.versionSnapshotFailed"), "error");
         return;
       }
 
+      cancelPendingDocumentAutosave(update.docId);
+      writeAttempted = true;
       await updateDocument(update.docId, {
         title: update.title,
         content: update.nextHtml,
       });
+      notifyDocumentExternalWrite(update.docId, update.nextHtml);
       setTaskStage("verify");
       const verifiedDoc = await loadDocument(update.docId);
       if (!verifiedDoc || verifiedDoc.content !== update.nextHtml) {
-        toast(t("ai.docUpdateVerifyFailed"), "error");
+        await rollbackToSnapshot();
+        toast(t("ai.docUpdateRolledBack"), "error");
         return;
       }
 
       toast(t("ai.docUpdated"), "success");
-      const updatedNote = {
-        role: "assistant" as const,
-        content: `[系统] 已为用户更新文档「${update.title}」[doc:${update.docId}]。最新内容摘要：${update.nextMarkdown.slice(0, 200)}...`,
-      };
-      memoryRef.current = [...memoryRef.current, updatedNote];
-      saveMemory(memoryRef.current);
       setPendingUpdate(null);
       setTaskStage("done");
     } catch (err: any) {
       console.error("[apply_update] error:", err);
-      toast(t("ai.docUpdateFailed"), "error");
+      if (snapshot && writeAttempted) {
+        try {
+          await rollbackToSnapshot();
+          toast(t("ai.docUpdateRolledBack"), "error");
+        } catch (rollbackError) {
+          console.error("[apply_update_rollback] error:", rollbackError);
+          toast(t("ai.docUpdateRollbackFailed"), "error");
+        }
+      } else {
+        toast(t("ai.docUpdateFailed"), "error");
+      }
     } finally {
       setApplyingUpdate(false);
       setTimeout(() => setTaskStage("idle"), 1200);
     }
-  }, [applyingUpdate, createDocumentVersion, loadDocument, pendingUpdate, t, toast, updateDocument]);
+  }, [applyingUpdate, createDocumentVersion, loadDocument, pendingUpdate, restoreDocumentVersion, t, toast, updateDocument]);
 
   const applyPendingSpreadsheetPatch = useCallback(async () => {
     if (!pendingSpreadsheetPatch || applyingSpreadsheetPatch) return;
     const patch = pendingSpreadsheetPatch;
     setApplyingSpreadsheetPatch(true);
+    let writeAttempted = false;
+
+    const publishSpreadsheetState = (spreadsheet: Spreadsheet) => {
+      setActiveSpreadsheet(spreadsheet);
+      window.dispatchEvent(new CustomEvent("spreadsheet:updated", {
+        detail: { id: patch.spreadsheetId, spreadsheet },
+      }));
+    };
+
+    const rollbackSpreadsheet = async () => {
+      await api.updateSpreadsheet(patch.spreadsheetId, {
+        title: patch.title,
+        data: patch.previousWorkbook,
+      });
+      const restored = await api.getSpreadsheet(patch.spreadsheetId);
+      if (JSON.stringify(restored.spreadsheet.data) !== JSON.stringify(patch.previousWorkbook)) {
+        throw new Error("AI spreadsheet rollback verification failed");
+      }
+      publishSpreadsheetState(restored.spreadsheet);
+    };
+
     try {
+      const current = await api.getSpreadsheet(patch.spreadsheetId);
+      if (!isSpreadsheetActionBaselineCurrent(current.spreadsheet, {
+        title: patch.title,
+        data: patch.previousWorkbook,
+      })) {
+        setPendingSpreadsheetPatch(null);
+        toast(t("ai.spreadsheetPatchStale"), "error");
+        return;
+      }
+      writeAttempted = true;
       await api.updateSpreadsheet(patch.spreadsheetId, {
         title: patch.title,
         data: patch.nextWorkbook,
@@ -1453,30 +1737,72 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
       setTaskStage("verify");
       const verified = await api.getSpreadsheet(patch.spreadsheetId);
       if (JSON.stringify(verified.spreadsheet.data) !== JSON.stringify(patch.nextWorkbook)) {
-        toast(t("ai.spreadsheetPatchVerifyFailed"), "error");
-        return;
+        throw new Error("AI spreadsheet update verification failed");
       }
-      setActiveSpreadsheet(verified.spreadsheet);
-      window.dispatchEvent(new CustomEvent("spreadsheet:updated", {
-        detail: { id: patch.spreadsheetId, spreadsheet: verified.spreadsheet },
-      }));
+      publishSpreadsheetState(verified.spreadsheet);
+      setSpreadsheetUndo({
+        spreadsheetId: patch.spreadsheetId,
+        title: patch.title,
+        workbook: patch.previousWorkbook,
+        expectedCurrentTitle: verified.spreadsheet.title,
+        expectedCurrentWorkbook: verified.spreadsheet.data,
+      });
       toast(t("ai.spreadsheetPatchApplied"), "success");
-      const updatedNote = {
-        role: "assistant" as const,
-        content: `[系统] 已为用户更新表格「${patch.title}」[sheet:${patch.spreadsheetId}]。修改项：${patch.summary.slice(0, 200)}...`,
-      };
-      memoryRef.current = [...memoryRef.current, updatedNote];
-      saveMemory(memoryRef.current);
       setPendingSpreadsheetPatch(null);
       setTaskStage("done");
-    } catch (err: any) {
+    } catch (err) {
       console.error("[apply_spreadsheet_patch] error:", err);
-      toast(t("ai.spreadsheetPatchFailed"), "error");
+      if (writeAttempted) {
+        try {
+          await rollbackSpreadsheet();
+          toast(t("ai.spreadsheetPatchRolledBack"), "error");
+        } catch (rollbackError) {
+          console.error("[apply_spreadsheet_patch_rollback] error:", rollbackError);
+          toast(t("ai.spreadsheetPatchRollbackFailed"), "error");
+        }
+      } else {
+        toast(t("ai.spreadsheetPatchFailed"), "error");
+      }
     } finally {
       setApplyingSpreadsheetPatch(false);
       setTimeout(() => setTaskStage("idle"), 1200);
     }
   }, [applyingSpreadsheetPatch, pendingSpreadsheetPatch, t, toast]);
+
+  const undoSpreadsheetPatch = useCallback(async () => {
+    if (!spreadsheetUndo || applyingSpreadsheetPatch) return;
+    setApplyingSpreadsheetPatch(true);
+    try {
+      const current = await api.getSpreadsheet(spreadsheetUndo.spreadsheetId);
+      if (!isSpreadsheetActionBaselineCurrent(current.spreadsheet, {
+        title: spreadsheetUndo.expectedCurrentTitle,
+        data: spreadsheetUndo.expectedCurrentWorkbook,
+      })) {
+        setSpreadsheetUndo(null);
+        toast(t("ai.spreadsheetUndoStale"), "error");
+        return;
+      }
+      await api.updateSpreadsheet(spreadsheetUndo.spreadsheetId, {
+        title: spreadsheetUndo.title,
+        data: spreadsheetUndo.workbook,
+      });
+      const verified = await api.getSpreadsheet(spreadsheetUndo.spreadsheetId);
+      if (JSON.stringify(verified.spreadsheet.data) !== JSON.stringify(spreadsheetUndo.workbook)) {
+        throw new Error("Spreadsheet undo verification failed");
+      }
+      setActiveSpreadsheet(verified.spreadsheet);
+      window.dispatchEvent(new CustomEvent("spreadsheet:updated", {
+        detail: { id: spreadsheetUndo.spreadsheetId, spreadsheet: verified.spreadsheet },
+      }));
+      setSpreadsheetUndo(null);
+      toast(t("ai.spreadsheetUndone"), "success");
+    } catch (err) {
+      console.error("[undo_spreadsheet_patch] error:", err);
+      toast(t("ai.spreadsheetUndoFailed"), "error");
+    } finally {
+      setApplyingSpreadsheetPatch(false);
+    }
+  }, [applyingSpreadsheetPatch, spreadsheetUndo, t, toast]);
 
   const loadVersions = useCallback(async () => {
     if (!currentDocumentId) {
@@ -1505,7 +1831,18 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
     if (!currentDocumentId || restoringVersionId) return;
     setRestoringVersionId(version.id);
     try {
+      const flushed = await requestDocumentAutosaveFlush(currentDocumentId);
+      if (!flushed) {
+        toast(t("ai.docFlushFailed"), "error");
+        return;
+      }
+      cancelPendingDocumentAutosave(currentDocumentId);
       await restoreDocumentVersion(currentDocumentId, version.id);
+      const restored = await loadDocument(currentDocumentId);
+      if (!restored || restored.title !== version.title || restored.content !== version.content) {
+        throw new Error("Version restore verification failed");
+      }
+      notifyDocumentExternalWrite(currentDocumentId, restored.content);
       toast(t("ai.versionRestored"), "success");
       await loadVersions();
     } catch (err) {
@@ -1514,7 +1851,7 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
     } finally {
       setRestoringVersionId(null);
     }
-  }, [currentDocumentId, loadVersions, restoreDocumentVersion, restoringVersionId, t, toast]);
+  }, [currentDocumentId, loadDocument, loadVersions, restoreDocumentVersion, restoringVersionId, t, toast]);
 
 
   const currentPersonality = PERSONALITY_OPTIONS.find((p) => p.key === personality) || PERSONALITY_OPTIONS[0];
@@ -1640,29 +1977,40 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
     setInput((prev) => `${prev.slice(0, slash.start)}${command.prompt}`);
     setCommandOpen(false);
     setCommandIndex(0);
-    // Sender handles focus internally
+    window.setTimeout(() => chatInputRef.current?.focus(), 0);
   };
 
   const handleInputChange = (next: string) => {
-    setInput(next);
-    const nextMention = getMentionQuery(next);
-    const nextBrain = getBrainQuery(next);
-    const nextSlash = getSlashQuery(next);
+    const nextInput = next.slice(0, MAX_CHAT_INPUT_CHARS);
+    setInput(nextInput);
+    const nextMention = getMentionQuery(nextInput);
+    const nextBrain = getBrainQuery(nextInput);
+    const nextSlash = getSlashQuery(nextInput);
     setMentionOpen(!!nextMention);
     setBrainOpen(!!nextBrain && !nextMention);
     setCommandOpen(!!nextSlash && !nextMention && !nextBrain);
     setMentionIndex(0);
     setBrainIndex(0);
     setCommandIndex(0);
-    setReferences((prev) => prev.filter((ref) => next.includes(`@${ref.title}`)));
-    setBrainReferences((prev) => prev.filter((ref) => next.includes(`#${ref.title}`)));
+    setReferences((prev) => prev.filter((ref) => textMentionsTitle(nextInput, ref.title, "@")));
+    setBrainReferences((prev) => prev.filter((ref) => textMentionsTitle(nextInput, ref.title, "#")));
   };
 
   const closeWithAnimation = useCallback(() => {
-    if (abortRef.current) {
+    if (pendingUpdate || pendingCreate || pendingSpreadsheetPatch) {
+      setConfirmClosePending(true);
+      return;
+    }
+    if (loading || streaming) {
+      finalizeInterruptedAssistant();
+      typewriterControlRef.current = null;
+      abortRef.current?.abort();
+    } else if (abortRef.current) {
       abortRef.current.abort();
     }
-    saveConversation();
+    window.setTimeout(() => {
+      void saveConversation();
+    }, 0);
 
     const panel = chatPanelRef.current;
     if (!panel) {
@@ -1691,7 +2039,7 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
         { autoAlpha: 0, scale: 0.92, y: 18, filter: "blur(10px)", duration: 0.32 },
         0.06
       );
-  }, [saveConversation]);
+  }, [finalizeInterruptedAssistant, loading, pendingCreate, pendingSpreadsheetPatch, pendingUpdate, saveConversation, streaming]);
 
   // Keep index refs in sync for keyboard handler (avoids stale closure issues)
   mentionIdxRef.current = mentionIndex;
@@ -1703,6 +2051,7 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
     const activeEl = document.activeElement;
     if (!activeEl || !(activeEl instanceof HTMLTextAreaElement || activeEl instanceof HTMLInputElement)) return;
     if (!activeEl.closest("[data-ai-chat-panel]")) return;
+    if (e.nativeEvent.isComposing) return;
 
     // Escape: dismiss menus, then close panel
     if (e.key === "Escape") {
@@ -1731,7 +2080,9 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
         selectReference(mentionMatches[mentionIdxRef.current]);
         return;
       }
-      return; // let Sender handle normal Enter
+      e.preventDefault();
+      void handleSend();
+      return;
     }
 
     // Arrow keys: autocomplete navigation
@@ -1779,7 +2130,7 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
     mentionOpen, brainOpen, commandOpen,
     mentionMatches, brainMatches, commandMatches,
     selectReference, selectBrainReference, selectCommand,
-    closeWithAnimation,
+    closeWithAnimation, handleSend,
   ]);
 
   useEffect(() => {
@@ -1819,7 +2170,6 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
     return () => ctx.revert();
   }, [keyOk, open, pos.x, pos.y]);
 
-  const chatPanelSide = absoluteToAnchored(pos).side;
   const chatHeaderButtonClass =
     "h-8 w-8 rounded-lg border border-transparent text-surface-500 transition-all duration-200 hover:-translate-y-0.5 hover:border-brand-200 hover:bg-brand-50 hover:text-brand-700 hover:shadow-sm focus-visible:ring-brand-300 dark:text-surface-400 dark:hover:border-brand-700/60 dark:hover:bg-brand-950/60 dark:hover:text-brand-200";
   const chatHeaderDangerButtonClass =
@@ -1830,11 +2180,14 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
   return (
     <>
       {/* Floating button */}
-      <button
-        onMouseDown={handleMouseDown}
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        onPointerDown={handlePointerDown}
         aria-label={t("ai.title")}
         className={cn(
-          "group fixed z-50 flex h-[62px] w-[62px] items-center justify-center overflow-hidden rounded-full border border-white/70 bg-[linear-gradient(145deg,rgba(255,255,255,0.96),rgba(232,237,233,0.92))] shadow-[0_18px_38px_rgba(46,61,57,0.18),inset_0_1px_0_rgba(255,255,255,0.92)] ring-1 ring-surface-200/70 transition-all duration-300 select-none backdrop-blur-md dark:border-white/10 dark:bg-[linear-gradient(145deg,rgba(47,55,52,0.96),rgba(24,32,30,0.92))] dark:ring-white/10",
+          "group fixed z-50 flex h-[62px] w-[62px] items-center justify-center overflow-hidden rounded-full border border-white/70 bg-[linear-gradient(145deg,rgba(255,255,255,0.96),rgba(232,237,233,0.92))] shadow-[0_18px_38px_rgba(46,61,57,0.18),inset_0_1px_0_rgba(255,255,255,0.92)] ring-1 ring-surface-200/70 transition-all duration-300 select-none backdrop-blur-md dark:border-white/10 dark:bg-[linear-gradient(145deg,rgba(47,55,52,0.96),rgba(24,32,30,0.92))] dark:ring-white/10 touch-none",
           open ? "opacity-0 pointer-events-none scale-75" : "opacity-100 scale-100",
           dragging ? "cursor-grabbing scale-105" : "cursor-grab hover:-translate-y-0.5 hover:scale-105",
           "text-surface-700 dark:text-surface-100"
@@ -1845,25 +2198,106 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
         <span className="absolute -right-4 -top-4 h-11 w-11 rounded-full bg-brand-200/35 blur-xl transition-transform duration-500 group-hover:translate-x-1 group-hover:translate-y-1 dark:bg-brand-500/20" />
         <img
           src={catAvatar}
-          alt="AI"
+          alt={t("ai.title")}
           draggable={false}
           className="relative h-12 w-12 rounded-full object-cover pointer-events-none select-none"
         />
-      </button>
+      </Button>
+
+      {open && !keyOk && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label={t("ai.title")}
+          className={cn(
+            "fixed bottom-6 z-50 w-[min(420px,calc(100vw-48px))] overflow-hidden rounded-2xl border border-surface-200 bg-white shadow-2xl dark:border-surface-700 dark:bg-surface-900",
+            "right-6 max-sm:inset-x-2 max-sm:bottom-2 max-sm:w-auto"
+          )}
+        >
+          <div className="flex items-center justify-between border-b border-surface-200 px-4 py-3 dark:border-surface-700">
+            <div className="flex items-center gap-2">
+              <img src={catAvatar} alt={t("ai.title")} className="h-8 w-8 rounded-full object-cover" />
+              <span className="text-sm font-semibold text-surface-900 dark:text-surface-100">{t("ai.title")}</span>
+            </div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              aria-label={t("common.close")}
+              onClick={() => setOpen(false)}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+          <div className="p-5">
+            {readinessStatus === "checking" ? (
+              <div className="flex min-h-32 items-center justify-center">
+                <InlineLoading variant="ai" label={t("ai.readinessChecking")} />
+              </div>
+            ) : (
+              <>
+                <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-brand-50 text-brand-600 dark:bg-brand-950 dark:text-brand-300">
+                  <Sparkles className="h-5 w-5" />
+                </div>
+                <h2 className="text-base font-semibold text-surface-950 dark:text-surface-50">
+                  {t(readinessStatus === "missing" ? "ai.configRequiredTitle" : "ai.configCheckFailedTitle")}
+                </h2>
+                <p className="mt-2 text-sm leading-6 text-surface-500 dark:text-surface-400">
+                  {t(readinessStatus === "missing" ? "ai.configRequiredDesc" : "ai.configCheckFailedDesc")}
+                </p>
+                <div className="mt-5 flex flex-wrap justify-end gap-2">
+                  {readinessStatus === "unavailable" && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => {
+                        setReadinessStatus("checking");
+                        resolveAiReadiness(() => api.getApiKey()).then((status) => {
+                          setReadinessStatus(status);
+                          setKeyOk(status === "ready");
+                        });
+                      }}
+                    >
+                      <RotateCcw className="h-4 w-4" />
+                      {t("ai.retryConfigCheck")}
+                    </Button>
+                  )}
+                  <Button
+                    type="button"
+                    onClick={() => {
+                      setOpen(false);
+                      openAiModelConfig();
+                    }}
+                  >
+                    {t("ai.openModelConfig")}
+                  </Button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       {open && keyOk && (
         <div
           ref={chatPanelRef}
           data-ai-chat-panel
+          role="dialog"
+          aria-modal="true"
+          aria-label={t("ai.title")}
           onKeyDownCapture={handleChatKeyDown}
           className={cn(
-            "fixed bottom-6 z-50 flex h-[min(760px,calc(100vh-48px))] w-[min(560px,calc(100vw-48px))] flex-col rounded-2xl border border-surface-200 bg-white shadow-2xl dark:border-surface-700 dark:bg-surface-900",
-            chatPanelSide === "left" ? "left-6" : "right-6"
+            "fixed z-50 flex flex-col rounded-2xl border border-surface-200 bg-white shadow-2xl dark:border-surface-700 dark:bg-surface-900",
+            "bottom-6 h-[min(760px,calc(100vh-48px))] w-[min(560px,calc(100vw-48px))]",
+            "right-6 max-sm:inset-x-2 max-sm:bottom-2 max-sm:left-2 max-sm:right-2 max-sm:h-[calc(100dvh-1rem)] max-sm:w-auto max-sm:rounded-xl"
           )}
         >
-          {/* Backdrop: click outside to close and abort */}
-          <div
-            className="fixed inset-0 -z-10"
+          {/* Backdrop: while streaming, do not abort — ask user to stop first */}
+          <Button
+            type="button"
+            variant="ghost"
+            aria-label={t("common.close")}
+            className="fixed inset-0 -z-10 h-auto w-auto rounded-none p-0"
             onClick={() => {
               closeWithAnimation();
             }}
@@ -1873,25 +2307,49 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2">
                 <div className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-100 dark:bg-brand-900 overflow-hidden">
-                  <img src={catAvatar} alt="AI" className="h-8 w-8 object-cover" />
+                  <img src={catAvatar} alt={t("ai.title")} className="h-8 w-8 object-cover" />
                 </div>
                 <div>
                   <h3 className="text-sm font-semibold text-surface-900 dark:text-surface-100">{t("ai.title")}</h3>
-                  <p className="text-[10px] text-surface-500">{t("ai.title")} · {currentPersonality.label}</p>
+                  <p className="text-[10px] text-surface-500">{t("ai.title")} · {t(currentPersonality.labelKey)}</p>
                 </div>
               </div>
               <div className="flex items-center gap-1">
+                <Tooltip content={t("ai.newChat")} delay={150}>
+                  <Button aria-label={t("ai.newChat")} variant="ghost" size="icon" disabled={isGenerating} onClick={() => { void startNewChat(); }} className={chatHeaderButtonClass}>
+                    <MessageSquarePlus className="h-4 w-4" />
+                  </Button>
+                </Tooltip>
+                <AIChatSessionsMenu
+                  open={sessionsOpen}
+                  sessions={sessions}
+                  activeConversationId={conversationId}
+                  buttonClassName={chatHeaderButtonClass}
+                  activeButtonClassName={chatHeaderActiveButtonClass}
+                  disabled={isGenerating}
+                  labels={{
+                    sessions: t("ai.sessions"),
+                    sessionsEmpty: t("ai.sessionsEmpty"),
+                    deleteAria: t("ai.deleteSession"),
+                  }}
+                  onToggle={() => setSessionsOpen((prev) => !prev)}
+                  onClose={() => setSessionsOpen(false)}
+                  onSwitch={(id) => { void switchConversation(id); }}
+                  onDelete={(id) => { void deleteSession(id); }}
+                />
                 {currentDocumentId && (
                   <Tooltip content={t("ai.versionHistory")} delay={150}>
-                    <Button variant="ghost" size="icon" onClick={() => setVersionDialogOpen(true)} className={chatHeaderButtonClass}>
+                    <Button aria-label={t("ai.versionHistory")} variant="ghost" size="icon" onClick={() => setVersionDialogOpen(true)} className={chatHeaderButtonClass}>
                       <History className="h-4 w-4" />
                     </Button>
                   </Tooltip>
                 )}
                 <Tooltip content={t("card.edit")} delay={150}>
                   <Button
+                    aria-label={t("card.edit")}
                     variant="ghost"
                     size="icon"
+                    disabled={isGenerating}
                     onClick={() => { setEditMode(!editMode); setSelectedMsgs(new Set()); }}
                     className={cn(chatHeaderButtonClass, editMode && chatHeaderActiveButtonClass)}
                   >
@@ -1899,12 +2357,25 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
                   </Button>
                 </Tooltip>
                 <Tooltip content={t("ai.clearHistory")} delay={150}>
-                  <Button variant="ghost" size="icon" onClick={() => setDeleteConfirm(true)} className={chatHeaderDangerButtonClass}>
+                  <Button
+                    aria-label={t("ai.clearHistory")}
+                    variant="ghost"
+                    size="icon"
+                    disabled={isGenerating}
+                    onClick={() => {
+                      if (pendingUpdate || pendingCreate || pendingSpreadsheetPatch) {
+                        toast(t("ai.finishPreviewFirst"), "info");
+                        return;
+                      }
+                      setDeleteConfirm(true);
+                    }}
+                    className={chatHeaderDangerButtonClass}
+                  >
                     <Trash2 className="h-4 w-4" />
                   </Button>
                 </Tooltip>
                 <Tooltip content={t("common.close")} delay={150}>
-                  <Button variant="ghost" size="icon" onClick={closeWithAnimation} className={chatHeaderDangerButtonClass}>
+                  <Button aria-label={t("common.close")} variant="ghost" size="icon" onClick={closeWithAnimation} className={chatHeaderDangerButtonClass}>
                     <X className="h-4 w-4" />
                   </Button>
                 </Tooltip>
@@ -1913,57 +2384,84 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
 
             {/* Personality selector */}
             <div className="flex items-center gap-2">
-            <div className="relative">
-              <button
-                onClick={() => setPersonalityOpen(!personalityOpen)}
-                className="flex items-center gap-1.5 rounded-lg border border-surface-200 bg-surface-50 px-2 py-1 text-xs text-surface-600 hover:bg-surface-100 transition-colors dark:border-surface-700 dark:bg-surface-800 dark:text-surface-400 dark:hover:bg-surface-700"
-              >
-                <Smile className="h-3 w-3" />
-                <span>{currentPersonality.emoji} {currentPersonality.label}</span>
-                <ChevronDown className={cn("h-3 w-3 transition-transform", personalityOpen && "rotate-180")} />
-              </button>
-              {personalityOpen && (
-                <>
-                  <div className="fixed inset-0 z-10" onClick={() => setPersonalityOpen(false)} />
-                  <div className="absolute left-0 top-full mt-1 z-20 w-36 rounded-lg border border-surface-200 bg-white py-1 shadow-lg dark:border-surface-700 dark:bg-surface-900">
-                    {PERSONALITY_OPTIONS.map((opt) => (
-                      <button
-                        key={opt.key}
-                        onClick={() => changePersonality(opt.key)}
-                        className={cn(
-                          "w-full flex items-center gap-2 px-3 py-1.5 text-xs transition-colors hover:bg-surface-50 dark:hover:bg-surface-800",
-                          personality === opt.key
-                            ? "text-brand-600 font-medium bg-brand-50 dark:text-brand-400 dark:bg-brand-950"
-                            : "text-surface-600 dark:text-surface-400"
-                        )}
-                      >
-                        <span>{opt.emoji}</span>
-                        <span>{opt.label}</span>
-                      </button>
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
+            <DropdownMenu open={personalityOpen} onOpenChange={setPersonalityOpen}>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={isGenerating}
+                  aria-label={t("ai.personalitySelector")}
+                  aria-expanded={personalityOpen}
+                  className="h-7 gap-1.5 bg-surface-50 px-2 text-xs font-normal text-surface-600 dark:bg-surface-800 dark:text-surface-400"
+                >
+                  <Smile className="h-3 w-3" />
+                  <span>{currentPersonality.emoji} {t(currentPersonality.labelKey)}</span>
+                  <ChevronDown className={cn("h-3 w-3 transition-transform", personalityOpen && "rotate-180")} />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="min-w-36">
+                {PERSONALITY_OPTIONS.map((opt, index) => (
+                  <DropdownMenuItem
+                    key={opt.key}
+                    index={index}
+                    onSelect={() => changePersonality(opt.key)}
+                    className={cn(
+                      "text-xs",
+                      personality === opt.key && "bg-brand-50 font-medium text-brand-600 dark:bg-brand-950 dark:text-brand-400"
+                    )}
+                  >
+                    <span>{opt.emoji}</span>
+                    <span>{t(opt.labelKey)}</span>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
             {activeContextDocument && (
-              <div className="flex min-w-0 items-center gap-1.5 rounded-lg border border-brand-100 bg-brand-50 px-2 py-1 text-xs text-brand-700 dark:border-brand-900 dark:bg-brand-950 dark:text-brand-300">
+              <Toggle
+                pressed={workspaceContextEnabled}
+                onPressedChange={(pressed) => {
+                  setWorkspaceContextEnabled(pressed);
+                  localStorage.setItem(WORKSPACE_CONTEXT_KEY, pressed ? "1" : "0");
+                }}
+                aria-label={t("ai.toggleCurrentContext")}
+                className={cn(
+                  "flex h-auto min-w-0 items-center gap-1.5 rounded-lg border px-2 py-1 text-xs",
+                  workspaceContextEnabled
+                    ? "border-brand-100 bg-brand-50 text-brand-700 dark:border-brand-900 dark:bg-brand-950 dark:text-brand-300"
+                    : "border-surface-200 bg-surface-50 text-surface-500 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-400"
+                )}
+              >
                 <FileText className="h-3 w-3 shrink-0" />
                 <span className="shrink-0 font-medium">{t("ai.currentContext")}</span>
                 <span className="truncate">@{activeContextDocument.title}</span>
                 <span className="shrink-0 rounded-full bg-white/70 px-1.5 py-0.5 text-[10px] font-semibold text-brand-600 dark:bg-brand-900/70 dark:text-brand-200">
-                  {t("ai.autoContext")}
+                  {t(workspaceContextEnabled ? "ai.contextOnDemand" : "ai.contextDisabled")}
                 </span>
-              </div>
+              </Toggle>
             )}
             {activeContextSpreadsheet && (
-              <div className="flex min-w-0 items-center gap-1.5 rounded-lg border border-emerald-100 bg-emerald-50 px-2 py-1 text-xs text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-300">
+              <Toggle
+                pressed={workspaceContextEnabled}
+                onPressedChange={(pressed) => {
+                  setWorkspaceContextEnabled(pressed);
+                  localStorage.setItem(WORKSPACE_CONTEXT_KEY, pressed ? "1" : "0");
+                }}
+                aria-label={t("ai.toggleCurrentContext")}
+                className={cn(
+                  "flex h-auto min-w-0 items-center gap-1.5 rounded-lg border px-2 py-1 text-xs",
+                  workspaceContextEnabled
+                    ? "border-emerald-100 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950 dark:text-emerald-300"
+                    : "border-surface-200 bg-surface-50 text-surface-500 dark:border-surface-700 dark:bg-surface-800 dark:text-surface-400"
+                )}
+              >
                 <FileSpreadsheet className="h-3 w-3 shrink-0" />
                 <span className="shrink-0 font-medium">{t("ai.spreadsheetContext")}</span>
                 <span className="truncate">{activeContextSpreadsheet.title}</span>
                 <span className="shrink-0 rounded-full bg-white/70 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-600 dark:bg-emerald-900/70 dark:text-emerald-200">
-                  {t("ai.autoContext")}
+                  {t(workspaceContextEnabled ? "ai.contextOnDemand" : "ai.contextDisabled")}
                 </span>
-              </div>
+              </Toggle>
             )}
             </div>
             {taskStage !== "idle" && (
@@ -2040,8 +2538,10 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
                     <div key={i} className={cn("mb-4 flex gap-2 items-start", isUser ? "flex-row-reverse" : "flex-row")}>
                       {/* Edit checkbox */}
                       {editMode && (
-                        <button
-                          onClick={() => {
+                        <Toggle
+                          pressed={selectedMsgs.has(i)}
+                          aria-label={t("ai.selectMessage")}
+                          onPressedChange={() => {
                             const next = new Set(selectedMsgs);
                             next.has(i) ? next.delete(i) : next.add(i);
                             setSelectedMsgs(next);
@@ -2054,12 +2554,12 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
                           )}
                         >
                           {selectedMsgs.has(i) && <Check className="h-3 w-3" />}
-                        </button>
+                        </Toggle>
                       )}
                       {/* Avatar */}
                       {isUser ? (
                         avatarUrl ? (
-                          <img src={avatarUrl} alt="me" className="h-7 w-7 shrink-0 rounded-full object-cover mt-0.5" />
+                          <img src={avatarUrl} alt={user?.name || t("ai.userAvatar")} className="h-7 w-7 shrink-0 rounded-full object-cover mt-0.5" />
                         ) : (
                           <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-500 text-[10px] font-semibold text-white mt-0.5">
                             {initials}
@@ -2067,7 +2567,7 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
                         )
                       ) : (
                         <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-100 dark:bg-brand-900 mt-0.5 overflow-hidden">
-                          <img src={catAvatar} alt="AI" className="h-7 w-7 object-cover" />
+                          <img src={catAvatar} alt={t("ai.title")} className="h-7 w-7 object-cover" />
                         </div>
                       )}
 
@@ -2082,20 +2582,6 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
                           msg.content
                         ) : (
                           <>
-                            {/* Thinking / Reasoning block */}
-                            {msg.thinking && (
-                              <details className="mt-0 mb-2" open={streaming && isLastAssistant}>
-                                <summary className="flex cursor-pointer items-center gap-1.5 text-[11px] font-medium text-purple-500 hover:text-purple-600 dark:text-purple-400 dark:hover:text-purple-300 select-none">
-                                  <BrainCircuit className="h-3 w-3" />
-                                  <span>{t("ai.reasoning")}</span>
-                                  <ChevronDown className="h-3 w-3 transition-transform duration-200 ml-auto group-open:rotate-180" />
-                                </summary>
-                                <div className="mt-1.5 rounded-lg border border-purple-200/50 bg-purple-50/30 px-3 py-2 text-xs leading-relaxed whitespace-pre-wrap text-surface-600 dark:border-purple-500/15 dark:bg-purple-500/5 dark:text-surface-400">
-                                  {msg.thinking}
-                                </div>
-                              </details>
-                            )}
-
                             {/* Tool call timeline */}
                             {msg.toolCalls && msg.toolCalls.length > 0 && (
                               (() => {
@@ -2222,9 +2708,21 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
                               dangerouslySetInnerHTML={{ __html: renderAiChatHtml(msg.content) }}
                             />
                             {msg.interrupted && (
-                              <div className="mt-2 inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-600 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300">
-                                <XCircle className="h-3 w-3" />
-                                {t("ai.stopped")}
+                              <div className="mt-2 flex flex-wrap items-center gap-2">
+                                <div className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-600 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300">
+                                  <XCircle className="h-3 w-3" />
+                                  {t("ai.stopped")}
+                                </div>
+                                {isLastAssistant && (
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-6 px-2 text-[10px]"
+                                    onClick={() => handleContinue()}
+                                  >
+                                    {t("ai.continueGenerate")}
+                                  </Button>
+                                )}
                               </div>
                             )}
                           </>
@@ -2267,19 +2765,30 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
                         )}
                         {/* Action buttons: regenerate + copy + feedback, appear on hover */}
                         {!isUser && !streaming && assistantActionContent.trim() && (
-                          <div className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-full pl-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex flex-col gap-0.5">
+                          <div className={cn(
+                            "absolute right-0 top-1/2 -translate-y-1/2 translate-x-full pl-2 transition-opacity duration-200 flex flex-col gap-0.5",
+                            msg.interrupted ? "opacity-100" : "opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
+                          )}>
                             {isLastAssistant && (
                               <Tooltip content={t("ai.regenerate")} delay={150} side="right">
-                                <button
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon-sm"
+                                  aria-label={t("ai.regenerate")}
                                   onClick={(e) => { e.stopPropagation(); handleRegenerate(); }}
-                                  className="p-0.5 rounded text-surface-300 hover:text-amber-500 hover:bg-surface-100 transition-colors"
+                                  className="h-5 w-5 p-0.5 text-surface-300 hover:bg-surface-100 hover:text-amber-500"
                                 >
                                   <RotateCcw className="h-3 w-3" />
-                                </button>
+                                </Button>
                               </Tooltip>
                             )}
                             <Tooltip content={copiedMsgIdx === i ? t("ai.copied") : t("ai.copy")} delay={150} side="right">
-                              <button
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon-sm"
+                                aria-label={copiedMsgIdx === i ? t("ai.copied") : t("ai.copy")}
                                 onClick={async (e) => {
                                   e.stopPropagation();
                                   try {
@@ -2294,14 +2803,18 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
                                     toast(t("ai.copyFailed"), "error");
                                   }
                                 }}
-                                className="p-0.5 rounded text-surface-300 hover:text-brand-500 hover:bg-surface-100 transition-colors"
+                                className="h-5 w-5 p-0.5 text-surface-300 hover:bg-surface-100 hover:text-brand-500"
                               >
                                 {copiedMsgIdx === i ? <CopyCheck className="h-3 w-3 text-green-500" /> : <Copy className="h-3 w-3" />}
-                              </button>
+                              </Button>
                             </Tooltip>
                             {canFeedback && !feedbackDoneRef.current.has(i) && (<>
                             <Tooltip content={t("ai.like")} delay={150} side="right">
-                              <button
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon-sm"
+                                aria-label={t("ai.like")}
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   if (showRating && feedbackMsgIdx === i) {
@@ -2311,13 +2824,17 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
                                     setFeedbackMsgIdx(i); setShowRating(true); setShowDislikeOpts(false);
                                   }
                                 }}
-                                className="p-0.5 rounded text-surface-300 hover:text-amber-500 hover:bg-surface-100 transition-colors"
+                                className="h-5 w-5 p-0.5 text-surface-300 hover:bg-surface-100 hover:text-amber-500"
                               >
                                 <ThumbsUp className="h-3 w-3" />
-                              </button>
+                              </Button>
                             </Tooltip>
                             <Tooltip content={t("ai.dislike")} delay={150} side="right">
-                              <button
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon-sm"
+                                aria-label={t("ai.dislike")}
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   if (showDislikeOpts && feedbackMsgIdx === i) {
@@ -2327,10 +2844,10 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
                                     setFeedbackMsgIdx(i); setShowDislikeOpts(true); setShowRating(false);
                                   }
                                 }}
-                                className="p-0.5 rounded text-surface-300 hover:text-red-500 hover:bg-surface-100 transition-colors"
+                                className="h-5 w-5 p-0.5 text-surface-300 hover:bg-surface-100 hover:text-red-500"
                               >
                                 <ThumbsDown className="h-3 w-3" />
-                              </button>
+                              </Button>
                             </Tooltip>
                             </>)}
                             {/* Star rating popover */}
@@ -2340,8 +2857,12 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
                                 closingRating ? "animate-out fade-out duration-150" : "animate-in fade-in duration-200"
                               )}>
                                 {[1, 2, 3, 4, 5].map((star) => (
-                                  <button
+                                  <Button
                                     key={star}
+                                    type="button"
+                                    variant="ghost"
+                                    size="icon-sm"
+                                    aria-label={`${star} ${t("ai.like")}`}
                                     onClick={async (e) => {
                                       e.stopPropagation();
                                       await api.sendFeedback({ messageContent: assistantActionContent, feedbackType: "like", rating: star });
@@ -2352,7 +2873,7 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
                                     }}
                                     onMouseEnter={() => setHoverStar(star)}
                                     onMouseLeave={() => setHoverStar(0)}
-                                    className="p-0.5 transition-transform hover:scale-125"
+                                    className="h-5 w-5 p-0.5 hover:scale-110"
                                   >
                                     <Star
                                       className={cn(
@@ -2362,7 +2883,7 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
                                           : "fill-transparent text-surface-300 dark:text-surface-500"
                                       )}
                                     />
-                                  </button>
+                                  </Button>
                                 ))}
                               </div>
                             )}
@@ -2373,8 +2894,11 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
                                 closingDislike ? "animate-out fade-out duration-150" : "animate-in fade-in duration-200"
                               )}>
                                 {[t("ai.dislikeInaccurate"), t("ai.dislikeUnexpected"), t("ai.dislikeIncomplete"), t("ai.dislikeTone"), t("ai.dislikeOther")].map((reason) => (
-                                  <button
+                                  <Button
                                     key={reason}
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
                                     onClick={async (e) => {
                                       e.stopPropagation();
                                       await api.sendFeedback({ messageContent: assistantActionContent, feedbackType: "dislike", reason });
@@ -2383,10 +2907,10 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
                                       feedbackDoneRef.current.add(i);
                                       setShowDislikeOpts(false); setFeedbackMsgIdx(null);
                                     }}
-                                    className="text-[10px] px-2 py-0.5 rounded-full border border-surface-200 text-surface-500 hover:bg-red-50 hover:text-red-500 hover:border-red-200 transition-colors dark:border-surface-700 dark:hover:bg-red-950"
+                                    className="h-auto rounded-full px-2 py-0.5 text-[10px] text-surface-500 hover:border-red-200 hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-950"
                                   >
                                     {reason}
-                                  </button>
+                                  </Button>
                                 ))}
                               </div>
                             )}
@@ -2400,7 +2924,7 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
                 {loading && !streaming && (
                   <div className="mb-4 flex gap-2">
                     <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-brand-100 dark:bg-brand-900 mt-0.5 overflow-hidden">
-                      <img src={catAvatar} alt="AI" className="h-7 w-7 object-cover" />
+                      <img src={catAvatar} alt={t("ai.title")} className="h-7 w-7 object-cover" />
                     </div>
                     <div className="flex items-center gap-1.5 rounded-2xl rounded-bl-md bg-surface-100 px-4 py-3 dark:bg-surface-800">
                       <InlineLoading
@@ -2421,10 +2945,12 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
           {/* Delete selected bar */}
           {editMode && selectedMsgs.size > 0 && (
             <div data-ai-chat-enter className="shrink-0 border-t border-surface-200 bg-red-50 px-4 py-2 flex items-center justify-between dark:bg-red-950 dark:border-surface-700">
-              <span className="text-xs text-red-600 dark:text-red-400">已选择 {selectedMsgs.size} 条消息</span>
-              <Button size="sm" variant="destructive" onClick={() => setDeleteMsgConfirm(true)}>
+              <span className="text-xs text-red-600 dark:text-red-400">
+                {t("ai.selectedMessages").replace("{count}", String(selectedMsgs.size))}
+              </span>
+              <Button size="sm" variant="destructive" disabled={isGenerating} onClick={() => setDeleteMsgConfirm(true)}>
                 <Trash2 className="h-3.5 w-3.5 mr-1" />
-                删除
+                {t("common.delete")}
               </Button>
             </div>
           )}
@@ -2441,14 +2967,16 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
                   >
                     <FileText className="h-3 w-3 shrink-0" />
                     <span className="truncate">@{ref.title}</span>
-                    <button
+                    <Button
                       type="button"
-                      title={t("ai.removeReference")}
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label={t("ai.removeReference")}
                       onClick={() => removeReference(ref)}
-                      className="rounded-full p-0.5 text-brand-400 hover:bg-brand-100 hover:text-brand-700 dark:hover:bg-brand-900 dark:hover:text-brand-200"
+                      className="h-5 w-5 rounded-full p-0.5 text-brand-400 hover:bg-brand-100 hover:text-brand-700 dark:hover:bg-brand-900 dark:hover:text-brand-200"
                     >
                       <X className="h-3 w-3" />
-                    </button>
+                    </Button>
                   </span>
                 ))}
               </div>
@@ -2463,14 +2991,16 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
                   >
                     <Sparkles className="h-3 w-3 shrink-0" />
                     <span className="truncate">#{ref.title}</span>
-                    <button
+                    <Button
                       type="button"
-                      title={t("ai.removeBrainReference")}
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label={t("ai.removeBrainReference")}
                       onClick={() => removeBrainReference(ref)}
-                      className="rounded-full p-0.5 text-amber-400 hover:bg-amber-100 hover:text-amber-700 dark:hover:bg-amber-900 dark:hover:text-amber-200"
+                      className="h-5 w-5 rounded-full p-0.5 text-amber-400 hover:bg-amber-100 hover:text-amber-700 dark:hover:bg-amber-900 dark:hover:text-amber-200"
                     >
                       <X className="h-3 w-3" />
-                    </button>
+                    </Button>
                   </span>
                 ))}
                 {autoBrainReferences.map((ref) => (
@@ -2483,39 +3013,65 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
                     <span className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[9px] dark:bg-emerald-900">
                       {t("rag.autoReference")}
                     </span>
-                    <button
+                    <Button
                       type="button"
-                      title={t("ai.removeBrainReference")}
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label={t("ai.removeBrainReference")}
                       onClick={() => removeAutoBrainReference(ref)}
-                      className="rounded-full p-0.5 text-emerald-400 hover:bg-emerald-100 hover:text-emerald-700 dark:hover:bg-emerald-900 dark:hover:text-emerald-200"
+                      className="h-5 w-5 rounded-full p-0.5 text-emerald-400 hover:bg-emerald-100 hover:text-emerald-700 dark:hover:bg-emerald-900 dark:hover:text-emerald-200"
                     >
                       <X className="h-3 w-3" />
-                    </button>
+                    </Button>
                   </span>
                 ))}
               </div>
             )}
             <div className="relative px-4 pb-4 pt-2" ref={senderRef}>
-              <Sender
-                value={input}
-                onChange={handleInputChange}
-                onSubmit={handleSend}
-                placeholder={isGenerating ? t("ai.replying") : t("ai.placeholder")}
-                loading={isGenerating}
-                onCancel={handleStop}
-                className="w-full"
-              />
+              <div className="flex items-end gap-2 rounded-2xl border border-surface-200 bg-white p-2 shadow-sm transition-colors focus-within:border-brand-400 focus-within:ring-2 focus-within:ring-brand-200/60 dark:border-surface-700 dark:bg-surface-900 dark:focus-within:border-brand-500 dark:focus-within:ring-brand-500/20">
+                <Textarea
+                  ref={chatInputRef}
+                  value={input}
+                  maxLength={MAX_CHAT_INPUT_CHARS}
+                  onChange={(event) => handleInputChange(event.target.value)}
+                  placeholder={isGenerating ? t("ai.replying") : t("ai.placeholder")}
+                  disabled={isGenerating}
+                  aria-label={t("ai.placeholder")}
+                  className="min-h-[52px] flex-1 resize-none overflow-y-auto border-0 bg-transparent px-2 py-2.5 shadow-none focus-visible:ring-0 dark:bg-transparent"
+                />
+                <div className="flex shrink-0 flex-col items-end gap-1">
+                  {input.length >= 10_000 && (
+                    <span className="px-1 text-[10px] tabular-nums text-surface-400">
+                      {t("ai.inputLimit")
+                        .replace("{count}", input.length.toLocaleString())
+                        .replace("{max}", MAX_CHAT_INPUT_CHARS.toLocaleString())}
+                    </span>
+                  )}
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant={isGenerating ? "outline" : "default"}
+                    disabled={!isGenerating && !input.trim()}
+                    onClick={() => { if (isGenerating) handleStop(); else void handleSend(); }}
+                    aria-label={isGenerating ? t("ai.stop") : t("ai.send")}
+                    className="h-9 w-9 rounded-xl"
+                  >
+                    {isGenerating ? <Square className="h-3.5 w-3.5" /> : <SendHorizontal className="h-4 w-4" />}
+                  </Button>
+                </div>
+              </div>
               {showMentionMenu && (
                 <div className="absolute bottom-full left-0 z-30 mb-2 max-h-56 w-full overflow-hidden rounded-xl border border-surface-200 bg-white py-1 shadow-lg dark:border-surface-700 dark:bg-surface-900">
                   {mentionMatches.length > 0 ? (
                     mentionMatches.map((doc, idx) => (
-                      <button
+                      <Button
                         key={doc.id}
                         type="button"
+                        variant="ghost"
                         onMouseDown={(e) => e.preventDefault()}
                         onMouseEnter={() => setMentionIndex(idx)}
                         onClick={() => selectReference(doc)}
-                        className={`flex w-full items-center gap-2 px-3 py-2 text-left text-xs transition-colors ${
+                        className={`flex h-auto min-h-8 w-full justify-start gap-2 rounded-none px-3 py-2 text-left text-xs ${
                           idx === mentionIndex
                             ? "bg-brand-50 text-brand-700 dark:bg-brand-950 dark:text-brand-300"
                             : "text-surface-700 hover:bg-surface-50 dark:text-surface-200 dark:hover:bg-surface-800"
@@ -2523,7 +3079,7 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
                       >
                         <FileText className="h-3.5 w-3.5 shrink-0 text-brand-500" />
                         <span className="truncate">@{doc.title}</span>
-                      </button>
+                      </Button>
                     ))
                   ) : (
                     <div className="px-3 py-2 text-xs text-surface-400">{t("ai.noMatchingDocs")}</div>
@@ -2534,14 +3090,15 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
                 <div className="absolute bottom-full left-0 z-30 mb-2 max-h-56 w-full overflow-hidden rounded-xl border border-surface-200 bg-white py-1 shadow-lg dark:border-surface-700 dark:bg-surface-900">
                   {brainMatches.length > 0 ? (
                     brainMatches.map((item, idx) => (
-                      <button
+                      <Button
                         key={item.id}
                         type="button"
+                        variant="ghost"
                         onMouseDown={(e) => e.preventDefault()}
                         onMouseEnter={() => setBrainIndex(idx)}
                         onClick={() => selectBrainReference(item)}
                         className={cn(
-                          "flex w-full items-center gap-2 px-3 py-2 text-left text-xs transition-colors",
+                          "flex h-auto min-h-8 w-full justify-start gap-2 rounded-none px-3 py-2 text-left text-xs",
                           idx === brainIndex
                             ? "bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
                             : "text-surface-700 hover:bg-surface-50 dark:text-surface-200 dark:hover:bg-surface-800"
@@ -2550,7 +3107,7 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
                         <Sparkles className="h-3.5 w-3.5 shrink-0 text-amber-500" />
                         <span className="truncate">#{item.title}</span>
                         {item.category && <span className="ml-auto shrink-0 text-[10px] text-surface-400">{item.category}</span>}
-                      </button>
+                      </Button>
                     ))
                   ) : (
                     <div className="px-3 py-2 text-xs text-surface-400">{t("ai.noMatchingBrain")}</div>
@@ -2560,14 +3117,15 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
               {showCommandMenu && (
                 <div className="absolute bottom-full left-0 z-30 mb-2 max-h-64 w-full overflow-hidden rounded-xl border border-surface-200 bg-white py-1 shadow-lg dark:border-surface-700 dark:bg-surface-900">
                   {commandMatches.map((command, idx) => (
-                    <button
+                    <Button
                       key={command.id}
                       type="button"
+                      variant="ghost"
                       onMouseDown={(e) => e.preventDefault()}
                       onMouseEnter={() => setCommandIndex(idx)}
                       onClick={() => selectCommand(command)}
                       className={cn(
-                        "flex w-full items-center gap-2 px-3 py-2 text-left text-xs transition-colors",
+                        "flex h-auto min-h-8 w-full justify-start gap-2 rounded-none px-3 py-2 text-left text-xs",
                         idx === commandIndex
                           ? "bg-brand-50 text-brand-700 dark:bg-brand-950 dark:text-brand-300"
                           : "text-surface-700 hover:bg-surface-50 dark:text-surface-200 dark:hover:bg-surface-800"
@@ -2576,7 +3134,7 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
                       <Sparkles className="h-3.5 w-3.5 shrink-0 text-brand-500" />
                       <span className="font-medium">{command.label}</span>
                       <span className="min-w-0 truncate text-surface-400">{command.prompt}</span>
-                    </button>
+                    </Button>
                   ))}
                 </div>
               )}
@@ -2715,6 +3273,67 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
         </DialogContent>
       </Dialog>
 
+      <Dialog open={!!pendingCreate} onOpenChange={(open) => {
+        if (!open && !applyingCreate) setPendingCreate(null);
+      }}>
+        <DialogContent className="flex max-h-[86vh] max-w-[720px] flex-col overflow-hidden p-0">
+          <div className="shrink-0 border-b border-surface-200 px-6 py-5 dark:border-surface-700">
+            <DialogTitle className="text-base font-bold text-surface-900 dark:text-surface-100">
+              {t("ai.createPreviewTitle")}
+            </DialogTitle>
+            <DialogDescription className="mt-1 text-xs leading-relaxed">
+              {t("ai.createPreviewDesc")}
+            </DialogDescription>
+            {pendingCreate && (
+              <div className="mt-4 rounded-lg border border-surface-200 bg-surface-50 px-3 py-2 text-sm font-semibold dark:border-surface-700 dark:bg-surface-800">
+                {pendingCreate.title}
+              </div>
+            )}
+          </div>
+          {pendingCreate && (
+            <Scrollbar className="min-h-0 flex-1">
+              <article
+                className="max-w-none px-5 py-4 text-sm leading-7 text-surface-800 dark:text-surface-100"
+                dangerouslySetInnerHTML={{ __html: pendingCreate.html }}
+              />
+            </Scrollbar>
+          )}
+          <div className="shrink-0 flex items-center justify-end gap-2 bg-white px-6 py-4 dark:bg-surface-900">
+            <Button variant="outline" onClick={() => setPendingCreate(null)} disabled={applyingCreate}>
+              {t("ai.createReject")}
+            </Button>
+            <Button onClick={() => void applyPendingCreate()} disabled={applyingCreate}>
+              {applyingCreate ? t("ai.docActionRunning") : t("ai.createAccept")}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={confirmClosePending} onOpenChange={setConfirmClosePending}>
+        <DialogContent className="max-w-md">
+          <DialogTitle>{t("common.confirm")}</DialogTitle>
+          <DialogDescription>{t("ai.closePendingWarn")}</DialogDescription>
+          <div className="mt-4 flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={() => setConfirmClosePending(false)}>
+              {t("common.cancel")}
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => {
+                setPendingUpdate(null);
+                setPendingCreate(null);
+                setPendingSpreadsheetPatch(null);
+                setConfirmClosePending(false);
+                setOpen(false);
+              }}
+            >
+              {t("common.confirm")}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={!!pendingSpreadsheetPatch} onOpenChange={(open) => {
         if (!open && !applyingSpreadsheetPatch) setPendingSpreadsheetPatch(null);
       }}>
@@ -2786,6 +3405,18 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
           </div>
         </DialogContent>
       </Dialog>
+
+      {spreadsheetUndo && open && (
+        <div className="pointer-events-auto fixed bottom-24 left-1/2 z-[80] flex -translate-x-1/2 items-center gap-2 rounded-lg border border-surface-200 bg-white px-3 py-2 shadow-lg dark:border-surface-700 dark:bg-surface-900">
+          <span className="text-xs text-surface-600 dark:text-surface-300">{spreadsheetUndo.title}</span>
+          <Button type="button" size="sm" variant="outline" disabled={applyingSpreadsheetPatch} onClick={() => void undoSpreadsheetPatch()}>
+            {t("ai.spreadsheetUndo")}
+          </Button>
+          <Button type="button" size="sm" variant="ghost" onClick={() => setSpreadsheetUndo(null)}>
+            {t("common.cancel")}
+          </Button>
+        </div>
+      )}
 
       <Dialog open={versionDialogOpen} onOpenChange={setVersionDialogOpen}>
         <DialogContent className="max-h-[82vh] max-w-[640px] overflow-hidden p-0">
@@ -2874,24 +3505,63 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
       <ConfirmModal
         open={deleteMsgConfirm}
         onOpenChange={setDeleteMsgConfirm}
-        title="删除消息"
-        description={`确定要删除选中的 ${selectedMsgs.size} 条消息吗？此操作不可撤销。`}
-        confirmLabel="删除"
+        title={t("ai.deleteMessagesTitle")}
+        description={t("ai.deleteMessagesDesc").replace("{count}", String(selectedMsgs.size))}
+        confirmLabel={t("ai.deleteSelectedConfirm")}
         cancelLabel={t("common.cancel")}
         variant="danger"
-        onConfirm={() => {
+        onConfirm={async () => {
+          if (isGenerating) return;
           const indices = Array.from(selectedMsgs).sort((a, b) => b - a);
           const newMsgs = [...messages];
           indices.forEach((idx) => newMsgs.splice(idx, 1));
+          const hasRemainingConversation = hasMeaningfulUserTurn(newMsgs);
+
+          if (!hasRemainingConversation) {
+            try {
+              await saveChainRef.current;
+              await api.deleteConversation(conversationId);
+            } catch {
+              toast(t("ai.sessionDeleteFailed"), "error");
+              return;
+            }
+          }
+
           setMessages(newMsgs);
           memoryRef.current = newMsgs;
-          saveMemory(newMsgs);
+          saveMemory(memoryScope, newMsgs);
           // Reset feedback tracking since indices shifted
           feedbackDoneRef.current = new Set();
           setSelectedMsgs(new Set());
           api.logActivity({ action: "chat_delete", detail: `deleted_${selectedMsgs.size}_msgs` }).catch(() => {});
           toast(t("ai.messageDeleted"), "success");
           setDeleteMsgConfirm(false);
+
+          if (hasRemainingConversation) {
+            const normalizedMessages = newMsgs.map((message) => {
+              if (message.role !== "assistant") return message;
+              const { finalContent, isTyping, ...rest } = message;
+              return {
+                ...rest,
+                content: resolveStoredAssistantContent({
+                  displayContent: message.content,
+                  finalContent,
+                }),
+              };
+            });
+            await queueConversationSave(normalizedMessages as Message[], conversationId, personalityRef.current);
+          } else {
+            setSessions((prev) => prev.filter((session) => session.id !== conversationId));
+            const nextConversationId = createClientConversationId();
+            const requestEpoch = chatViewEpochRef.current + 1;
+            chatViewEpochRef.current = requestEpoch;
+            setConversationId(nextConversationId);
+            saveActiveConversationId(memoryScope, nextConversationId);
+            setMessages([]);
+            memoryRef.current = [];
+            saveMemory(memoryScope, []);
+            greetUser(requestEpoch);
+          }
         }}
       />
 
@@ -2906,11 +3576,16 @@ export function AIChatWidget({ currentDocumentId, currentSpreadsheetId }: AIChat
         variant="danger"
         onConfirm={async () => {
           try {
+            await saveChainRef.current;
             await api.deleteConversations();
-            setConversationId(null);
+            const nextConversationId = createClientConversationId();
+            chatViewEpochRef.current += 1;
+            setConversationId(nextConversationId);
+            saveActiveConversationId(memoryScope, nextConversationId);
             setMessages([]);
             memoryRef.current = [];
-            localStorage.removeItem(MEMORY_KEY);
+            clearLocalMemoryCache(memoryScope);
+            setSessions([]);
             api.logActivity({ action: "chat_clear" }).catch(() => {});
             toast(t("ai.cleared"), "success");
           } catch {

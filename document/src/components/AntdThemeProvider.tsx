@@ -1,6 +1,5 @@
 import { type ReactNode, useMemo } from "react";
 import { ConfigProvider, theme as antdTheme } from "antd";
-import { XProvider } from "@ant-design/x";
 import { useTheme } from "@/components/ThemeProvider";
 import zhCN from "antd/locale/zh_CN";
 import enUS from "antd/locale/en_US";
@@ -32,19 +31,7 @@ export function AntdThemeProvider({ children }: { children: ReactNode }) {
 
   return (
     <ConfigProvider theme={themeConfig} locale={lang === "zh" ? zhCN : enUS}>
-      <XProvider
-        theme={{
-          algorithm: isDark ? antdTheme.darkAlgorithm : antdTheme.defaultAlgorithm,
-          token: {
-            colorPrimary: "#b9954e",
-            borderRadius: 8,
-            borderRadiusLG: 12,
-            fontFamily: "var(--font-zn-sans)",
-          },
-        }}
-      >
-        {children}
-      </XProvider>
+      {children}
     </ConfigProvider>
   );
 }

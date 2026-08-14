@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ConfirmModal } from "@/components/ConfirmModal";
 import { LoadingOverlay } from "@/components/LoadingSpinner";
+import { LoadErrorState } from "@/components/LoadErrorState";
 import { Scrollbar } from "@/components/ui/scrollbar";
 import { WriterFlowChart } from "@/components/WriterFlowChart";
 import { RotatingText } from "@/components/RotatingText";
@@ -63,8 +64,6 @@ import {
   ArrowUpRight,
   type LucideIcon,
 } from "lucide-react";
-import mammoth from "mammoth";
-import { marked } from "marked";
 import { useI18n, type TranslationKey } from "@/components/I18nProvider";
 import { useAuth } from "@/auth";
 import { useDocuments } from "@/store";
@@ -323,7 +322,7 @@ export function DocumentCenterPage({
   const { t, lang } = useI18n();
   const { user } = useAuth();
   const { toast } = useToast();
-  const { documents, loading, createDocument, moveToTrash, updateDocument, toggleFavorite } = useDocuments();
+  const { documents, loading, error, refreshDocuments, createDocument, moveToTrash, updateDocument, toggleFavorite } = useDocuments();
   const isWorkbench = mode === "workbench";
 
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
@@ -344,10 +343,16 @@ export function DocumentCenterPage({
     content: string;
     targetGroupId: string | null;
   }>(null);
-  const [chartData, setChartData] = useState<{ dayIndices: number[]; dates: string[]; words: number[] }>({
+  const [chartData, setChartData] = useState<{
+    dayIndices: number[];
+    dates: string[];
+    words: number[];
+    journalWords: number[];
+  }>({
     dayIndices: [],
     dates: [],
     words: [],
+    journalWords: [],
   });
   const [workRecords, setWorkRecords] = useState<WorkRecord[]>([]);
 
@@ -376,11 +381,12 @@ export function DocumentCenterPage({
         setChartData({
           dayIndices: res.stats.map((s) => s.dayIndex),
           dates: res.stats.map((s) => s.date),
-          words: res.stats.map((s) => s.words),
+          words: res.stats.map((s) => s.documentWords ?? s.words),
+          journalWords: res.stats.map((s) => s.journalWords ?? 0),
         });
       })
       .catch(() => {});
-  }, [documents]);
+  }, [documents, workRecords]);
 
   useEffect(() => {
     if (!isWorkbench) return;
@@ -467,11 +473,17 @@ export function DocumentCenterPage({
 
       if (ext === "docx") {
         const arrayBuffer = await file.arrayBuffer();
+        const { default: mammoth } = await import("mammoth");
         const result = await mammoth.convertToHtml({ arrayBuffer });
         content = sanitizeHtml(result.value);
       } else {
         const raw = await file.text();
-        content = ext === "md" ? sanitizeHtml(await marked.parse(raw)) : plainTextToHtml(raw);
+        if (ext === "md") {
+          const { marked } = await import("marked");
+          content = sanitizeHtml(await marked.parse(raw));
+        } else {
+          content = plainTextToHtml(raw);
+        }
       }
 
       const preview = buildImportPreview({ fileName: file.name, extension: ext, content });
@@ -495,7 +507,7 @@ export function DocumentCenterPage({
     if (!importPreview) return;
     setImporting(true);
     try {
-      const newId = await createDocument("general", importPreview.title, importPreview.content, importPreview.targetGroupId);
+      const newId = await createDocument("general", importPreview.title, importPreview.content, importPreview.targetGroupId, false);
       setImportPreview(null);
       toast(t("toast.importSuccess"), "success");
       onOpenDoc?.(newId);
@@ -563,11 +575,9 @@ export function DocumentCenterPage({
   });
   const latestDoc = useMemo(() => sortDocuments(documents, "updated", lang)[0] ?? null, [documents, lang]);
   const latestDocGroup = latestDoc?.groupId ? groups.find((group) => group.id === latestDoc.groupId) : null;
-  const journalWordsByDay = chartData.dates.map((dateKey) =>
-    workRecords
-      .filter((item) => getLocalDateKey(item.targetDate) === dateKey)
-      .reduce((sum, item) => sum + getPlainText(item.content).length, 0)
-  );
+  const journalWordsByDay = chartData.journalWords.length === chartData.dates.length
+    ? chartData.journalWords
+    : chartData.dates.map(() => 0);
   const weeklyTotal = chartData.words.reduce((sum, value) => sum + value, 0);
   const journalWeeklyTotal = journalWordsByDay.reduce((sum, value) => sum + value, 0);
   const documentFlowStats = summarizeWordsByDay(chartData.words);
@@ -576,7 +586,9 @@ export function DocumentCenterPage({
     bestDayIndex >= 0 ? t(dayI18nKeys[chartData.dayIndices[bestDayIndex]]) : t("documents.noActivity");
   const latestText = getDocumentText(latestDoc);
   const latestWordEstimate = latestText.length;
-  const latestDocumentDayWords = chartData.words[chartData.words.length - 1] || 0;
+  const todayDateKey = getLocalDateKey();
+  const todayChartIndex = chartData.dates.indexOf(todayDateKey);
+  const latestDocumentDayWords = todayChartIndex >= 0 ? (chartData.words[todayChartIndex] || 0) : 0;
   const focusDetails = [
     {
       icon: Clock3,
@@ -607,9 +619,7 @@ export function DocumentCenterPage({
   );
   const latestWorkRecord = sortedWorkRecords[0] ?? null;
   const workRecordTextTotal = workRecords.reduce((sum, item) => sum + getPlainText(item.content).length, 0);
-  const todayWorkRecordWords = workRecords
-    .filter((item) => getLocalDateKey(item.targetDate) === getLocalDateKey())
-    .reduce((sum, item) => sum + getPlainText(item.content).length, 0);
+  const todayWorkRecordWords = todayChartIndex >= 0 ? (journalWordsByDay[todayChartIndex] || 0) : 0;
   const latestWorkRecordText = getPlainText(latestWorkRecord?.content || "");
   const todayCreativeWords = latestDocumentDayWords + todayWorkRecordWords;
   const creationWeatherProfile = getCreationWeatherProfile({
@@ -626,7 +636,7 @@ export function DocumentCenterPage({
   });
   const clampedWeatherIntensity = Math.max(0, Math.min(100, creationWeatherProfile.intensity));
   const weeklyCreativeWords = weeklyTotal + journalWeeklyTotal;
-  const todayShareOfWeek = weeklyCreativeWords > 0
+  const todayShareOfWeek = weeklyCreativeWords > 0 && todayCreativeWords > 0
     ? Math.max(6, Math.min(100, Math.round((todayCreativeWords / weeklyCreativeWords) * 100)))
     : 0;
   const lifelineSteps = [
@@ -844,7 +854,7 @@ export function DocumentCenterPage({
       : isWorkbench
         ? t("documents.workspaceSubtitle")
         : t("documents.subtitle");
-  const gridClass = viewMode === "grid" ? "grid grid-cols-2 gap-4 xl:grid-cols-4" : "flex flex-col gap-2";
+  const gridClass = viewMode === "grid" ? "grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4" : "flex flex-col gap-2";
   const workbenchLayout = getWorkbenchLayoutClasses();
   const emptyIsSearch = !!debouncedQuery || categoryFilter !== "all";
 
@@ -889,9 +899,14 @@ export function DocumentCenterPage({
       {(loading || actionLoading) && (
         <LoadingOverlay message={loading ? t("loading.documents") : t("loading.documentAction")} />
       )}
-      <div className="mx-auto w-full max-w-[1360px] px-8 py-8 xl:px-10">
+      <div className="mx-auto w-full max-w-[1360px] px-6 py-6 lg:px-8 lg:py-7 xl:px-10">
+        {error && !loading && (
+          <div className="mb-5">
+            <LoadErrorState message={error} onRetry={() => void refreshDocuments()} compact />
+          </div>
+        )}
         <div className={isWorkbench ? workbenchLayout.shell : "grid grid-cols-1 gap-5"}>
-          <section className="relative overflow-hidden rounded-2xl border border-surface-200 bg-white p-7 shadow-sm dark:border-surface-800 dark:bg-[#101826]">
+          <section className="relative min-w-0 overflow-hidden rounded-2xl border border-surface-200 bg-white p-4 shadow-sm sm:p-5 dark:border-surface-800 dark:bg-[#101826]">
             <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_10%_0%,rgba(185,149,78,0.13),transparent_34%),linear-gradient(90deg,rgba(15,23,42,0.028)_1px,transparent_1px),linear-gradient(0deg,rgba(15,23,42,0.028)_1px,transparent_1px)] bg-[size:auto,32px_32px,32px_32px] dark:bg-[radial-gradient(circle_at_12%_0%,rgba(185,149,78,0.16),transparent_32%),linear-gradient(90deg,rgba(148,163,184,0.035)_1px,transparent_1px),linear-gradient(0deg,rgba(148,163,184,0.035)_1px,transparent_1px)]" />
             <div className="relative">
               {!isWorkbench && activeGroupId && (
@@ -911,7 +926,7 @@ export function DocumentCenterPage({
                 </div>
               )}
 
-              <input
+              <Input
                 ref={fileInputRef}
                 type="file"
                 accept=".txt,.md,.docx,.doc"
@@ -921,77 +936,87 @@ export function DocumentCenterPage({
 
               {isWorkbench ? (
                 <>
-                  <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-brand-200 bg-brand-50 px-3 py-1 text-xs font-semibold text-brand-700 dark:border-brand-500/20 dark:bg-brand-500/10 dark:text-brand-300">
+                  <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-brand-200 bg-brand-50 px-3 py-1 text-xs font-semibold text-brand-700 dark:border-brand-500/20 dark:bg-brand-500/10 dark:text-brand-300">
                     <Sparkles className="h-3.5 w-3.5" />
                     <span>{t("documents.workbenchHeroMode")}</span>
                   </div>
-                  <div className="grid gap-6">
+                  <div className="grid gap-4">
                     <div className="min-w-0">
-                      <h1 className="max-w-[760px] pb-2 text-[34px] font-semibold leading-[1.16] text-surface-950 dark:text-surface-50 xl:text-[42px]">
+                      <h1 className="max-w-[760px] pb-1 text-[30px] font-semibold leading-[1.16] text-surface-950 dark:text-surface-50 lg:text-[34px] xl:text-[40px]">
                         <RotatingText
                           texts={greetingLines}
                           interval={2800}
                           className="min-h-[1.24em]"
-                          respectReducedMotion={false}
+                          respectReducedMotion
                         />
                       </h1>
-                      <div className="mt-3 flex flex-wrap items-baseline gap-x-3 gap-y-2 text-[22px] font-semibold leading-tight text-surface-800 dark:text-surface-100 xl:text-[28px]">
+                      <div className="mt-2 flex flex-wrap items-baseline gap-x-3 gap-y-2 text-[20px] font-semibold leading-tight text-surface-800 dark:text-surface-100 lg:text-[22px] xl:text-[26px]">
                         <span>{t("documents.workbenchHeroPrefix")}</span>
                         <RotatingText
                           texts={greetingRotations}
                           interval={2400}
                           className="rounded-2xl border border-brand-200/70 bg-brand-50 px-3 py-1 text-brand-700 shadow-sm dark:border-brand-500/25 dark:bg-brand-500/10 dark:text-brand-200"
-                          respectReducedMotion={false}
+                          respectReducedMotion
                         />
                       </div>
-                      <p className="mt-4 max-w-[720px] text-sm leading-6 text-surface-500 dark:text-surface-400">
+                      <p className="mt-3 max-w-[720px] text-sm leading-6 text-surface-500 dark:text-surface-400">
                         {t("documents.workbenchHeroDesc")}
                       </p>
+                      {!latestDoc && (
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          <Button type="button" onClick={() => handleNewDocument("general")}>
+                            <PenLine className="h-4 w-4" />
+                            {t("documents.createFirstDraft")}
+                          </Button>
+                          <Button type="button" variant="outline" onClick={onOpenAgentWrite}>
+                            <Sparkles className="h-4 w-4" />
+                            {t("documents.aiAssistNow")}
+                          </Button>
+                        </div>
+                      )}
 
                       <div className={workbenchLayout.hero}>
-                        <div className="relative h-full overflow-hidden rounded-2xl border border-brand-200/70 bg-gradient-to-br from-brand-50 via-white to-surface-50 p-4 shadow-sm dark:border-brand-500/25 dark:from-brand-500/15 dark:via-surface-950/55 dark:to-surface-900/70">
-                          <div className="relative flex h-full min-h-[300px] flex-col">
-                            <div className="flex flex-1 flex-col">
-                              <div className="flex items-center gap-3">
-                                <div className="inline-flex items-center gap-2 rounded-full bg-white/70 px-3 py-1 text-xs font-semibold text-brand-700 ring-1 ring-brand-200/70 dark:bg-surface-950/55 dark:text-brand-200 dark:ring-brand-500/20">
-                                  <Clock3 className="h-3.5 w-3.5" />
-                                  <span>{t("documents.currentFocus")}</span>
-                                </div>
-                              </div>
-                              <h2 className="mt-4 break-words text-xl font-semibold leading-snug text-surface-950 dark:text-surface-50">
-                                {latestDoc?.title || t("documents.noLatestDoc")}
-                              </h2>
-                              <p className="mt-2 line-clamp-3 max-w-[620px] text-sm leading-6 text-surface-600 dark:text-surface-300">
-                                {latestText || t("documents.noDraftHint")}
-                              </p>
-                              <DocumentLifeline
-                                label={t("workbench.lifeline.label")}
-                                stage={documentLifelineProfile.stage}
-                                title={t(documentLifelineProfile.titleKey)}
-                                description={t(documentLifelineProfile.descKey)}
-                                progress={documentLifelineProfile.progress}
-                                steps={lifelineSteps}
-                                tags={lifelineTags}
-                                className="mt-4"
-                              />
-                              <div className="mt-4 grid grid-cols-2 gap-2">
-                                {focusDetails.map((item) => (
-                                  <div
-                                    key={item.label}
-                                    className="min-w-0 rounded-xl border border-surface-200/80 bg-white/60 px-3 py-3 dark:border-surface-700/80 dark:bg-surface-950/35"
-                                  >
-                                    <div className="flex items-center gap-1.5 text-[11px] font-medium text-surface-500 dark:text-surface-400">
-                                      <item.icon className="h-3.5 w-3.5 shrink-0" />
-                                      <span className="min-w-0">{item.label}</span>
-                                    </div>
-                                    <div className="mt-2 break-words text-sm font-semibold text-surface-950 dark:text-surface-50">
-                                      {item.value}
-                                    </div>
-                                  </div>
-                                ))}
+                        <div className="relative min-w-0 overflow-hidden rounded-2xl border border-brand-200/70 bg-gradient-to-br from-brand-50 via-white to-surface-50 p-4 shadow-sm dark:border-brand-500/25 dark:from-brand-500/15 dark:via-surface-950/55 dark:to-surface-900/70">
+                          <div className="relative flex flex-col">
+                            <div className="flex items-center gap-3">
+                              <div className="inline-flex items-center gap-2 rounded-full bg-white/70 px-3 py-1 text-xs font-semibold text-brand-700 ring-1 ring-brand-200/70 dark:bg-surface-950/55 dark:text-brand-200 dark:ring-brand-500/20">
+                                <Clock3 className="h-3.5 w-3.5 shrink-0" />
+                                <span>{t("documents.currentFocus")}</span>
                               </div>
                             </div>
-                            <div className="mt-5 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                            <h2 className="mt-3 line-clamp-2 break-words text-xl font-semibold leading-snug text-surface-950 dark:text-surface-50">
+                              {latestDoc?.title || t("documents.noLatestDoc")}
+                            </h2>
+                            <p className="mt-2 line-clamp-2 text-sm leading-6 text-surface-600 dark:text-surface-300">
+                              {latestText || t("documents.noDraftHint")}
+                            </p>
+                            <DocumentLifeline
+                              label={t("workbench.lifeline.label")}
+                              stage={documentLifelineProfile.stage}
+                              title={t(documentLifelineProfile.titleKey)}
+                              description={t(documentLifelineProfile.descKey)}
+                              progress={documentLifelineProfile.progress}
+                              steps={lifelineSteps}
+                              tags={lifelineTags}
+                              className="mt-3"
+                            />
+                            <div className={workbenchLayout.focusMeta}>
+                              {focusDetails.map((item) => (
+                                <div
+                                  key={item.label}
+                                  className="min-w-0 rounded-xl border border-surface-200/80 bg-white/60 px-3 py-2.5 dark:border-surface-700/80 dark:bg-surface-950/35"
+                                >
+                                  <div className="flex items-center gap-1.5 text-[11px] font-medium text-surface-500 dark:text-surface-400">
+                                    <item.icon className="h-3.5 w-3.5 shrink-0" />
+                                    <span className="min-w-0 truncate">{item.label}</span>
+                                  </div>
+                                  <div className="mt-1.5 truncate text-sm font-semibold leading-snug text-surface-950 dark:text-surface-50">
+                                    {item.value}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                            <div className={workbenchLayout.focusActions}>
                               <Button
                                 type="button"
                                 className="h-10 min-w-0 justify-center gap-1.5 px-3"
@@ -1013,7 +1038,7 @@ export function DocumentCenterPage({
                           </div>
                         </div>
 
-                        <div className="relative flex h-full flex-col overflow-hidden rounded-2xl border border-surface-200 bg-white/75 p-4 shadow-sm dark:border-surface-800 dark:bg-surface-950/35">
+                        <div className="relative flex min-w-0 flex-col overflow-hidden rounded-2xl border border-surface-200 bg-white/75 p-4 shadow-sm dark:border-surface-800 dark:bg-surface-950/35">
                           <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-brand-300/70 to-transparent dark:via-brand-400/45" />
                           <div className="flex items-center justify-between gap-3">
                             <h2 className="text-sm font-semibold text-surface-950 dark:text-surface-50">
@@ -1062,7 +1087,7 @@ export function DocumentCenterPage({
                                     value={signal.value}
                                     formatValue={(value) => numberFormatter.format(Math.round(value))}
                                     className="text-xl font-semibold tabular-nums text-surface-950 dark:text-surface-50"
-                                    respectReducedMotion={false}
+                                    respectReducedMotion
                                   />
                                   <span className="text-[11px] font-medium text-surface-400">{signal.unit}</span>
                                 </div>
@@ -1075,7 +1100,7 @@ export function DocumentCenterPage({
                                 {t("documents.contextTodayProgress")}
                               </span>
                               <span className="text-sm font-semibold tabular-nums text-surface-950 dark:text-surface-50">
-                                <CountUp value={todayCreativeWords} formatValue={(value) => numberFormatter.format(Math.round(value))} respectReducedMotion={false} /> {t("documents.wordsUnit")}
+                                <CountUp value={todayCreativeWords} formatValue={(value) => numberFormatter.format(Math.round(value))} respectReducedMotion /> {t("documents.wordsUnit")}
                               </span>
                             </div>
                             <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface-100 dark:bg-surface-800">
@@ -1116,7 +1141,7 @@ export function DocumentCenterPage({
                                 <item.icon className="h-3.5 w-3.5 text-brand-500" />
                               </div>
                               <div className="mt-1 flex items-baseline gap-1.5">
-                                <CountUp value={item.value} formatValue={(value) => numberFormatter.format(Math.round(value))} className="text-xl font-semibold text-surface-950 dark:text-surface-50" respectReducedMotion={false} />
+                                <CountUp value={item.value} formatValue={(value) => numberFormatter.format(Math.round(value))} className="text-xl font-semibold text-surface-950 dark:text-surface-50" respectReducedMotion />
                                 <span className="text-[11px] text-surface-400">{item.unit}</span>
                               </div>
                             </div>
@@ -1160,7 +1185,7 @@ export function DocumentCenterPage({
                                   </div>
                                 </div>
                                 <div className="shrink-0 text-right">
-                                  <CountUp value={item.value} formatValue={(value) => numberFormatter.format(Math.round(value))} className="text-lg font-semibold text-surface-950 dark:text-surface-50" respectReducedMotion={false} />
+                                  <CountUp value={item.value} formatValue={(value) => numberFormatter.format(Math.round(value))} className="text-lg font-semibold text-surface-950 dark:text-surface-50" respectReducedMotion />
                                   <div className="text-[10px] text-surface-400">{item.unit}</div>
                                 </div>
                               </div>
@@ -1177,9 +1202,9 @@ export function DocumentCenterPage({
                 </>
               ) : (
                 <>
-                  <div className="flex items-start justify-between gap-8">
+                  <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between lg:gap-8">
                     <div className="min-w-0">
-                      <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-brand-200 bg-brand-50 px-3 py-1 text-xs font-semibold text-brand-700 dark:border-brand-500/20 dark:bg-brand-500/10 dark:text-brand-300">
+                      <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-brand-200 bg-brand-50 px-3 py-1 text-xs font-semibold text-brand-700 dark:border-brand-500/20 dark:bg-brand-500/10 dark:text-brand-300">
                         <Sparkles className="h-3.5 w-3.5" />
                         <span>{t("documents.librarySection")}</span>
                       </div>
@@ -1197,16 +1222,16 @@ export function DocumentCenterPage({
                             </Button>
                           </Tooltip>
                         )}
-                        <h1 className="truncate text-[34px] font-semibold leading-tight text-surface-950 dark:text-surface-50">
+                        <h1 className="truncate text-[28px] font-semibold leading-tight text-surface-950 sm:text-[32px] dark:text-surface-50">
                           {pageTitle}
                         </h1>
                       </div>
-                      <p className="mt-3 max-w-[680px] text-sm leading-6 text-surface-500 dark:text-surface-400">
+                      <p className="mt-2 max-w-[680px] text-sm leading-6 text-surface-500 dark:text-surface-400">
                         {pageSubtitle}
                       </p>
                     </div>
 
-                    <div className="flex shrink-0 items-center gap-2">
+                    <div className="flex shrink-0 flex-wrap items-center gap-2 lg:justify-end">
                       <Button variant="outline" size="lg" className="h-11 gap-1.5 px-4" onClick={onOpenAgentWrite}>
                         <Bot className="h-4 w-4" />
                         <span>{t("documents.aiDraft")}</span>
@@ -1225,7 +1250,7 @@ export function DocumentCenterPage({
                     </div>
                   </div>
 
-                  <div className="mt-8 grid grid-cols-4 gap-3">
+                  <div className="mt-5 grid grid-cols-2 gap-2.5 lg:grid-cols-4">
                     {[
                       { icon: FileStack, label: t("documents.totalDocs"), value: documentCountSummary.total },
                       { icon: Star, label: t("documents.favoriteDocs"), value: documentCountSummary.favorites },
@@ -1234,14 +1259,14 @@ export function DocumentCenterPage({
                     ].map((metric) => (
                       <div
                         key={metric.label}
-                        className="rounded-xl border border-surface-200 bg-surface-50/80 p-4 dark:border-surface-800 dark:bg-surface-950/40"
+                        className="rounded-xl border border-surface-200 bg-surface-50/80 p-3 dark:border-surface-800 dark:bg-surface-950/40"
                       >
                         <div className="flex items-center justify-between gap-3">
                           <span className="text-xs font-medium text-surface-500 dark:text-surface-400">{metric.label}</span>
                           <metric.icon className="h-4 w-4 text-brand-500" />
                         </div>
-                        <div className="mt-3 text-2xl font-semibold tracking-normal text-surface-950 dark:text-surface-50">
-                          <CountUp value={metric.value} formatValue={(v) => numberFormatter.format(Math.round(v))} />
+                        <div className="mt-2 text-xl font-semibold tracking-normal text-surface-950 dark:text-surface-50">
+                          <CountUp value={metric.value} formatValue={(v) => numberFormatter.format(Math.round(v))} respectReducedMotion />
                         </div>
                       </div>
                     ))}
@@ -1252,144 +1277,117 @@ export function DocumentCenterPage({
           </section>
 
           {isWorkbench && (
-            <section className="rounded-2xl border border-surface-200 bg-white p-5 shadow-sm dark:border-surface-800 dark:bg-surface-900">
-              <div className="mb-4 flex items-start justify-between gap-4">
-                <div>
+            <section className="min-w-0 rounded-2xl border border-surface-200 bg-white p-4 shadow-sm xl:p-5 dark:border-surface-800 dark:bg-surface-900">
+              <div className="mb-3 flex items-end justify-between gap-3 xl:mb-4">
+                <div className="min-w-0">
                   <h2 className="text-sm font-semibold text-surface-950 dark:text-surface-50">
                     {t("documents.writersFlow")}
                   </h2>
-                  <p className="mt-1 text-xs text-surface-500 dark:text-surface-400">{t("documents.activity")}</p>
+                  <p className="mt-0.5 line-clamp-1 text-xs text-surface-500 dark:text-surface-400">{t("documents.activity")}</p>
+                </div>
+                <div className="hidden shrink-0 rounded-full bg-surface-100 px-2.5 py-1 text-[11px] font-medium tabular-nums text-surface-500 xl:inline-flex dark:bg-surface-800 dark:text-surface-400">
+                  {numberFormatter.format(weeklyCreativeWords)} {t("documents.wordsUnit")}
                 </div>
               </div>
               {chartData.dayIndices.length > 0 ? (
-                <div className="grid gap-4">
+                <div className={workbenchLayout.charts}>
                   {flowPanels.map((flow) => (
                     <div
                       key={flow.key}
                       className={cn(
-                        "rounded-xl border bg-surface-50/75 p-4 dark:bg-surface-950/35",
+                        "flex min-w-0 flex-col rounded-xl border p-3 xl:p-3.5",
                         flow.key === "journal"
-                          ? "border-teal-200/70 dark:border-teal-500/20"
-                          : "border-brand-200/70 dark:border-brand-500/20"
+                          ? "border-teal-200/70 bg-teal-50/30 dark:border-teal-500/20 dark:bg-teal-500/[0.06]"
+                          : "border-brand-200/70 bg-brand-50/30 dark:border-brand-500/20 dark:bg-brand-500/[0.06]"
                       )}
                     >
-                      <div className="mb-3 flex items-start justify-between gap-3">
-                        <div className="flex items-center gap-2">
+                      <div className="mb-2 flex items-center justify-between gap-2">
+                        <div className="flex min-w-0 items-center gap-2">
                           <div
                             className={cn(
-                              "flex h-9 w-9 items-center justify-center rounded-xl",
+                              "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg",
                               flow.key === "journal"
                                 ? "bg-teal-50 text-teal-700 dark:bg-teal-500/10 dark:text-teal-300"
                                 : "bg-brand-50 text-brand-700 dark:bg-brand-500/10 dark:text-brand-300"
                             )}
                           >
-                            <flow.icon className="h-4 w-4" />
+                            <flow.icon className="h-3.5 w-3.5" />
                           </div>
-                          <div>
-                            <div className="text-sm font-semibold text-surface-950 dark:text-surface-50">{flow.title}</div>
-                            <div className="mt-0.5 text-[11px] text-surface-400">
-                              {t("documents.flowTotal")} · <CountUp value={flow.total} formatValue={(v) => numberFormatter.format(Math.round(v))} respectReducedMotion={false} /> {t("documents.wordsUnit")}
+                          <div className="min-w-0">
+                            <div className="truncate text-sm font-semibold text-surface-950 dark:text-surface-50">{flow.title}</div>
+                            <div className="mt-0.5 truncate text-[11px] tabular-nums text-surface-400">
+                              <CountUp value={flow.total} formatValue={(v) => numberFormatter.format(Math.round(v))} respectReducedMotion /> {t("documents.wordsUnit")}
                             </div>
                           </div>
                         </div>
-                        <div className="rounded-xl border border-surface-200 bg-white px-3 py-2 text-right dark:border-surface-800 dark:bg-surface-900">
-                          <div className="text-[11px] text-surface-400">{t("documents.bestDay")}</div>
-                          <div className="mt-0.5 text-sm font-semibold text-surface-800 dark:text-surface-100">
+                        <div className="shrink-0 text-right">
+                          <div className="text-[10px] font-medium text-surface-400">{t("documents.bestDay")}</div>
+                          <div className="mt-0.5 text-xs font-semibold text-surface-800 dark:text-surface-100">
                             {getBestDayLabel(flow.stats.bestDayIndex)}
                           </div>
                         </div>
                       </div>
-                      <WriterFlowChart dayIndices={chartData.dayIndices} words={flow.words} height={154} tone={flow.tone} label={flow.label} />
-                      <div className="mt-3 grid grid-cols-3 gap-2">
+
+                      <div className="min-h-[168px] flex-1 xl:min-h-[140px]">
+                        <WriterFlowChart
+                          dayIndices={chartData.dayIndices}
+                          words={flow.words}
+                          height={168}
+                          tone={flow.tone}
+                          label={flow.label}
+                        />
+                      </div>
+
+                      <div className="mt-2 grid grid-cols-3 gap-1.5">
                         {[
-                          { label: t("documents.activeDays"), value: flow.stats.activeDays, suffix: ` ${t("documents.daysUnit")}` },
+                          { label: t("documents.activeDays"), value: flow.stats.activeDays, suffix: t("documents.daysUnit") },
                           { label: t("documents.averageWords"), value: flow.stats.averageWords, suffix: "" },
                           { label: t("documents.peakWords"), value: flow.stats.peakWords, suffix: "" },
                         ].map((item) => (
                           <div
                             key={item.label}
-                            className="rounded-xl border border-surface-200 bg-white px-3 py-3 dark:border-surface-800 dark:bg-surface-900"
+                            className="min-w-0 rounded-lg border border-surface-200/80 bg-white/80 px-2 py-2 dark:border-surface-700/80 dark:bg-surface-950/40"
                           >
-                            <div className="whitespace-nowrap text-[11px] font-medium text-surface-500 dark:text-surface-400">{item.label}</div>
-                            <div className="mt-1 whitespace-nowrap text-lg font-semibold tabular-nums text-surface-950 dark:text-surface-50">
-                              <CountUp value={item.value} formatValue={(v) => numberFormatter.format(Math.round(v))} respectReducedMotion={false} />
-                              {item.suffix}
+                            <div className="truncate text-[10px] font-medium text-surface-500 dark:text-surface-400">{item.label}</div>
+                            <div className="mt-0.5 truncate text-sm font-semibold tabular-nums text-surface-950 dark:text-surface-50">
+                              <CountUp value={item.value} formatValue={(v) => numberFormatter.format(Math.round(v))} respectReducedMotion />
+                              {item.suffix ? ` ${item.suffix}` : ""}
                             </div>
                           </div>
                         ))}
                       </div>
-                      <div className="mt-3 rounded-xl border border-surface-200 bg-white p-3 dark:border-surface-800 dark:bg-surface-900">
-                        <div className="flex items-center justify-between gap-3">
-                          <span className="text-xs font-semibold text-surface-700 dark:text-surface-200">{t("documents.weeklyTrack")}</span>
-                          <span className="text-[11px] text-surface-400">
-                            <CountUp value={flow.total} formatValue={(v) => numberFormatter.format(Math.round(v))} respectReducedMotion={false} /> {t("documents.wordsUnit")}
-                          </span>
-                        </div>
-                        <div className="mt-3 grid grid-cols-7 gap-1.5">
-                          {chartData.dayIndices.map((dayIndex, index) => {
-                            const dayWords = flow.words[index] || 0;
-                            const intensity = flow.stats.peakWords > 0 ? Math.max(18, Math.round((dayWords / flow.stats.peakWords) * 100)) : 0;
 
-                            return (
-                              <div
-                                key={`${flow.key}-${dayIndex}-${index}`}
-                                className={cn(
-                                  "min-w-0 rounded-lg border px-1.5 py-2 text-center",
-                                  dayWords > 0
-                                    ? flow.key === "journal"
-                                      ? "border-teal-200 bg-teal-50/70 dark:border-teal-500/20 dark:bg-teal-500/10"
-                                      : "border-brand-200 bg-brand-50/70 dark:border-brand-500/20 dark:bg-brand-500/10"
-                                    : "border-surface-200 bg-surface-50 dark:border-surface-800 dark:bg-surface-950/50"
-                                )}
-                              >
-                                <div className="truncate text-[10px] font-medium text-surface-500 dark:text-surface-400">{t(dayI18nKeys[dayIndex])}</div>
-                                <div className="mx-auto mt-2 h-1.5 w-full overflow-hidden rounded-full bg-surface-200 dark:bg-surface-800">
-                                  <div
-                                    className={cn(
-                                      "h-full rounded-full",
-                                      flow.key === "journal" ? "bg-teal-400 dark:bg-teal-300" : "bg-brand-400 dark:bg-brand-300"
-                                    )}
-                                    style={{ width: `${intensity}%` }}
-                                  />
-                                </div>
-                                <div className="mt-1.5 truncate text-[11px] font-semibold tabular-nums text-surface-800 dark:text-surface-100">
-                                  <CountUp value={dayWords} formatValue={(v) => numberFormatter.format(Math.round(v))} respectReducedMotion={false} />
-                                </div>
+                      <div className="mt-2 grid grid-cols-7 gap-1">
+                        {chartData.dayIndices.map((dayIndex, index) => {
+                          const dayWords = flow.words[index] || 0;
+                          const intensity = flow.stats.peakWords > 0
+                            ? Math.max(12, Math.round((dayWords / flow.stats.peakWords) * 100))
+                            : 0;
+
+                          return (
+                            <div key={`${flow.key}-${dayIndex}-${index}`} className="min-w-0 text-center">
+                              <div className="truncate text-[10px] font-medium text-surface-400">{t(dayI18nKeys[dayIndex])}</div>
+                              <div className="mx-auto mt-1 h-8 w-full overflow-hidden rounded-md bg-surface-100 dark:bg-surface-800/80">
+                                <div
+                                  className={cn(
+                                    "w-full rounded-md",
+                                    flow.key === "journal" ? "bg-teal-400/80 dark:bg-teal-300/70" : "bg-brand-400/80 dark:bg-brand-300/70"
+                                  )}
+                                  style={{ height: `${intensity}%`, marginTop: `${100 - intensity}%` }}
+                                />
                               </div>
-                            );
-                          })}
-                        </div>
-                        <div className="mt-3 grid grid-cols-2 gap-2">
-                          {[
-                            {
-                              label: t("documents.quietDays"),
-                              value: Math.max(chartData.dayIndices.length - flow.stats.activeDays, 0),
-                              suffix: ` ${t("documents.daysUnit")}`,
-                            },
-                            {
-                              label: t("documents.activeShare"),
-                              value: Math.round((flow.stats.activeDays / Math.max(chartData.dayIndices.length, 1)) * 100),
-                              suffix: "%",
-                            },
-                          ].map((item) => (
-                            <div
-                              key={item.label}
-                              className="rounded-lg border border-surface-200 bg-surface-50 px-3 py-2 dark:border-surface-800 dark:bg-surface-950/45"
-                            >
-                              <div className="text-[11px] font-medium text-surface-500 dark:text-surface-400">{item.label}</div>
-                              <div className="mt-1 text-base font-semibold tabular-nums text-surface-950 dark:text-surface-50">
-                                <CountUp value={item.value} formatValue={(v) => numberFormatter.format(Math.round(v))} respectReducedMotion={false} />
-                                {item.suffix}
+                              <div className="mt-1 truncate text-[10px] font-semibold tabular-nums text-surface-700 dark:text-surface-200">
+                                {dayWords > 0 ? numberFormatter.format(dayWords) : "·"}
                               </div>
                             </div>
-                          ))}
-                        </div>
+                          );
+                        })}
                       </div>
                     </div>
                   ))}
                 </div>
               ) : (
-                <div className="flex min-h-[336px] flex-1 items-center justify-center rounded-xl border border-dashed border-surface-200 text-xs text-surface-400 dark:border-surface-800">
+                <div className="flex min-h-[200px] items-center justify-center rounded-xl border border-dashed border-surface-200 text-xs text-surface-400 dark:border-surface-800">
                   {t("documents.noActivity")}
                 </div>
               )}
@@ -1420,12 +1418,13 @@ export function DocumentCenterPage({
 
             <div className="grid gap-3 lg:grid-cols-4">
               {aiWorkbenchActions.map((action, index) => (
-                <button
+                <Button
                   key={action.title}
                   type="button"
+                  variant="ghost"
                   onClick={action.onClick}
                   className={cn(
-                    "group relative min-h-[176px] overflow-hidden rounded-2xl p-4 text-left transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md active:scale-[0.99]",
+                    "group relative h-auto min-h-[176px] w-full items-stretch justify-start overflow-hidden whitespace-normal rounded-2xl p-4 text-left transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md active:scale-[0.99]",
                     index === 0
                       ? "bg-surface-950 text-white shadow-sm dark:bg-black"
                       : "border border-surface-200 bg-surface-50/80 text-surface-950 hover:border-brand-300 hover:bg-white dark:border-surface-800 dark:bg-surface-950/40 dark:text-surface-50 dark:hover:border-brand-500/50 dark:hover:bg-surface-900"
@@ -1463,7 +1462,7 @@ export function DocumentCenterPage({
                       </span>
                     </div>
                   </div>
-                </button>
+                </Button>
               ))}
             </div>
           </section>

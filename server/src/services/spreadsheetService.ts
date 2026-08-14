@@ -99,8 +99,5 @@ export async function moveSpreadsheetToTrash(spreadsheetId: string, userId: stri
   const spreadsheet = await checkOwnership(spreadsheetId, userId);
   if (!spreadsheet || spreadsheet.isDeleted) return null;
 
-  return prisma.spreadsheet.update({
-    where: { id: spreadsheetId },
-    data: { isDeleted: true, deletedAt: new Date() },
-  });
+  return prisma.spreadsheet.delete({ where: { id: spreadsheetId } });
 }

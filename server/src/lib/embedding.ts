@@ -1,4 +1,6 @@
 import prisma from "./prisma";
+import { assertAiProviderHttpUrl } from "./safeOutboundUrl";
+import { decryptSecret } from "./secretCipher";
 
 export const DEFAULT_EMBEDDING_BASE_URL =
   process.env.EMBEDDING_BASE_URL?.trim() || "";
@@ -52,7 +54,7 @@ export function resolveEmbeddingConfig(settings: EmbeddingUserSettings = {}): Em
 }
 
 async function loadUserEmbeddingSettings(userId: string): Promise<EmbeddingUserSettings | null> {
-  return prisma.user.findUnique({
+  const user = await prisma.user.findUnique({
     where: { id: userId },
     select: {
       embeddingApiKey: true,
@@ -60,6 +62,11 @@ async function loadUserEmbeddingSettings(userId: string): Promise<EmbeddingUserS
       embeddingModel: true,
     },
   });
+  if (!user) return null;
+  return {
+    ...user,
+    embeddingApiKey: decryptSecret(user.embeddingApiKey),
+  };
 }
 
 export async function getUserEmbeddingConfig(
@@ -110,6 +117,7 @@ export async function generateEmbeddings(
     throw new Error("Embedding API key is not configured");
   }
 
+  assertAiProviderHttpUrl(resolved.baseUrl);
   const response = await fetcher(buildEmbeddingsUrl(resolved.baseUrl), {
     method: "POST",
     headers: {

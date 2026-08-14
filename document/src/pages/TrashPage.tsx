@@ -8,11 +8,17 @@ import { useI18n } from "@/components/I18nProvider";
 import { useToast } from "@/components/Toast";
 import { Trash2, RotateCcw, AlertTriangle } from "lucide-react";
 import { formatFullDateTime } from "@/lib/date";
+import { LoadErrorState } from "@/components/LoadErrorState";
+
+function remainingTrashDays(deletedAt: string | null | undefined) {
+  const deletedTime = new Date(deletedAt || Date.now()).getTime();
+  return Math.max(0, Math.ceil((deletedTime + 30 * 86400000 - Date.now()) / 86400000));
+}
 
 export function TrashPage() {
   const { t, lang } = useI18n();
   const { toast } = useToast();
-  const { trash, loading, refreshTrash, restoreFromTrash, permanentlyDelete, emptyTrash } = useDocuments();
+  const { trash, loading, trashError, refreshTrash, restoreFromTrash, permanentlyDelete, emptyTrash } = useDocuments();
   const [actionLoading, setActionLoading] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [emptyTrashConfirm, setEmptyTrashConfirm] = useState(false);
@@ -65,7 +71,7 @@ export function TrashPage() {
           message={loading ? t("loading.trash") : t("loading.documentAction")}
         />
       )}
-      <div className="mx-auto max-w-[960px] px-20 py-20">
+      <div className="mx-auto max-w-[960px] px-4 py-8 sm:px-6 lg:px-10 lg:py-12">
         <div className="mb-8 flex items-start justify-between">
           <div>
             <h2 className="text-[28px] font-bold leading-tight text-surface-900 dark:text-surface-100">
@@ -86,7 +92,9 @@ export function TrashPage() {
           )}
         </div>
 
-        {trash.length > 0 ? (
+        {trashError ? (
+          <LoadErrorState message={trashError} onRetry={() => void refreshTrash()} />
+        ) : trash.length > 0 ? (
           <div className="flex flex-col gap-2">
             {trash.map((item) => (
               <div
@@ -104,7 +112,9 @@ export function TrashPage() {
                     <span>·</span>
                     <span className="flex items-center gap-1 text-amber-500">
                       <AlertTriangle className="h-3 w-3" />
-                      {Math.max(1, 30 - Math.floor((Date.now() - new Date(item.deletedAt || Date.now()).getTime()) / 86400000))} {t("trash.daysLeft")}
+                      {remainingTrashDays(item.deletedAt) === 0
+                        ? t("trash.expiresToday")
+                        : `${remainingTrashDays(item.deletedAt)} ${t("trash.daysLeft")}`}
                     </span>
                   </div>
                 </div>

@@ -19,6 +19,7 @@ import { connectRedis } from "./lib/redis";
 import prisma from "./lib/prisma";
 import { getMilvusStatus } from "./lib/milvus";
 import { startWorkRecordSummaryScheduler } from "./services/workRecordSummaryService";
+import { startTrashCleanupScheduler } from "./services/trashCleanupService";
 
 applyRuntimeConfigDefaults();
 
@@ -26,8 +27,35 @@ const app = express();
 const PORT = Number(process.env.PORT || 3000);
 const HOST = process.env.HOST || "0.0.0.0";
 
-// Middleware
-app.use(cors());
+// CORS: when CORS_ORIGINS is configured (comma-separated), restrict to that
+// allowlist; otherwise stay permissive for local/desktop (Tauri) usage.
+// Requests without an Origin header (native apps, curl) are always allowed.
+const corsAllowlist = (process.env.CORS_ORIGINS || "")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+app.use(cors({
+  origin(origin, callback) {
+    if (!origin || corsAllowlist.length === 0 || corsAllowlist.includes(origin)) {
+      callback(null, true);
+      return;
+    }
+    callback(new Error("Not allowed by CORS"));
+  },
+  credentials: true,
+}));
+
+// Baseline security headers (avoids pulling in a full helmet dependency).
+app.use((_req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("Referrer-Policy", "no-referrer");
+  res.setHeader("X-DNS-Prefetch-Control", "off");
+  res.setHeader("Cross-Origin-Resource-Policy", "same-site");
+  next();
+});
+
 app.use(express.json({ limit: "10mb" }));
 
 // Static files for uploaded avatars
@@ -71,6 +99,7 @@ async function start() {
   }
 
   startWorkRecordSummaryScheduler();
+  startTrashCleanupScheduler();
 
   app.listen(PORT, HOST, () => {
     const localHost = HOST === "0.0.0.0" ? "localhost" : HOST;

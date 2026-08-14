@@ -2,6 +2,7 @@ import * as React from "react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useI18n } from "@/components/I18nProvider";
 
 const Dialog = DialogPrimitive.Root;
 const DialogTrigger = DialogPrimitive.Trigger;
@@ -47,8 +48,10 @@ function isRadixFloatingLayer(target: EventTarget | null) {
 const DialogContent = React.forwardRef<
   React.ComponentRef<typeof DialogPrimitive.Content>,
   DialogContentProps
->(({ className, children, hideCloseButton = false, onInteractOutside, ...props }, ref) => (
-  <DialogPortal>
+>(({ className, children, hideCloseButton = false, onInteractOutside, ...props }, ref) => {
+  const { t } = useI18n();
+  return (
+    <DialogPortal>
     <DialogOverlay />
     {/* Centering wrapper - uses flexbox for perfect centering */}
     <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none">
@@ -71,15 +74,16 @@ const DialogContent = React.forwardRef<
       >
         {children}
         {!hideCloseButton && (
-          <DialogPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 transition-all duration-200 hover:opacity-100 hover:scale-110 focus:outline-none focus:ring-2 focus:ring-surface-400 focus:ring-offset-2 disabled:pointer-events-none cursor-pointer">
+          <DialogPrimitive.Close className="absolute right-3 top-3 inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-md opacity-70 transition-all duration-200 hover:scale-105 hover:bg-surface-100 hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-surface-400 focus:ring-offset-2 disabled:pointer-events-none dark:hover:bg-surface-800">
             <X className="h-4 w-4" />
-            <span className="sr-only">Close</span>
+            <span className="sr-only">{t("common.close")}</span>
           </DialogPrimitive.Close>
         )}
       </DialogPrimitive.Content>
     </div>
-  </DialogPortal>
-));
+    </DialogPortal>
+  );
+});
 DialogContent.displayName = DialogPrimitive.Content.displayName;
 
 const DialogHeader = ({

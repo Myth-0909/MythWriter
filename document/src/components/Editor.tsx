@@ -14,30 +14,48 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tooltip, TooltipProvider } from "@/components/ui/tooltip";
 import { Separator } from "@/components/ui/separator";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Scrollbar } from "@/components/ui/scrollbar";
 import {
   Bold, Italic, Underline as UnderlineIcon, Strikethrough,
   List, ListOrdered, Code, Code2, Quote, Minus,
   AlignLeft, AlignCenter, AlignRight,
   Undo2, Redo2, Heading1, Heading2, Heading3,
-  Highlighter, Star, Palette, Eraser, ClipboardCheck, Loader2, X, Sparkles, AlertTriangle, RotateCcw,
+  Highlighter, Star, Palette, Eraser, ClipboardCheck, Loader2, X, Sparkles, AlertTriangle, RotateCcw, History,
 } from "lucide-react";
-import { useI18n } from "@/components/I18nProvider";
+import { useI18n, type TranslationKey } from "@/components/I18nProvider";
 import { useDocuments } from "@/store";
 import { useToast } from "@/components/Toast";
 import { AIBubbleMenu } from "@/components/AIBubbleMenu";
 import { api, type WritingReviewSuggestion } from "@/api";
 import { cn } from "@/lib/utils";
+import {
+  openAiModelConfig,
+  resolveAiReadiness,
+  type AiReadinessStatus,
+} from "@/lib/aiReadiness";
+import { isWritingReviewSnapshotCurrent } from "@/lib/aiWritingReview";
+import {
+  createSerialDocumentSaveCoordinator,
+  DOCUMENT_FLUSH_AUTOSAVE_EVENT,
+  type DocumentAutosaveFlushDetail,
+} from "@/lib/documentSaveCoordinator";
+import { DocumentVersionDialog } from "@/components/DocumentVersionDialog";
 
 const TEXT_COLORS = [
-  { color: "#1a1a1a", label: "默认" },
-  { color: "#e03131", label: "红色" },
-  { color: "#e8590c", label: "橙色" },
-  { color: "#f08c00", label: "黄色" },
-  { color: "#2f9e44", label: "绿色" },
-  { color: "#1971c2", label: "蓝色" },
-  { color: "#7048e8", label: "紫色" },
-  { color: "#9c36b5", label: "紫红" },
+  { color: "#1a1a1a", labelKey: "editor.color.default" as TranslationKey },
+  { color: "#e03131", labelKey: "editor.color.red" as TranslationKey },
+  { color: "#e8590c", labelKey: "editor.color.orange" as TranslationKey },
+  { color: "#f08c00", labelKey: "editor.color.yellow" as TranslationKey },
+  { color: "#2f9e44", labelKey: "editor.color.green" as TranslationKey },
+  { color: "#1971c2", labelKey: "editor.color.blue" as TranslationKey },
+  { color: "#7048e8", labelKey: "editor.color.purple" as TranslationKey },
+  { color: "#9c36b5", labelKey: "editor.color.magenta" as TranslationKey },
 ];
 
 const LINE_HEIGHTS = [
@@ -87,6 +105,13 @@ export function Editor({ documentId }: EditorProps) {
   const [currentColor, setCurrentColor] = useState("#1a1a1a");
   const [currentLineHeight, setCurrentLineHeight] = useState("1.5");
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const serialSaveCoordinatorRef = useRef<ReturnType<typeof createSerialDocumentSaveCoordinator> | null>(null);
+  if (!serialSaveCoordinatorRef.current) {
+    serialSaveCoordinatorRef.current = createSerialDocumentSaveCoordinator();
+  }
+  const saveSnapshotRef = useRef<(targetDocumentId: string, titleVal: string, content: string) => Promise<boolean>>(
+    async () => false
+  );
   const pasteImageFileRef = useRef<(file?: File) => void>(() => {});
   const loadedDocumentIdRef = useRef<string | null>(null);
   const lastSavedContentRef = useRef<string | null>(null);
@@ -95,10 +120,15 @@ export function Editor({ documentId }: EditorProps) {
   const [selectionChars, setSelectionChars] = useState(0);
   const [toolbarRevision, setToolbarRevision] = useState(0);
   const [inspectorOpen, setInspectorOpen] = useState(false);
+  const [versionHistoryOpen, setVersionHistoryOpen] = useState(false);
   const [reviewLoading, setReviewLoading] = useState(false);
   const [reviewScore, setReviewScore] = useState<number | null>(null);
   const [reviewSuggestions, setReviewSuggestions] = useState<WritingReviewSuggestion[]>([]);
   const [ignoredSuggestions, setIgnoredSuggestions] = useState<Set<string>>(new Set());
+  const [reviewConfigIssue, setReviewConfigIssue] = useState<Exclude<AiReadinessStatus, "ready"> | null>(null);
+  const [reviewError, setReviewError] = useState("");
+  const reviewRequestIdRef = useRef(0);
+  const reviewSnapshotHtmlRef = useRef<string | null>(null);
 
   const titleRef = useRef(title);
   const documentIdRef = useRef(documentId);
@@ -121,6 +151,10 @@ export function Editor({ documentId }: EditorProps) {
   }, []);
 
   const editor = useEditor({
+    // React StrictMode may destroy the render-time instance before this component's
+    // effects run. Creating it after mount prevents document loading from calling
+    // commands on that stale instance (notably in React 19 development builds).
+    immediatelyRender: false,
     extensions: [
       StarterKit.configure({ heading: { levels: [1, 2, 3] } }),
       TextStyle,
@@ -138,6 +172,14 @@ export function Editor({ documentId }: EditorProps) {
       TextAlign.configure({ types: ["heading", "paragraph"] }),
     ],
     onUpdate: ({ editor: ed }) => {
+      if (reviewSnapshotHtmlRef.current && reviewSnapshotHtmlRef.current !== ed.getHTML()) {
+        reviewSnapshotHtmlRef.current = null;
+        reviewRequestIdRef.current += 1;
+        setReviewScore(null);
+        setReviewSuggestions([]);
+        setIgnoredSuggestions(new Set());
+        setReviewError(t("inspector.contentChanged"));
+      }
       setToolbarRevision((revision) => revision + 1);
       updateCounts(ed);
       if (!isApplyingExternalContentRef.current) {
@@ -211,16 +253,20 @@ export function Editor({ documentId }: EditorProps) {
       return;
     }
 
+    reviewRequestIdRef.current += 1;
+    reviewSnapshotHtmlRef.current = null;
+    setReviewScore(null);
+    setReviewSuggestions([]);
+    setIgnoredSuggestions(new Set());
+    setReviewError("");
+
     // Flush pending changes of the PREVIOUS document before loading the new one
     if (loadedDocumentIdRef.current && saveTimerRef.current && !isSameDoc) {
       const prevDocId = loadedDocumentIdRef.current;
       clearTimeout(saveTimerRef.current);
       saveTimerRef.current = null;
 
-      updateDocumentRef.current(prevDocId, {
-        title: titleRef.current,
-        content: editor.getHTML(),
-      }).catch(() => setSaveStatus("failed"));
+      void saveSnapshotRef.current(prevDocId, titleRef.current, editor.getHTML());
     }
 
     isApplyingExternalContentRef.current = true;
@@ -240,28 +286,42 @@ export function Editor({ documentId }: EditorProps) {
       if (saveTimerRef.current && loadedDocumentIdRef.current) {
         clearTimeout(saveTimerRef.current);
         saveTimerRef.current = null;
-        updateDocumentRef.current(loadedDocumentIdRef.current, {
-          title: titleRef.current,
-          content: editor?.getHTML() || "",
-        }).catch(() => {});
+        void saveSnapshotRef.current(
+          loadedDocumentIdRef.current,
+          titleRef.current,
+          editor?.getHTML() || ""
+        );
       }
     };
   }, [editor]);
 
   const saveSnapshot = useCallback(async (targetDocumentId: string, titleVal: string, content: string) => {
-    setSaveStatus("saving");
-    try {
+    if (documentIdRef.current === targetDocumentId) setSaveStatus("saving");
+    const result = await serialSaveCoordinatorRef.current!.enqueue(targetDocumentId, async () => {
       await updateDocumentRef.current(targetDocumentId, { title: titleVal, content });
-      lastSavedContentRef.current = content;
-      setSaveStatus("saved");
-      window.setTimeout(() => {
-        setSaveStatus((status) => (status === "saved" ? "" : status));
-      }, 1500);
-    } catch (error: any) {
-      setSaveStatus("failed");
-      toast(error.message || t("editor.saveFailed"), "error");
+    });
+
+    if (result.success) {
+      if (documentIdRef.current === targetDocumentId) {
+        lastSavedContentRef.current = content;
+      }
+      if (result.isLatest && documentIdRef.current === targetDocumentId) {
+        setSaveStatus("saved");
+        window.setTimeout(() => {
+          setSaveStatus((status) => (status === "saved" ? "" : status));
+        }, 1500);
+      }
+      return true;
     }
+
+    if (result.isLatest && documentIdRef.current === targetDocumentId) {
+      const error = result.error as { message?: string } | undefined;
+      setSaveStatus("failed");
+      toast(error?.message || t("editor.saveFailed"), "error");
+    }
+    return false;
   }, [t, toast]);
+  saveSnapshotRef.current = saveSnapshot;
 
   const queueSave = useCallback(() => {
     const targetDocumentId = documentIdRef.current;
@@ -276,6 +336,49 @@ export function Editor({ documentId }: EditorProps) {
     }, 1500);
   }, [editor, saveSnapshot]);
 
+  // AI chat / external writers cancel pending autosave and sync last-saved marker
+  // so a stale timer cannot overwrite a just-applied AI edit.
+  useEffect(() => {
+    const onCancel = (event: Event) => {
+      const detail = (event as CustomEvent<{ docId?: string }>).detail;
+      if (!detail?.docId || detail.docId !== documentIdRef.current) return;
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = null;
+      }
+    };
+    const onExternalWrite = (event: Event) => {
+      const detail = (event as CustomEvent<{ docId?: string; content?: string }>).detail;
+      if (!detail?.docId || detail.docId !== documentIdRef.current) return;
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = null;
+      }
+      if (typeof detail.content === "string") {
+        lastSavedContentRef.current = detail.content;
+      }
+      setSaveStatus("saved");
+    };
+    const onFlushAutosave = (event: Event) => {
+      const detail = (event as CustomEvent<DocumentAutosaveFlushDetail>).detail;
+      if (!detail?.docId || detail.docId !== documentIdRef.current || !editor) return;
+      detail.handled = true;
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = null;
+      }
+      void saveSnapshot(detail.docId, titleRef.current, editor.getHTML()).then(detail.complete);
+    };
+    window.addEventListener("znwriter-document-cancel-autosave", onCancel);
+    window.addEventListener("znwriter-document-external-write", onExternalWrite);
+    window.addEventListener(DOCUMENT_FLUSH_AUTOSAVE_EVENT, onFlushAutosave);
+    return () => {
+      window.removeEventListener("znwriter-document-cancel-autosave", onCancel);
+      window.removeEventListener("znwriter-document-external-write", onExternalWrite);
+      window.removeEventListener(DOCUMENT_FLUSH_AUTOSAVE_EVENT, onFlushAutosave);
+    };
+  }, [editor, saveSnapshot]);
+
   const retrySave = useCallback(() => {
     const targetDocumentId = documentIdRef.current;
     if (!targetDocumentId || !editor) return;
@@ -285,6 +388,16 @@ export function Editor({ documentId }: EditorProps) {
     }
     void saveSnapshot(targetDocumentId, titleRef.current, editor.getHTML());
   }, [editor, saveSnapshot]);
+
+  const flushCurrentDocument = useCallback(async () => {
+    const targetDocumentId = documentIdRef.current;
+    if (!targetDocumentId || !editor) return false;
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+    return saveSnapshotRef.current(targetDocumentId, titleRef.current, editor.getHTML());
+  }, [editor]);
 
   // Auto-save on title change
   useEffect(() => {
@@ -341,18 +454,55 @@ export function Editor({ documentId }: EditorProps) {
       toast(t("inspector.noContent"), "info");
       return;
     }
+    const requestId = reviewRequestIdRef.current + 1;
+    reviewRequestIdRef.current = requestId;
+    const targetDocumentId = doc.id;
+    const targetContent = editor.getHTML();
     setInspectorOpen(true);
+    setReviewError("");
     setReviewLoading(true);
     try {
-      const result = await api.writingReview({ title, content: editor.getHTML() });
+      const readiness = await resolveAiReadiness(() => api.getApiKey());
+      if (!isWritingReviewSnapshotCurrent({
+        requestId,
+        latestRequestId: reviewRequestIdRef.current,
+        targetDocumentId,
+        currentDocumentId: documentIdRef.current,
+        targetContent,
+        currentContent: editor.getHTML(),
+      })) {
+        setReviewError(t("inspector.contentChanged"));
+        return;
+      }
+      if (readiness !== "ready") {
+        setReviewConfigIssue(readiness);
+        return;
+      }
+      setReviewConfigIssue(null);
+      const result = await api.writingReview({ title, content: targetContent });
+      if (!isWritingReviewSnapshotCurrent({
+        requestId,
+        latestRequestId: reviewRequestIdRef.current,
+        targetDocumentId,
+        currentDocumentId: documentIdRef.current,
+        targetContent,
+        currentContent: editor.getHTML(),
+      })) {
+        setReviewError(t("inspector.contentChanged"));
+        return;
+      }
+      reviewSnapshotHtmlRef.current = targetContent;
       setReviewScore(result.score);
       setReviewSuggestions(result.suggestions || []);
       setIgnoredSuggestions(new Set());
       toast(t("inspector.done"), "success");
     } catch (err: any) {
-      toast(err.message || t("inspector.failed"), "error");
+      if (requestId !== reviewRequestIdRef.current) return;
+      const message = err.message || t("inspector.failed");
+      setReviewError(message);
+      toast(message, "error");
     } finally {
-      setReviewLoading(false);
+      if (requestId === reviewRequestIdRef.current) setReviewLoading(false);
     }
   }, [doc, editor, title, t, toast]);
 
@@ -494,33 +644,48 @@ export function Editor({ documentId }: EditorProps) {
         </Tooltip>
 
         {/* Text Color */}
-        <div className="relative">
+        <DropdownMenu open={showColorPicker} onOpenChange={(nextOpen) => {
+          setShowColorPicker(nextOpen);
+          if (nextOpen) setShowLineHeightPicker(false);
+        }}>
           <Tooltip content={t("editor.textColor")}>
-            <Toggle size="sm" pressed={showColorPicker}
-              onPressedChange={() => { setShowColorPicker(!showColorPicker); setShowLineHeightPicker(false); }}
-              aria-label={t("editor.textColor")}
-              className="flex flex-col items-center justify-center p-0.5 gap-0.5"
-            >
-              <Palette className="h-3.5 w-3.5 animate-duration-300" />
-              <div className="h-[2px] w-4 rounded-full transition-colors duration-200" style={{ backgroundColor: currentColor }} />
-            </Toggle>
+            <DropdownMenuTrigger asChild>
+              <Toggle
+                size="sm"
+                pressed={showColorPicker}
+                aria-label={t("editor.textColor")}
+                className="flex flex-col items-center justify-center gap-0.5 p-0.5"
+              >
+                <Palette className="h-3.5 w-3.5 animate-duration-300" />
+                <span className="h-[2px] w-4 rounded-full transition-colors duration-200" style={{ backgroundColor: currentColor }} />
+              </Toggle>
+            </DropdownMenuTrigger>
           </Tooltip>
-          {showColorPicker && (
-            <div className="absolute top-full left-0 mt-1 z-50 flex flex-wrap gap-1 rounded-lg border border-surface-200 bg-white p-2 shadow-lg dark:border-surface-700 dark:bg-surface-900">
-              {TEXT_COLORS.map((c) => (
-                <button key={c.color}
-                  onClick={() => { editor.chain().focus().setColor(c.color).run(); setShowColorPicker(false); }}
-                  className="h-6 w-6 rounded border border-surface-200 cursor-pointer hover:scale-110 transition-transform"
-                  style={{ backgroundColor: c.color }} title={c.label}
+          <DropdownMenuContent align="start" className="grid min-w-0 grid-cols-3 gap-1 p-2">
+            {TEXT_COLORS.map((color, index) => (
+              <DropdownMenuItem
+                key={color.color}
+                index={index}
+                aria-label={t(color.labelKey)}
+                onSelect={() => editor.chain().focus().setColor(color.color).run()}
+                className="h-7 w-7 justify-center p-0"
+              >
+                <span
+                  className="h-5 w-5 rounded border border-surface-200"
+                  style={{ backgroundColor: color.color }}
                 />
-              ))}
-              <button onClick={() => { editor.chain().focus().unsetColor().run(); setShowColorPicker(false); }}
-                className="h-6 w-6 rounded border border-surface-200 cursor-pointer text-[10px] leading-tight bg-white dark:bg-surface-800"
-                title={t("editor.clearColor")}
-              >✕</button>
-            </div>
-          )}
-        </div>
+              </DropdownMenuItem>
+            ))}
+            <DropdownMenuItem
+              index={TEXT_COLORS.length}
+              aria-label={t("editor.clearColor")}
+              onSelect={() => editor.chain().focus().unsetColor().run()}
+              className="h-7 w-7 justify-center p-0 text-xs"
+            >
+              <X className="h-3.5 w-3.5" />
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
         <Separator orientation="vertical" className="mx-1 h-4" />
 
         {/* Align */}
@@ -569,8 +734,12 @@ export function Editor({ documentId }: EditorProps) {
 
         {/* Font Size */}
         <div className="flex items-center gap-0.5">
-          <Tooltip content="减小字号">
-            <button
+          <Tooltip content={t("editor.decreaseFontSize")}>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon-sm"
+              aria-label={t("editor.decreaseFontSize")}
               onClick={() => {
                 const raw = editor.getAttributes("textStyle").fontSize as string | undefined;
                 const parsed = raw ? parseInt(raw, 10) : currentFontSize;
@@ -578,12 +747,16 @@ export function Editor({ documentId }: EditorProps) {
                 setCurrentFontSize(next);
                 editor.chain().setFontSize(`${next}px`).run();
               }}
-              className="h-7 w-7 rounded-md text-xs font-medium border border-surface-200 hover:bg-surface-100 cursor-pointer flex items-center justify-center dark:border-surface-700 dark:hover:bg-surface-800"
-            >−</button>
+              className="h-7 w-7 text-xs"
+            >−</Button>
           </Tooltip>
           <span className="text-xs text-surface-500 w-8 text-center tabular-nums">{currentFontSize}px</span>
-          <Tooltip content="增大字号">
-            <button
+          <Tooltip content={t("editor.increaseFontSize")}>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon-sm"
+              aria-label={t("editor.increaseFontSize")}
               onClick={() => {
                 const raw = editor.getAttributes("textStyle").fontSize as string | undefined;
                 const parsed = raw ? parseInt(raw, 10) : currentFontSize;
@@ -591,51 +764,57 @@ export function Editor({ documentId }: EditorProps) {
                 setCurrentFontSize(next);
                 editor.chain().setFontSize(`${next}px`).run();
               }}
-              className="h-7 w-7 rounded-md text-xs font-medium border border-surface-200 hover:bg-surface-100 cursor-pointer flex items-center justify-center dark:border-surface-700 dark:hover:bg-surface-800"
-            >+</button>
+              className="h-7 w-7 text-xs"
+            >+</Button>
           </Tooltip>
         </div>
 
         {/* Line Height */}
-        <div className="relative">
+        <DropdownMenu open={showLineHeightPicker} onOpenChange={(nextOpen) => {
+          setShowLineHeightPicker(nextOpen);
+          if (nextOpen) setShowColorPicker(false);
+        }}>
           <Tooltip content={t("editor.lineHeight")}>
-            <button
-              onClick={() => { setShowLineHeightPicker(!showLineHeightPicker); setShowColorPicker(false); }}
-              className="h-7 px-2 rounded text-xs font-medium border border-surface-200 hover:bg-surface-100 cursor-pointer dark:border-surface-700 dark:hover:bg-surface-800"
-            >
-              {t("editor.lineHeight")}: {currentLineHeight}
-            </button>
+            <DropdownMenuTrigger asChild>
+              <Button type="button" variant="outline" size="sm" className="h-7 px-2 text-xs">
+                {t("editor.lineHeight")}: {currentLineHeight}
+              </Button>
+            </DropdownMenuTrigger>
           </Tooltip>
-          {showLineHeightPicker && (
-            <div className="absolute top-full left-0 mt-1 z-50 flex flex-col gap-0.5 rounded-lg border border-surface-200 bg-white p-1 shadow-lg dark:border-surface-700 dark:bg-surface-900 min-w-[80px]">
-              {LINE_HEIGHTS.map((lh) => (
-                <button key={lh.value}
-                  onClick={() => { editor.chain().focus().setLineHeight(lh.value).run(); setShowLineHeightPicker(false); }}
-                  className="px-2 py-1 text-xs rounded hover:bg-surface-100 cursor-pointer text-left dark:hover:bg-surface-800"
-                >{lh.label}</button>
-              ))}
-            </div>
-          )}
-        </div>
+          <DropdownMenuContent align="start" className="min-w-20">
+            {LINE_HEIGHTS.map((lineHeight, index) => (
+              <DropdownMenuItem
+                key={lineHeight.value}
+                index={index}
+                onSelect={() => editor.chain().focus().setLineHeight(lineHeight.value).run()}
+                className={cn(currentLineHeight === lineHeight.value && "bg-brand-50 text-brand-700 dark:bg-brand-950 dark:text-brand-300")}
+              >
+                {lineHeight.label}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
         <Separator orientation="vertical" className="mx-1 h-4" />
         {editor.isActive("image") && (
           <>
-            <label className="flex items-center gap-1 text-[11px] font-medium text-surface-500 dark:text-surface-400">
+            <label htmlFor="editor-image-width" className="flex items-center gap-1 text-[11px] font-medium text-surface-500 dark:text-surface-400">
               <span>{t("editor.imageWidth")}</span>
               <Input
+                id="editor-image-width"
                 value={String(editor.getAttributes("image").width || "")}
                 onChange={(event) => updateSelectedImageSize("width", event.target.value)}
                 className="h-7 w-16 bg-transparent px-2 text-xs"
                 placeholder="480"
               />
             </label>
-            <label className="flex items-center gap-1 text-[11px] font-medium text-surface-500 dark:text-surface-400">
+            <label htmlFor="editor-image-height" className="flex items-center gap-1 text-[11px] font-medium text-surface-500 dark:text-surface-400">
               <span>{t("editor.imageHeight")}</span>
               <Input
+                id="editor-image-height"
                 value={String(editor.getAttributes("image").height || "")}
                 onChange={(event) => updateSelectedImageSize("height", event.target.value)}
                 className="h-7 w-16 bg-transparent px-2 text-xs"
-                placeholder="auto"
+                placeholder={t("editor.imageAutoSize")}
               />
             </label>
             <Separator orientation="vertical" className="mx-1 h-4" />
@@ -668,28 +847,43 @@ export function Editor({ documentId }: EditorProps) {
       <div className="flex min-h-0 flex-1">
       <Scrollbar className="min-w-0 flex-1">
         <div className="min-h-full cursor-default" onMouseDown={handleContainerMouseDown}>
-          <div className={cn("mx-auto px-12 py-12 transition-[max-width] duration-200", inspectorOpen ? "max-w-[680px]" : "max-w-[720px]")}>
+          <div className={cn("mx-auto px-5 py-8 transition-[max-width] duration-200 sm:px-8 lg:px-12 lg:py-12", inspectorOpen ? "max-w-[680px]" : "max-w-[720px]")}>
             {/* Title + Favorite */}
             <div className="flex items-start gap-3 mb-4">
-              <input
+              <Input
                 type="text"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 onKeyDown={handleTitleKeyDown}
-                className="title-input flex-1 text-surface-900 dark:text-surface-100"
+                className="title-input h-auto flex-1 border-0 bg-transparent px-0 py-0 text-surface-900 shadow-none focus-visible:ring-0 dark:text-surface-100"
                 placeholder={t("editor.untitled")}
               />
-              <button
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
                 onClick={handleToggleFavorite}
-                className={`mt-1.5 p-1.5 rounded-lg cursor-pointer transition-colors shrink-0 ${
+                className={`mt-1.5 shrink-0 rounded-lg ${
                   doc?.isFavorite
                     ? "text-amber-500 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950 dark:hover:bg-amber-900"
                     : "text-surface-400 hover:text-amber-500 hover:bg-surface-100 dark:hover:bg-surface-800"
                 }`}
-                title={doc?.isFavorite ? t("editor.unfavorite") : t("editor.favorite")}
+                aria-label={doc?.isFavorite ? t("editor.unfavorite") : t("editor.favorite")}
               >
                 <Star className="h-5 w-5" fill={doc?.isFavorite ? "currentColor" : "none"} />
-              </button>
+              </Button>
+              <Tooltip content={t("editor.versionHistory")}>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setVersionHistoryOpen(true)}
+                  className="mt-1.5 shrink-0 rounded-lg text-surface-400 hover:bg-surface-100 hover:text-brand-600 dark:hover:bg-surface-800 dark:hover:text-brand-300"
+                  aria-label={t("editor.versionHistory")}
+                >
+                  <History className="h-5 w-5" />
+                </Button>
+              </Tooltip>
             </div>
 
             {/* Separator between title and content */}
@@ -703,7 +897,7 @@ export function Editor({ documentId }: EditorProps) {
         </div>
       </Scrollbar>
       {inspectorOpen && (
-        <aside className="flex w-[320px] shrink-0 flex-col border-l border-surface-200 bg-surface-50 dark:border-surface-800 dark:bg-surface-950">
+        <aside className="fixed inset-y-0 right-0 z-40 flex w-[min(320px,calc(100vw-4rem))] shrink-0 flex-col border-l border-surface-200 bg-surface-50 shadow-2xl lg:static lg:z-auto lg:w-[320px] lg:shadow-none dark:border-surface-800 dark:bg-surface-950">
           <div className="flex items-center justify-between border-b border-surface-200 px-4 py-3 dark:border-surface-800">
             <div>
               <div className="text-sm font-semibold text-surface-900 dark:text-surface-100">{t("inspector.title")}</div>
@@ -735,7 +929,36 @@ export function Editor({ documentId }: EditorProps) {
           </div>
           <Scrollbar className="flex-1">
             <div className="space-y-3 p-3">
-              {reviewLoading ? (
+              {reviewConfigIssue ? (
+                <div className="rounded-xl border border-brand-200 bg-brand-50/70 p-4 dark:border-brand-500/20 dark:bg-brand-500/10">
+                  <div className="text-sm font-semibold text-surface-900 dark:text-surface-100">
+                    {t(reviewConfigIssue === "missing" ? "ai.configRequiredTitle" : "ai.configCheckFailedTitle")}
+                  </div>
+                  <p className="mt-2 text-xs leading-5 text-surface-500 dark:text-surface-400">
+                    {t(reviewConfigIssue === "missing" ? "ai.configRequiredDesc" : "ai.configCheckFailedDesc")}
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {reviewConfigIssue === "unavailable" && (
+                      <Button type="button" variant="outline" size="sm" onClick={runWritingReview}>
+                        <RotateCcw className="h-3.5 w-3.5" />
+                        {t("ai.retryConfigCheck")}
+                      </Button>
+                    )}
+                    <Button type="button" size="sm" onClick={openAiModelConfig}>
+                      {t("ai.openModelConfig")}
+                    </Button>
+                  </div>
+                </div>
+              ) : reviewError ? (
+                <div className="rounded-xl border border-red-200 bg-red-50/70 p-4 dark:border-red-500/20 dark:bg-red-500/10">
+                  <div className="text-sm font-semibold text-red-700 dark:text-red-300">{t("inspector.failed")}</div>
+                  <p className="mt-2 break-words text-xs leading-5 text-red-600 dark:text-red-300">{reviewError}</p>
+                  <Button type="button" variant="outline" size="sm" className="mt-3" onClick={runWritingReview}>
+                    <RotateCcw className="h-3.5 w-3.5" />
+                    {t("inspector.retry")}
+                  </Button>
+                </div>
+              ) : reviewLoading ? (
                 <div className="rounded-xl border border-surface-200 bg-white p-4 text-sm text-surface-500 dark:border-surface-800 dark:bg-surface-900">
                   {t("inspector.loading")}
                 </div>
@@ -822,6 +1045,14 @@ export function Editor({ documentId }: EditorProps) {
         </div>
         <span className="text-xs text-surface-400">{charCount} {t("editor.characters")}</span>
       </div>
+      {documentId && (
+        <DocumentVersionDialog
+          open={versionHistoryOpen}
+          onOpenChange={setVersionHistoryOpen}
+          documentId={documentId}
+          flushCurrent={flushCurrentDocument}
+        />
+      )}
     </div>
   );
 }

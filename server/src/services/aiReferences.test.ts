@@ -26,4 +26,14 @@ describe("AI chat references", () => {
 
     assert.deepEqual(ids, ["alpha", "beta"]);
   });
+
+  it("bounds reference count and identifier length before database queries", () => {
+    const ids = selectReferencedBrainIds(Array.from({ length: 20 }, (_, index) => ({
+      type: "brain",
+      id: `${index}-${"x".repeat(200)}`,
+    })));
+
+    assert.equal(ids.length, 12);
+    assert.ok(ids.every((id) => id.length <= 128));
+  });
 });

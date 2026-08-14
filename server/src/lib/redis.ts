@@ -11,11 +11,20 @@ export const redis = new Redis(REDIS_URL, {
   lazyConnect: true,
 });
 
+export let redisAvailable = false;
+let unavailableWarningShown = false;
+
 redis.on("error", (err) => {
-  console.warn("[Redis] connection error:", err.message);
+  redisAvailable = false;
+  if (!unavailableWarningShown) {
+    unavailableWarningShown = true;
+    console.warn("[Redis] unavailable; using in-memory fallbacks:", err.message);
+  }
 });
 
 redis.on("connect", () => {
+  redisAvailable = true;
+  unavailableWarningShown = false;
   console.log("[Redis] connected");
 });
 
@@ -24,6 +33,10 @@ export async function connectRedis(): Promise<void> {
   try {
     await redis.connect();
   } catch (err: any) {
-    console.warn("[Redis] unavailable, running without cache/rate-limit:", err.message);
+    redisAvailable = false;
+    if (!unavailableWarningShown) {
+      unavailableWarningShown = true;
+      console.warn("[Redis] unavailable; using in-memory fallbacks:", err.message);
+    }
   }
 }

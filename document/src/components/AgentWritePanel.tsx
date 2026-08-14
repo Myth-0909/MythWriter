@@ -3,10 +3,12 @@ import {
   BookOpen,
   ChevronDown,
   ChevronUp,
+  Check,
   CheckCircle2,
   Circle,
   ClipboardCheck,
   FileText,
+  Globe2,
   Loader2,
   NotebookTabs,
   PenLine,
@@ -22,14 +24,27 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Toggle } from "@/components/ui/toggle";
 import { Scrollbar } from "@/components/ui/scrollbar";
 import { useI18n, type TranslationKey } from "@/components/I18nProvider";
 import { markdownToHtml } from "@/lib/markdown";
 import { sanitizeHtml } from "@/lib/html";
 import { useToast } from "@/components/Toast";
 import { useDocuments } from "@/store";
+import { useAuth } from "@/auth";
 import { cn } from "@/lib/utils";
 import { streamAgentWrite, api, type AgentDoneEvent, type AgentProgressEvent, type AgentStage } from "@/api";
+import {
+  openAiModelConfig,
+  resolveAiReadiness,
+  type AiReadinessStatus,
+} from "@/lib/aiReadiness";
+import {
+  getAgentWriteDraftStorageKey,
+  parseStoredAgentWriteDraft,
+  serializeStoredAgentWriteDraft,
+  type StoredAgentWriteDraft,
+} from "@/lib/agentWriteDraft";
 
 interface AgentWritePanelProps {
   open: boolean;
@@ -56,13 +71,21 @@ function sanitizeWordCount(value: string) {
 export function AgentWritePanel({ open, onOpenChange, onOpenDocument, currentDocumentId }: AgentWritePanelProps) {
   const { t } = useI18n();
   const { toast } = useToast();
-  const { refreshDocuments, documents: allDocuments } = useDocuments();
+  const { user } = useAuth();
+  const draftStorageKey = getAgentWriteDraftStorageKey(user?.id || "");
+  const { refreshDocuments, documents: allDocuments, createDocument, loadDocument, updateDocument } = useDocuments();
   const [goal, setGoal] = useState("");
   const [stylePrompt, setStylePrompt] = useState("");
   const [wordCount, setWordCount] = useState("600");
   const [includeBrain, setIncludeBrain] = useState(false);
   const [includeDocuments, setIncludeDocuments] = useState(false);
   const [includeJournal, setIncludeJournal] = useState(false);
+  const [includeWeb, setIncludeWeb] = useState(false);
+  const [readinessStatus, setReadinessStatus] = useState<"checking" | AiReadinessStatus>("checking");
+  const [brainLoadState, setBrainLoadState] = useState<"idle" | "loading" | "ready" | "error">("idle");
+  const [journalLoadState, setJournalLoadState] = useState<"idle" | "loading" | "ready" | "error">("idle");
+  const [brainReloadKey, setBrainReloadKey] = useState(0);
+  const [journalReloadKey, setJournalReloadKey] = useState(0);
   const [selectedDocIds, setSelectedDocIds] = useState<string[]>([]);
   const [selectedBrainIds, setSelectedBrainIds] = useState<string[]>([]);
   const [selectedJournalIds, setSelectedJournalIds] = useState<string[]>([]);
@@ -74,15 +97,28 @@ export function AgentWritePanel({ open, onOpenChange, onOpenDocument, currentDoc
   const [events, setEvents] = useState<Partial<Record<AgentStage, AgentProgressEvent>>>({});
   const [activeStage, setActiveStage] = useState<AgentStage | null>(null);
   const [done, setDone] = useState<AgentDoneEvent | null>(null);
+  const [saveCandidateDocId, setSaveCandidateDocId] = useState<string | null>(null);
+  const [recoveredDraft, setRecoveredDraft] = useState(false);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState("");
   const [stopped, setStopped] = useState(false);
+  const [savingDraft, setSavingDraft] = useState(false);
+  const [confirmCloseOpen, setConfirmCloseOpen] = useState(false);
+  const [confirmCloseReason, setConfirmCloseReason] = useState<"running" | "draft" | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const flowRunIdRef = useRef(0);
+  const runningRef = useRef(false);
+  const doneRef = useRef<AgentDoneEvent | null>(null);
+  const eventsRef = useRef<Partial<Record<AgentStage, AgentProgressEvent>>>({});
+  const restoredDraftKeyRef = useRef<string | null>(null);
+  runningRef.current = running;
+  doneRef.current = done;
+  eventsRef.current = events;
 
   useEffect(() => {
     const handler = (event: Event) => {
       const detail = (event as CustomEvent<{ goal?: string }>).detail;
-      if (detail?.goal) setGoal(detail.goal);
+      if (detail?.goal) setGoal(detail.goal.slice(0, 4_000));
       onOpenChange(true);
     };
     window.addEventListener("znwriter-agent-write-open", handler);
@@ -91,56 +127,164 @@ export function AgentWritePanel({ open, onOpenChange, onOpenDocument, currentDoc
 
   useEffect(() => {
     return () => {
+      flowRunIdRef.current += 1;
       abortRef.current?.abort();
     };
   }, []);
 
-  // Restore form draft from localStorage when opening
   useEffect(() => {
     if (!open) return;
-    try {
-      const saved = localStorage.getItem("agent-write-draft");
-      if (saved) {
-        const draft = JSON.parse(saved);
-        if (draft.goal) setGoal(draft.goal);
-        if (draft.stylePrompt) setStylePrompt(draft.stylePrompt);
-        if (draft.wordCount) setWordCount(draft.wordCount);
-      }
-    } catch { /* ignore */ }
+    let cancelled = false;
+    setReadinessStatus("checking");
+    resolveAiReadiness(() => api.getApiKey()).then((status) => {
+      if (!cancelled) setReadinessStatus(status);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [open]);
+
+  // Restore only the current user's local form and unsaved generated draft.
+  useEffect(() => {
+    if (!open) return;
+    if (!draftStorageKey || restoredDraftKeyRef.current === draftStorageKey) return;
+    restoredDraftKeyRef.current = draftStorageKey;
+    localStorage.removeItem("agent-write-draft");
+    setGoal("");
+    setStylePrompt("");
+    setWordCount("600");
+    setIncludeBrain(false);
+    setIncludeDocuments(false);
+    setIncludeJournal(false);
+    setIncludeWeb(false);
+    setSelectedDocIds([]);
+    setSelectedBrainIds([]);
+    setSelectedJournalIds([]);
+    setDone(null);
+    setRecoveredDraft(false);
+    const draft = parseStoredAgentWriteDraft(localStorage.getItem(draftStorageKey));
+    if (!draft) return;
+    setGoal(draft.goal);
+    setStylePrompt(draft.stylePrompt);
+    setWordCount(draft.wordCount);
+    setIncludeBrain(draft.includeBrain);
+    setIncludeDocuments(draft.includeDocuments);
+    setIncludeJournal(draft.includeJournal);
+    setIncludeWeb(draft.includeWeb);
+    setSelectedDocIds(draft.selectedDocIds);
+    setSelectedBrainIds(draft.selectedBrainIds);
+    setSelectedJournalIds(draft.selectedJournalIds);
+    if (draft.result && !draft.result.docId) {
+      doneRef.current = draft.result;
+      setDone(draft.result);
+      setRecoveredDraft(true);
+    }
+  }, [draftStorageKey, open]);
 
   // Auto-select current document when panel opens with includeDocuments
   useEffect(() => {
-    if (open && currentDocumentId && includeDocuments && !selectedDocIds.includes(currentDocumentId)) {
-      setSelectedDocIds((prev) => [...prev, currentDocumentId]);
+    if (open && currentDocumentId && includeDocuments) {
+      setSelectedDocIds((prev) => prev.includes(currentDocumentId) ? prev : [...prev, currentDocumentId]);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, currentDocumentId]);
+  }, [open, currentDocumentId, includeDocuments]);
 
-  // Save form draft to localStorage (debounced)
+  // Save form state and a recoverable generated draft (including partial output).
   useEffect(() => {
-    if (!open) return;
+    if (!open || !draftStorageKey) return;
     const timer = setTimeout(() => {
       try {
-        localStorage.setItem("agent-write-draft", JSON.stringify({ goal, stylePrompt, wordCount }));
+        const partialContent = String(done?.content || events.draft?.content || "").trim();
+        const recoverableResult: AgentDoneEvent | undefined = !done?.docId && partialContent
+          ? done || {
+              docId: null,
+              title: String(events.plan?.title || goal.trim().slice(0, 36) || t("editor.untitled")),
+              content: partialContent,
+              analysis: events.analyze?.analysis || {
+                genre: "",
+                tone: "",
+                themes: [],
+                estimatedWords: Number(wordCount) || 0,
+              },
+              outline: events.plan?.outline || [],
+              review: events.review?.review || { score: 0, suggestions: [] },
+              sources: events.research?.sources || [],
+            }
+          : undefined;
+        const stored: StoredAgentWriteDraft = {
+          goal,
+          stylePrompt,
+          wordCount,
+          includeBrain,
+          includeDocuments,
+          includeJournal,
+          includeWeb,
+          selectedDocIds,
+          selectedBrainIds,
+          selectedJournalIds,
+          result: recoverableResult,
+          savedAt: Date.now(),
+        };
+        localStorage.setItem(draftStorageKey, serializeStoredAgentWriteDraft(stored));
       } catch { /* ignore */ }
-    }, 500);
+    }, 700);
     return () => clearTimeout(timer);
-  }, [open, goal, stylePrompt, wordCount]);
+  }, [
+    done,
+    draftStorageKey,
+    events,
+    goal,
+    includeBrain,
+    includeDocuments,
+    includeJournal,
+    includeWeb,
+    open,
+    selectedBrainIds,
+    selectedDocIds,
+    selectedJournalIds,
+    stylePrompt,
+    t,
+    wordCount,
+  ]);
 
   useEffect(() => {
     if (open && includeBrain) {
-      api.listBrainKnowledges().then((res) => setBrainKnowledges(res.knowledges || []));
+      let cancelled = false;
+      setBrainLoadState("loading");
+      api.listBrainKnowledges()
+        .then((res) => {
+          if (cancelled) return;
+          setBrainKnowledges(res.knowledges || []);
+          setBrainLoadState("ready");
+        })
+        .catch(() => {
+          if (!cancelled) setBrainLoadState("error");
+        });
+      return () => {
+        cancelled = true;
+      };
     }
-  }, [open, includeBrain]);
+    setBrainLoadState("idle");
+  }, [open, includeBrain, brainReloadKey]);
 
   useEffect(() => {
     if (open && includeJournal) {
-      api.listWorkRecords({ limit: 100 }).then((res) =>
-        setJournalRecords((res.records || []).map((r: any) => ({ id: r.id, title: r.title })))
-      );
+      let cancelled = false;
+      setJournalLoadState("loading");
+      api.listWorkRecords({ limit: 100 })
+        .then((res) => {
+          if (cancelled) return;
+          setJournalRecords((res.records || []).map((r: any) => ({ id: r.id, title: r.title })));
+          setJournalLoadState("ready");
+        })
+        .catch(() => {
+          if (!cancelled) setJournalLoadState("error");
+        });
+      return () => {
+        cancelled = true;
+      };
     }
-  }, [open, includeJournal]);
+    setJournalLoadState("idle");
+  }, [open, includeJournal, journalReloadKey]);
 
   const analysis = events.analyze?.analysis || done?.analysis;
   const sources = events.research?.sources || done?.sources || [];
@@ -152,30 +296,124 @@ export function AgentWritePanel({ open, onOpenChange, onOpenDocument, currentDoc
 
   const statusText = useMemo(() => {
     if (error) return error;
-    if (done) return t("agent.complete");
+    if (recoveredDraft) return t("agent.draftRecovered");
     if (stopped) return t("agent.stopped");
+    if (done) return t("agent.complete");
     if (activeStage) return events[activeStage]?.message || t(stageMeta[activeStage].label);
     return t("agent.idle");
-  }, [activeStage, done, error, events, stopped, t]);
+  }, [activeStage, done, error, events, recoveredDraft, stopped, t]);
 
-  const resetFlow = () => {
+  const buildCurrentDraftResult = (): AgentDoneEvent | null => {
+    const currentEvents = eventsRef.current;
+    const currentDone = doneRef.current;
+    const partialContent = String(currentDone?.content || currentEvents.draft?.content || "").trim();
+    if (!partialContent) return null;
+    return currentDone || {
+      docId: null,
+      title: String(currentEvents.plan?.title || goal.trim().slice(0, 36) || t("editor.untitled")),
+      content: partialContent,
+      analysis: currentEvents.analyze?.analysis || {
+        genre: "",
+        tone: "",
+        themes: [],
+        estimatedWords: Number(wordCount) || 0,
+      },
+      outline: currentEvents.plan?.outline || [],
+      review: currentEvents.review?.review || { score: 0, suggestions: [] },
+      sources: currentEvents.research?.sources || [],
+    };
+  };
+
+  const persistCurrentRecovery = (result = buildCurrentDraftResult()) => {
+    if (!draftStorageKey || !result) return;
+    const stored: StoredAgentWriteDraft = {
+      goal,
+      stylePrompt,
+      wordCount,
+      includeBrain,
+      includeDocuments,
+      includeJournal,
+      includeWeb,
+      selectedDocIds,
+      selectedBrainIds,
+      selectedJournalIds,
+      result: result.docId ? undefined : result,
+      savedAt: Date.now(),
+    };
+    try {
+      localStorage.setItem(draftStorageKey, serializeStoredAgentWriteDraft(stored));
+    } catch {
+      // Ignore unavailable or quota-limited local storage.
+    }
+  };
+
+  const resetProgress = () => {
     setEvents({});
+    eventsRef.current = {};
     setActiveStage(null);
+    doneRef.current = null;
     setDone(null);
     setError("");
     setStopped(false);
+    setSaveCandidateDocId(null);
+    setRecoveredDraft(false);
+  };
+
+  const resetFlow = () => {
+    resetProgress();
     setSelectedDocIds([]);
     setSelectedBrainIds([]);
     setSelectedJournalIds([]);
   };
 
   const stopFlow = () => {
+    const partialResult = buildCurrentDraftResult();
+    if (partialResult && !doneRef.current) {
+      doneRef.current = partialResult;
+      setDone(partialResult);
+    }
+    persistCurrentRecovery(partialResult);
+    flowRunIdRef.current += 1;
     abortRef.current?.abort();
     abortRef.current = null;
     setActiveStage(null);
     setStopped(true);
     setRunning(false);
     toast(t("agent.stopped"), "info");
+  };
+
+  const forceClose = () => {
+    const closeReason = confirmCloseReason;
+    if (runningRef.current) stopFlow();
+    setConfirmCloseOpen(false);
+    setConfirmCloseReason(null);
+    if (closeReason === "draft") {
+      doneRef.current = null;
+      setDone(null);
+      setSaveCandidateDocId(null);
+      setRecoveredDraft(false);
+      if (draftStorageKey) localStorage.removeItem(draftStorageKey);
+    }
+    onOpenChange(false);
+  };
+
+  const requestClose = (nextOpen: boolean) => {
+    if (nextOpen) {
+      onOpenChange(true);
+      return;
+    }
+    if (runningRef.current) {
+      setConfirmCloseReason("running");
+      setConfirmCloseOpen(true);
+      return;
+    }
+    const draft = doneRef.current;
+    if (draft && !draft.docId && draft.content?.trim()) {
+      setConfirmCloseReason("draft");
+      setConfirmCloseOpen(true);
+      return;
+    }
+    onOpenChange(false);
   };
 
   const validateWordCount = () => {
@@ -210,6 +448,11 @@ export function AgentWritePanel({ open, onOpenChange, onOpenDocument, currentDoc
   };
 
   const startFlow = async () => {
+    if (readinessStatus !== "ready") {
+      onOpenChange(false);
+      openAiModelConfig();
+      return;
+    }
     if (!goal.trim()) {
       setError(t("agent.goalRequired"));
       toast(t("agent.goalRequired"), "error");
@@ -220,10 +463,12 @@ export function AgentWritePanel({ open, onOpenChange, onOpenDocument, currentDoc
     if (!targetWords) return;
 
     const controller = new AbortController();
+    const runId = flowRunIdRef.current + 1;
+    flowRunIdRef.current = runId;
     abortRef.current = controller;
     setRunning(true);
     setStopped(false);
-    resetFlow();
+    resetProgress();
 
     try {
       await streamAgentWrite(
@@ -234,38 +479,66 @@ export function AgentWritePanel({ open, onOpenChange, onOpenDocument, currentDoc
           includeBrain,
           includeDocuments,
           includeJournal,
+          includeWeb,
           referenceDocIds: includeDocuments ? selectedDocIds : [],
           referenceBrainIds: includeBrain ? selectedBrainIds : [],
           referenceJournalIds: includeJournal ? selectedJournalIds : [],
         },
         {
           onProgress(event) {
+            if (flowRunIdRef.current !== runId) return;
             setActiveStage(event.stage);
-            setEvents((prev) => ({ ...prev, [event.stage]: event }));
+            setEvents((prev) => {
+              const next = { ...prev, [event.stage]: event };
+              eventsRef.current = next;
+              return next;
+            });
           },
           onDone(result) {
+            if (flowRunIdRef.current !== runId) return;
+            doneRef.current = result;
             setDone(result);
-            setActiveStage("publish");
-            refreshDocuments();
+            setRecoveredDraft(false);
+            setActiveStage(null);
             toast(t("agent.complete"), "success");
           },
           onError(message) {
+            if (flowRunIdRef.current !== runId) return;
             setError(message);
           },
         },
         controller.signal
       );
     } catch (err: any) {
+      if (flowRunIdRef.current !== runId) return;
       if (err?.name === "AbortError") {
+        const partialResult = buildCurrentDraftResult();
+        if (partialResult && !doneRef.current) {
+          doneRef.current = partialResult;
+          setDone(partialResult);
+          persistCurrentRecovery(partialResult);
+        }
         setStopped(true);
       } else {
-        const message = err?.message || t("agent.failed");
+        const partialResult = buildCurrentDraftResult();
+        if (partialResult && !doneRef.current) {
+          doneRef.current = partialResult;
+          setDone(partialResult);
+          persistCurrentRecovery(partialResult);
+        }
+        const message = err?.message === "AGENT_STREAM_INCOMPLETE"
+          || err?.message === "AGENT_STREAM_INVALID"
+          || err?.name === "TypeError"
+          ? t("agent.streamInterrupted")
+          : err?.message || t("agent.failed");
         setError(message);
         toast(message, "error");
       }
     } finally {
-      abortRef.current = null;
-      setRunning(false);
+      if (flowRunIdRef.current === runId) {
+        abortRef.current = null;
+        setRunning(false);
+      }
     }
   };
 
@@ -275,8 +548,64 @@ export function AgentWritePanel({ open, onOpenChange, onOpenDocument, currentDoc
     onOpenDocument(done.docId);
   };
 
+  const saveGeneratedDraft = async (): Promise<string | null> => {
+    if (!done?.content?.trim() || savingDraft) return null;
+    setSavingDraft(true);
+    try {
+      const title = done.title?.trim() || t("editor.untitled");
+      const content = markdownToHtml(done.content);
+      const docId = saveCandidateDocId || await createDocument("general", title, content, null, false);
+      if (!saveCandidateDocId) setSaveCandidateDocId(docId);
+      if (saveCandidateDocId) {
+        await updateDocument(docId, { title, content });
+      }
+      const verified = await loadDocument(docId);
+      if (!verified || verified.title !== title || verified.content !== content) {
+        throw new Error("Agent draft save verification failed");
+      }
+      await refreshDocuments();
+      const nextDone = { ...done, docId };
+      setDone(nextDone);
+      setSaveCandidateDocId(null);
+      setRecoveredDraft(false);
+      if (draftStorageKey) {
+        const stored = parseStoredAgentWriteDraft(localStorage.getItem(draftStorageKey));
+        if (stored) {
+          localStorage.setItem(draftStorageKey, serializeStoredAgentWriteDraft({
+            ...stored,
+            result: undefined,
+            savedAt: Date.now(),
+          }));
+        }
+      }
+      toast(t("agent.saved"), "success");
+      return docId;
+    } catch (err) {
+      console.error("[agent] save draft failed:", err);
+      toast(t("agent.saveFailed"), "error");
+      return null;
+    } finally {
+      setSavingDraft(false);
+    }
+  };
+
+  const continueInChat = async () => {
+    let docId: string | null = done?.docId ?? null;
+    if (!docId) {
+      docId = await saveGeneratedDraft();
+      if (!docId) return;
+    }
+    const title = done?.title?.trim() || t("editor.untitled");
+    const prefill = t("agent.bridgePrefill").replace("{title}", title) + ` @${title}`;
+    onOpenChange(false);
+    onOpenDocument(docId);
+    window.setTimeout(() => {
+      window.dispatchEvent(new CustomEvent("znwriter-ai-chat-prefill", { detail: { text: prefill } }));
+    }, 120);
+  };
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={requestClose}>
       <DialogContent
         hideCloseButton
         className="relative h-[90vh] w-[calc(100vw-1rem)] max-w-[1280px] overflow-hidden p-0 sm:w-[calc(100vw-2rem)]"
@@ -287,7 +616,7 @@ export function AgentWritePanel({ open, onOpenChange, onOpenDocument, currentDoc
           size="icon"
           aria-label={t("common.close")}
           className="absolute right-4 top-4 z-30 h-10 w-10 rounded-2xl border border-surface-200 bg-white/90 text-surface-500 shadow-sm backdrop-blur transition-all hover:bg-surface-100 hover:text-surface-950 dark:border-surface-700 dark:bg-surface-950/90 dark:text-surface-300 dark:hover:bg-surface-800 dark:hover:text-surface-50"
-          onClick={() => onOpenChange(false)}
+          onClick={() => requestClose(false)}
         >
           <X className="h-4.5 w-4.5" />
         </Button>
@@ -298,7 +627,7 @@ export function AgentWritePanel({ open, onOpenChange, onOpenDocument, currentDoc
               <div className="relative flex items-start justify-between gap-6">
                 <div className="flex items-start gap-4">
                   <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-surface-950 text-brand-200 shadow-sm dark:bg-surface-100 dark:text-surface-950 overflow-hidden">
-                    <img src={catAvatar} alt="AI" className="h-12 w-12 object-cover" />
+                    <img src={catAvatar} alt={t("ai.title")} className="h-12 w-12 object-cover" />
                   </div>
                   <div className="min-w-0">
                     <DialogTitle className="text-2xl font-semibold text-surface-950 dark:text-surface-50">
@@ -319,6 +648,68 @@ export function AgentWritePanel({ open, onOpenChange, onOpenDocument, currentDoc
 
             <Scrollbar className="min-h-0 flex-1">
               <div className="px-7 py-6">
+                {readinessStatus !== "ready" && (
+                  <section className="mb-5 rounded-2xl border border-brand-200 bg-brand-50/70 p-4 dark:border-brand-500/20 dark:bg-brand-500/10">
+                    {readinessStatus === "checking" ? (
+                      <div className="flex items-center gap-2 text-sm text-brand-700 dark:text-brand-200">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        <span>{t("ai.readinessChecking")}</span>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                        <div>
+                          <h3 className="text-sm font-semibold text-surface-950 dark:text-surface-50">
+                            {t(readinessStatus === "missing" ? "ai.configRequiredTitle" : "ai.configCheckFailedTitle")}
+                          </h3>
+                          <p className="mt-1 max-w-2xl text-xs leading-5 text-surface-500 dark:text-surface-400">
+                            {t(readinessStatus === "missing" ? "ai.configRequiredDesc" : "ai.configCheckFailedDesc")}
+                          </p>
+                        </div>
+                        <div className="flex shrink-0 flex-wrap gap-2">
+                          {readinessStatus === "unavailable" && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setReadinessStatus("checking");
+                                resolveAiReadiness(() => api.getApiKey()).then(setReadinessStatus);
+                              }}
+                            >
+                              <RotateCcw className="h-4 w-4" />
+                              {t("ai.retryConfigCheck")}
+                            </Button>
+                          )}
+                          <Button
+                            type="button"
+                            size="sm"
+                            onClick={() => {
+                              onOpenChange(false);
+                              openAiModelConfig();
+                            }}
+                          >
+                            {t("ai.openModelConfig")}
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </section>
+                )}
+                {recoveredDraft && done?.content && (
+                  <section className="mb-5 rounded-2xl border border-amber-200 bg-amber-50/80 p-4 dark:border-amber-500/20 dark:bg-amber-500/10">
+                    <div className="flex items-start gap-3">
+                      <RotateCcw className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-300" />
+                      <div>
+                        <h3 className="text-sm font-semibold text-amber-900 dark:text-amber-100">
+                          {t("agent.draftRecovered")}
+                        </h3>
+                        <p className="mt-1 text-xs leading-5 text-amber-800/80 dark:text-amber-200/75">
+                          {t("agent.draftRecoveredDesc")}
+                        </p>
+                      </div>
+                    </div>
+                  </section>
+                )}
                 <section className="rounded-2xl border border-surface-200 bg-surface-50/70 p-6 dark:border-surface-800 dark:bg-surface-900/50">
                   <div className="mb-6 flex items-center gap-3">
                     <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-50 text-brand-600 dark:bg-brand-500/10 dark:text-brand-300">
@@ -336,12 +727,14 @@ export function AgentWritePanel({ open, onOpenChange, onOpenDocument, currentDoc
 
                   <div className="space-y-5">
                     <div className="rounded-xl border border-surface-200 bg-white p-4 shadow-sm dark:border-surface-800 dark:bg-surface-950">
-                      <label className="mb-3 block text-xs font-semibold text-surface-600 dark:text-surface-300">
+                      <label htmlFor="agent-write-goal" className="mb-3 block text-xs font-semibold text-surface-600 dark:text-surface-300">
                         {t("agent.goalLabel")}
                       </label>
                       <Textarea
+                        id="agent-write-goal"
                         value={goal}
-                        onChange={(event) => setGoal(event.target.value)}
+                        maxLength={4_000}
+                        onChange={(event) => setGoal(event.target.value.slice(0, 4_000))}
                         placeholder={t("agent.goalPlaceholder")}
                         disabled={running}
                         className="min-h-36 rounded-xl bg-surface-50/80 text-sm leading-6 shadow-none dark:bg-surface-900"
@@ -350,12 +743,14 @@ export function AgentWritePanel({ open, onOpenChange, onOpenDocument, currentDoc
 
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-[minmax(0,1fr)_180px]">
                       <div className="rounded-xl border border-surface-200 bg-white p-4 shadow-sm dark:border-surface-800 dark:bg-surface-950">
-                        <label className="mb-3 block text-xs font-semibold text-surface-600 dark:text-surface-300">
+                        <label htmlFor="agent-write-style" className="mb-3 block text-xs font-semibold text-surface-600 dark:text-surface-300">
                           {t("agent.style")}
                         </label>
                         <Input
+                          id="agent-write-style"
+                          maxLength={120}
                           value={stylePrompt}
-                          onChange={(event) => setStylePrompt(event.target.value)}
+                          onChange={(event) => setStylePrompt(event.target.value.slice(0, 120))}
                           placeholder={t("agent.stylePlaceholder")}
                           disabled={running}
                           className="h-11 rounded-xl bg-surface-50/80 shadow-none dark:bg-surface-900"
@@ -376,11 +771,12 @@ export function AgentWritePanel({ open, onOpenChange, onOpenDocument, currentDoc
                       </div>
 
                       <div className="rounded-xl border border-surface-200 bg-white p-4 shadow-sm dark:border-surface-800 dark:bg-surface-950">
-                        <label className="mb-3 block text-xs font-semibold text-surface-600 dark:text-surface-300">
+                        <label htmlFor="agent-write-length" className="mb-3 block text-xs font-semibold text-surface-600 dark:text-surface-300">
                           {t("agent.length")}
                         </label>
                         <div className="relative">
                           <Input
+                            id="agent-write-length"
                             type="text"
                             inputMode="numeric"
                             pattern="[0-9]*"
@@ -455,7 +851,7 @@ export function AgentWritePanel({ open, onOpenChange, onOpenDocument, currentDoc
                       {t("agent.contextDesc")}
                     </p>
                   </div>
-                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
                     {/* Brain Knowledge Picker */}
                     <div className={cn(
                       "rounded-xl border transition-all duration-200 overflow-hidden",
@@ -463,12 +859,20 @@ export function AgentWritePanel({ open, onOpenChange, onOpenDocument, currentDoc
                         ? "border-brand-200 dark:border-brand-500/25 shadow-sm"
                         : "border-surface-200 dark:border-surface-800 hover:border-brand-200/50 hover:shadow-sm"
                     )}>
-                      <button
-                        type="button"
+                      <Toggle
+                        pressed={includeBrain}
                         disabled={running}
-                        onClick={() => { setIncludeBrain(!includeBrain); if (includeBrain) { setSelectedBrainIds([]); setBrainFilter(""); } }}
+                        onPressedChange={(pressed) => {
+                          setIncludeBrain(pressed);
+                          if (!pressed) {
+                            setSelectedBrainIds([]);
+                            setBrainFilter("");
+                          }
+                        }}
+                        aria-label={t("agent.includeBrain")}
+                        aria-expanded={includeBrain}
                         className={cn(
-                          "flex w-full items-center gap-3 px-4 py-3 text-xs font-medium transition-all duration-200 cursor-pointer",
+                          "flex h-auto w-full items-center justify-start gap-3 rounded-none px-4 py-3 text-xs font-medium transition-all duration-200",
                           includeBrain
                             ? "bg-brand-50 text-brand-700 dark:bg-brand-500/10 dark:text-brand-300"
                             : "text-surface-500 hover:bg-surface-50 hover:text-surface-700 dark:text-surface-400 dark:hover:bg-surface-900 dark:hover:text-surface-200"
@@ -477,10 +881,10 @@ export function AgentWritePanel({ open, onOpenChange, onOpenDocument, currentDoc
                         <BookOpen className="h-4 w-4 shrink-0" />
                         <span className="flex-1 text-left">{t("agent.includeBrain")}</span>
                         <span className="text-[10px] text-surface-400">{selectedBrainIds.length > 0 ? selectedBrainIds.length : includeBrain ? t("agent.autoSelect") : t("agent.off")}</span>
-                      </button>
+                      </Toggle>
                       {includeBrain && (
                         <div className="border-t border-surface-200 dark:border-surface-800 bg-surface-50/50 dark:bg-surface-950/30">
-                          {brainKnowledges.length > 0 && (
+                          {brainLoadState === "ready" && brainKnowledges.length > 0 && (
                             <div className="px-3 pt-2">
                               <Input
                                 className="h-8 text-[11px] dark:bg-surface-900"
@@ -490,33 +894,53 @@ export function AgentWritePanel({ open, onOpenChange, onOpenDocument, currentDoc
                               />
                             </div>
                           )}
+                          {brainLoadState === "loading" && (
+                            <div className="flex items-center gap-2 px-4 py-3 text-[11px] text-surface-400">
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              {t("common.loading")}
+                            </div>
+                          )}
+                          {brainLoadState === "error" && (
+                            <div className="flex items-center justify-between gap-2 px-4 py-3 text-[11px] text-red-500">
+                              <span>{t("agent.brainLoadFailed")}</span>
+                              <Button type="button" variant="ghost" size="sm" onClick={() => setBrainReloadKey((value) => value + 1)}>
+                                {t("agent.retrySourceLoad")}
+                              </Button>
+                            </div>
+                          )}
                           <div className="max-h-[140px] overflow-y-auto">
-                            {brainKnowledges
+                            {brainLoadState === "ready" && brainKnowledges
                               .filter((item) => !brainFilter || item.title.includes(brainFilter) || item.category.includes(brainFilter))
-                              .map((item) => (
-                                <label
+                              .map((item) => {
+                                const selected = selectedBrainIds.includes(item.id);
+                                return (
+                                <Toggle
                                   key={item.id}
+                                  pressed={selected}
+                                  onPressedChange={(pressed) => {
+                                    setSelectedBrainIds((prev) => (
+                                      pressed ? [...new Set([...prev, item.id])] : prev.filter((id) => id !== item.id)
+                                    ));
+                                  }}
+                                  aria-label={item.title}
                                   className={cn(
-                                    "flex cursor-pointer items-center gap-2 px-4 py-2 text-xs transition-colors hover:bg-surface-100 dark:hover:bg-surface-800",
-                                    selectedBrainIds.includes(item.id) && "bg-brand-50/50 dark:bg-brand-500/5"
+                                    "flex h-auto w-full justify-start gap-2 rounded-none px-4 py-2 text-xs transition-colors hover:bg-surface-100 dark:hover:bg-surface-800",
+                                    selected && "bg-brand-50/50 dark:bg-brand-500/5"
                                   )}
                                 >
-                                  <input
-                                    type="checkbox"
-                                    className="h-3.5 w-3.5 rounded accent-brand-500"
-                                    checked={selectedBrainIds.includes(item.id)}
-                                    onChange={(e) => {
-                                      setSelectedBrainIds((prev) =>
-                                        e.target.checked ? [...prev, item.id] : prev.filter((id) => id !== item.id)
-                                      );
-                                    }}
-                                  />
+                                  <span className={cn(
+                                    "flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border",
+                                    selected ? "border-brand-500 bg-brand-500 text-white" : "border-surface-300 dark:border-surface-600"
+                                  )}>
+                                    {selected && <Check className="h-3 w-3" />}
+                                  </span>
                                   <span className="truncate">{item.title}</span>
                                   <span className="ml-auto shrink-0 text-[10px] text-surface-400">{item.category}</span>
-                                </label>
-                              ))}
+                                </Toggle>
+                                );
+                              })}
                           </div>
-                          {brainKnowledges.length === 0 && (
+                          {brainLoadState === "ready" && brainKnowledges.length === 0 && (
                             <div className="px-4 py-3 text-[11px] text-surface-400">
                               {t("agent.noBrainEntries")}
                             </div>
@@ -532,12 +956,20 @@ export function AgentWritePanel({ open, onOpenChange, onOpenDocument, currentDoc
                         ? "border-brand-200 dark:border-brand-500/25 shadow-sm"
                         : "border-surface-200 dark:border-surface-800 hover:border-brand-200/50 hover:shadow-sm"
                     )}>
-                      <button
-                        type="button"
+                      <Toggle
+                        pressed={includeDocuments}
                         disabled={running}
-                        onClick={() => { setIncludeDocuments(!includeDocuments); if (includeDocuments) { setSelectedDocIds([]); setDocFilter(""); } }}
+                        onPressedChange={(pressed) => {
+                          setIncludeDocuments(pressed);
+                          if (!pressed) {
+                            setSelectedDocIds([]);
+                            setDocFilter("");
+                          }
+                        }}
+                        aria-label={t("agent.includeDocs")}
+                        aria-expanded={includeDocuments}
                         className={cn(
-                          "flex w-full items-center gap-3 px-4 py-3 text-xs font-medium transition-all duration-200 cursor-pointer",
+                          "flex h-auto w-full items-center justify-start gap-3 rounded-none px-4 py-3 text-xs font-medium transition-all duration-200",
                           includeDocuments
                             ? "bg-brand-50 text-brand-700 dark:bg-brand-500/10 dark:text-brand-300"
                             : "text-surface-500 hover:bg-surface-50 hover:text-surface-700 dark:text-surface-400 dark:hover:bg-surface-900 dark:hover:text-surface-200"
@@ -546,7 +978,7 @@ export function AgentWritePanel({ open, onOpenChange, onOpenDocument, currentDoc
                         <FileText className="h-4 w-4 shrink-0" />
                         <span className="flex-1 text-left">{t("agent.includeDocs")}</span>
                         <span className="text-[10px] text-surface-400">{selectedDocIds.length > 0 ? selectedDocIds.length : includeDocuments ? t("agent.autoSelect") : t("agent.off")}</span>
-                      </button>
+                      </Toggle>
                       {includeDocuments && (
                         <div className="border-t border-surface-200 dark:border-surface-800 bg-surface-50/50 dark:bg-surface-950/30">
                           {allDocuments.length > 0 && (
@@ -562,27 +994,33 @@ export function AgentWritePanel({ open, onOpenChange, onOpenDocument, currentDoc
                           <div className="max-h-[140px] overflow-y-auto">
                             {allDocuments
                               .filter((d) => !d.isDeleted && (!docFilter || d.title.includes(docFilter)))
-                              .map((doc) => (
-                                <label
+                              .map((doc) => {
+                                const selected = selectedDocIds.includes(doc.id);
+                                return (
+                                <Toggle
                                   key={doc.id}
+                                  pressed={selected}
+                                  onPressedChange={(pressed) => {
+                                    setSelectedDocIds((prev) => (
+                                      pressed ? [...new Set([...prev, doc.id])] : prev.filter((id) => id !== doc.id)
+                                    ));
+                                  }}
+                                  aria-label={doc.title}
                                   className={cn(
-                                    "flex cursor-pointer items-center gap-2 px-4 py-2 text-xs transition-colors hover:bg-surface-100 dark:hover:bg-surface-800",
-                                    selectedDocIds.includes(doc.id) && "bg-brand-50/50 dark:bg-brand-500/5"
+                                    "flex h-auto w-full justify-start gap-2 rounded-none px-4 py-2 text-xs transition-colors hover:bg-surface-100 dark:hover:bg-surface-800",
+                                    selected && "bg-brand-50/50 dark:bg-brand-500/5"
                                   )}
                                 >
-                                  <input
-                                    type="checkbox"
-                                    className="h-3.5 w-3.5 rounded accent-brand-500"
-                                    checked={selectedDocIds.includes(doc.id)}
-                                    onChange={(e) => {
-                                      setSelectedDocIds((prev) =>
-                                        e.target.checked ? [...prev, doc.id] : prev.filter((id) => id !== doc.id)
-                                      );
-                                    }}
-                                  />
+                                  <span className={cn(
+                                    "flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border",
+                                    selected ? "border-brand-500 bg-brand-500 text-white" : "border-surface-300 dark:border-surface-600"
+                                  )}>
+                                    {selected && <Check className="h-3 w-3" />}
+                                  </span>
                                   <span className="truncate">{doc.title}</span>
-                                </label>
-                              ))}
+                                </Toggle>
+                                );
+                              })}
                           </div>
                           {allDocuments.length === 0 && (
                             <div className="px-4 py-3 text-[11px] text-surface-400">
@@ -600,12 +1038,20 @@ export function AgentWritePanel({ open, onOpenChange, onOpenDocument, currentDoc
                         ? "border-brand-200 dark:border-brand-500/25 shadow-sm"
                         : "border-surface-200 dark:border-surface-800 hover:border-brand-200/50 hover:shadow-sm"
                     )}>
-                      <button
-                        type="button"
+                      <Toggle
+                        pressed={includeJournal}
                         disabled={running}
-                        onClick={() => { setIncludeJournal(!includeJournal); if (includeJournal) { setSelectedJournalIds([]); setJournalFilter(""); } }}
+                        onPressedChange={(pressed) => {
+                          setIncludeJournal(pressed);
+                          if (!pressed) {
+                            setSelectedJournalIds([]);
+                            setJournalFilter("");
+                          }
+                        }}
+                        aria-label={t("agent.includeJournal")}
+                        aria-expanded={includeJournal}
                         className={cn(
-                          "flex w-full items-center gap-3 px-4 py-3 text-xs font-medium transition-all duration-200 cursor-pointer",
+                          "flex h-auto w-full items-center justify-start gap-3 rounded-none px-4 py-3 text-xs font-medium transition-all duration-200",
                           includeJournal
                             ? "bg-brand-50 text-brand-700 dark:bg-brand-500/10 dark:text-brand-300"
                             : "text-surface-500 hover:bg-surface-50 hover:text-surface-700 dark:text-surface-400 dark:hover:bg-surface-900 dark:hover:text-surface-200"
@@ -614,10 +1060,10 @@ export function AgentWritePanel({ open, onOpenChange, onOpenDocument, currentDoc
                         <NotebookTabs className="h-4 w-4 shrink-0" />
                         <span className="flex-1 text-left">{t("agent.includeJournal")}</span>
                         <span className="text-[10px] text-surface-400">{selectedJournalIds.length > 0 ? selectedJournalIds.length : includeJournal ? t("agent.autoSelect") : t("agent.off")}</span>
-                      </button>
+                      </Toggle>
                       {includeJournal && (
                         <div className="border-t border-surface-200 dark:border-surface-800 bg-surface-50/50 dark:bg-surface-950/30">
-                          {journalRecords.length > 0 && (
+                          {journalLoadState === "ready" && journalRecords.length > 0 && (
                             <div className="px-3 pt-2">
                               <Input
                                 className="h-8 text-[11px] dark:bg-surface-900"
@@ -627,38 +1073,88 @@ export function AgentWritePanel({ open, onOpenChange, onOpenDocument, currentDoc
                               />
                             </div>
                           )}
+                          {journalLoadState === "loading" && (
+                            <div className="flex items-center gap-2 px-4 py-3 text-[11px] text-surface-400">
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                              {t("common.loading")}
+                            </div>
+                          )}
+                          {journalLoadState === "error" && (
+                            <div className="flex items-center justify-between gap-2 px-4 py-3 text-[11px] text-red-500">
+                              <span>{t("agent.journalLoadFailed")}</span>
+                              <Button type="button" variant="ghost" size="sm" onClick={() => setJournalReloadKey((value) => value + 1)}>
+                                {t("agent.retrySourceLoad")}
+                              </Button>
+                            </div>
+                          )}
                           <div className="max-h-[140px] overflow-y-auto">
-                            {journalRecords
+                            {journalLoadState === "ready" && journalRecords
                               .filter((r) => !journalFilter || r.title.includes(journalFilter))
-                              .map((item) => (
-                                <label
+                              .map((item) => {
+                                const selected = selectedJournalIds.includes(item.id);
+                                return (
+                                <Toggle
                                   key={item.id}
+                                  pressed={selected}
+                                  onPressedChange={(pressed) => {
+                                    setSelectedJournalIds((prev) => (
+                                      pressed ? [...new Set([...prev, item.id])] : prev.filter((id) => id !== item.id)
+                                    ));
+                                  }}
+                                  aria-label={item.title}
                                   className={cn(
-                                    "flex cursor-pointer items-center gap-2 px-4 py-2 text-xs transition-colors hover:bg-surface-100 dark:hover:bg-surface-800",
-                                    selectedJournalIds.includes(item.id) && "bg-brand-50/50 dark:bg-brand-500/5"
+                                    "flex h-auto w-full justify-start gap-2 rounded-none px-4 py-2 text-xs transition-colors hover:bg-surface-100 dark:hover:bg-surface-800",
+                                    selected && "bg-brand-50/50 dark:bg-brand-500/5"
                                   )}
                                 >
-                                  <input
-                                    type="checkbox"
-                                    className="h-3.5 w-3.5 rounded accent-brand-500"
-                                    checked={selectedJournalIds.includes(item.id)}
-                                    onChange={(e) => {
-                                      setSelectedJournalIds((prev) =>
-                                        e.target.checked ? [...prev, item.id] : prev.filter((id) => id !== item.id)
-                                      );
-                                    }}
-                                  />
+                                  <span className={cn(
+                                    "flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded border",
+                                    selected ? "border-brand-500 bg-brand-500 text-white" : "border-surface-300 dark:border-surface-600"
+                                  )}>
+                                    {selected && <Check className="h-3 w-3" />}
+                                  </span>
                                   <span className="truncate">{item.title}</span>
-                                </label>
-                              ))}
+                                </Toggle>
+                                );
+                              })}
                           </div>
-                          {journalRecords.length === 0 && (
+                          {journalLoadState === "ready" && journalRecords.length === 0 && (
                             <div className="px-4 py-3 text-[11px] text-surface-400">
                               {t("agent.noJournalEntries")}
                             </div>
                           )}
                         </div>
                       )}
+                    </div>
+
+                    {/* Explicit web-search consent */}
+                    <div className={cn(
+                      "overflow-hidden rounded-xl border transition-all duration-200",
+                      includeWeb
+                        ? "border-brand-200 shadow-sm dark:border-brand-500/25"
+                        : "border-surface-200 dark:border-surface-800"
+                    )}>
+                      <Toggle
+                        pressed={includeWeb}
+                        disabled={running}
+                        onPressedChange={setIncludeWeb}
+                        aria-label={t("agent.includeWeb")}
+                        className={cn(
+                          "h-auto w-full justify-start gap-3 rounded-none px-4 py-3 text-xs font-medium",
+                          includeWeb
+                            ? "bg-brand-50 text-brand-700 dark:bg-brand-500/10 dark:text-brand-300"
+                            : "text-surface-500 dark:text-surface-400"
+                        )}
+                      >
+                        <Globe2 className="h-4 w-4 shrink-0" />
+                        <span className="flex-1 text-left">{t("agent.includeWeb")}</span>
+                        <span className="text-[10px] text-surface-400">
+                          {includeWeb ? t("agent.on") : t("agent.off")}
+                        </span>
+                      </Toggle>
+                      <p className="border-t border-surface-200 px-4 py-3 text-[11px] leading-5 text-surface-400 dark:border-surface-800">
+                        {t("agent.webPrivacyHint")}
+                      </p>
                     </div>
                   </div>
                 </section>
@@ -714,7 +1210,9 @@ export function AgentWritePanel({ open, onOpenChange, onOpenDocument, currentDoc
                     {stageOrder.map((stage, index) => {
                       const meta = stageMeta[stage];
                       const Icon = meta.icon;
-                      const completed = Boolean(events[stage]) || Boolean(done && index <= stageOrder.indexOf("publish"));
+                      const completed = stage === "publish"
+                        ? Boolean(done?.docId)
+                        : Boolean(events[stage]) || Boolean(done && index < stageOrder.indexOf("publish"));
                       const active = running && activeStage === stage;
                       const queued = !completed && !active && (activeStageIndex === -1 || index > activeStageIndex);
                       return (
@@ -763,12 +1261,45 @@ export function AgentWritePanel({ open, onOpenChange, onOpenDocument, currentDoc
                         <span>{t("agent.reset")}</span>
                       </Button>
                     )}
-                    {done?.docId && (
-                      <Button size="sm" className="gap-1.5" onClick={openGeneratedDocument}>
-                        <FileText className="h-4 w-4" />
-                        <span>{t("agent.openDocument")}</span>
-                      </Button>
-                    )}
+                    {done?.docId ? (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Button size="sm" className="gap-1.5" onClick={openGeneratedDocument}>
+                          <FileText className="h-4 w-4" />
+                          <span>{t("agent.openDocument")}</span>
+                        </Button>
+                        <Button type="button" variant="outline" size="sm" className="gap-1.5" onClick={() => void continueInChat()}>
+                          <Sparkles className="h-4 w-4" />
+                          <span>{t("agent.continueInChat")}</span>
+                        </Button>
+                      </div>
+                    ) : done?.content ? (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Button size="sm" className="gap-1.5" disabled={savingDraft} onClick={() => void saveGeneratedDraft()}>
+                          {savingDraft ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                          <span>{t("agent.saveDocument")}</span>
+                        </Button>
+                        <Button type="button" variant="outline" size="sm" className="gap-1.5" disabled={savingDraft} onClick={() => void continueInChat()}>
+                          <Sparkles className="h-4 w-4" />
+                          <span>{t("agent.continueInChat")}</span>
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          disabled={savingDraft}
+                          onClick={() => {
+                            setDone(null);
+                            doneRef.current = null;
+                            setSaveCandidateDocId(null);
+                            setRecoveredDraft(false);
+                            if (draftStorageKey) localStorage.removeItem(draftStorageKey);
+                            toast(t("agent.discardDraft"), "info");
+                          }}
+                        >
+                          {t("agent.discardDraft")}
+                        </Button>
+                      </div>
+                    ) : null}
                   </div>
                 </section>
 
@@ -895,6 +1426,23 @@ export function AgentWritePanel({ open, onOpenChange, onOpenDocument, currentDoc
           </aside>
         </div>
       </DialogContent>
+
+      <Dialog open={confirmCloseOpen} onOpenChange={setConfirmCloseOpen}>
+        <DialogContent className="max-w-md">
+          <DialogTitle>{confirmCloseReason === "running" ? t("agent.confirmClose") : t("agent.confirmDiscard")}</DialogTitle>
+          <DialogDescription>
+            {confirmCloseReason === "running" ? t("agent.closeWhileRunning") : t("agent.closeWhileDraft")}
+          </DialogDescription>
+          <div className="mt-4 flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={() => setConfirmCloseOpen(false)}>
+              {t("agent.keepEditing")}
+            </Button>
+            <Button type="button" variant="destructive" onClick={forceClose}>
+              {confirmCloseReason === "running" ? t("agent.stop") : t("agent.discardDraft")}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </Dialog>
   );
 }

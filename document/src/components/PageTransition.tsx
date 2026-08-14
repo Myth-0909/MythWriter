@@ -21,9 +21,10 @@ export function PageTransition({ children, pageKey }: PageTransitionProps) {
   return (
     <div
       key={animKey}
-      className={`page-transition-shell ${profile.className}`}
+      className={`page-transition-shell min-w-0 ${profile.className}`}
       style={{
         flex: 1,
+        minWidth: 0,
         display: "flex",
         overflow: "hidden",
         animation: `pageEnter ${profile.durationMs}ms cubic-bezier(0.16, 1, 0.3, 1) forwards`,

@@ -17,9 +17,12 @@ describe("AI spreadsheet adaptation wiring", () => {
     assert.match(chatSource, /action\?\.type === "spreadsheet_patch"/);
     assert.match(chatSource, /applySpreadsheetPatch/);
     assert.match(chatSource, /spreadsheet:updated/);
+    assert.match(chatSource, /rollbackSpreadsheet/);
+    assert.match(chatSource, /patch\.previousWorkbook/);
     assert.match(editorSource, /spreadsheet:updated/);
     assert.match(i18nSource, /ai\.spreadsheetPatchTitle/);
     assert.match(i18nSource, /ai\.spreadsheetPatchApplied/);
+    assert.match(i18nSource, /ai\.spreadsheetPatchRolledBack/);
   });
 
   it("renders AI diff previews as edited documents and spreadsheets instead of summary-only text", () => {

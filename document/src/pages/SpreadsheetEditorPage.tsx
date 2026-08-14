@@ -60,11 +60,13 @@ export function SpreadsheetEditorPage({ spreadsheetId, onBack }: SpreadsheetEdit
   const fileInputRef = useRef<HTMLInputElement>(null);
   const csvInputRef = useRef<HTMLInputElement>(null);
   const changeVersionRef = useRef(0);
+  const lastSavedVersionRef = useRef(0);
   const spreadsheetRef = useRef<Spreadsheet | null>(null);
   const workbookRef = useRef<SpreadsheetWorkbook | null>(null);
   const titleRef = useRef("");
   const saveTimerRef = useRef<number | null>(null);
-  const saveWorkbookRef = useRef<() => Promise<void>>(async () => {});
+  const saveWorkbookRef = useRef<() => Promise<boolean>>(async () => true);
+  const saveInFlightRef = useRef<Promise<boolean> | null>(null);
   const [workbook, setWorkbook] = useState<SpreadsheetWorkbook | null>(null);
   const [title, setTitle] = useState("");
   const [loading, setLoading] = useState(true);
@@ -172,6 +174,8 @@ export function SpreadsheetEditorPage({ spreadsheetId, onBack }: SpreadsheetEdit
     spreadsheetRef.current = nextSpreadsheet;
     workbookRef.current = nextWorkbook;
     titleRef.current = nextSpreadsheet.title;
+    changeVersionRef.current = 0;
+    lastSavedVersionRef.current = 0;
     setWorkbook(nextWorkbook);
     setTitle(nextSpreadsheet.title);
     setStatus("saved");
@@ -189,28 +193,38 @@ export function SpreadsheetEditorPage({ spreadsheetId, onBack }: SpreadsheetEdit
     }
   }, [applyLoadedSpreadsheet, spreadsheetId, t, toast]);
 
-  const saveWorkbook = useCallback(async () => {
+  const saveWorkbook = useCallback(async (): Promise<boolean> => {
+    if (saveInFlightRef.current) return saveInFlightRef.current;
     const currentSpreadsheet = spreadsheetRef.current;
     const currentWorkbook = workbookRef.current;
-    if (!currentSpreadsheet || !currentWorkbook) return;
+    if (!currentSpreadsheet || !currentWorkbook) return true;
     const version = changeVersionRef.current;
     setStatus("saving");
-    try {
-      const res = await api.updateSpreadsheet(currentSpreadsheet.id, {
-        title: titleRef.current.trim() || t("sheets.defaultName"),
-        data: currentWorkbook,
-      });
-      spreadsheetRef.current = res.spreadsheet;
-      if (version === changeVersionRef.current) {
-        setWorkbook(currentWorkbook);
-        setTitle(res.spreadsheet.title);
-        titleRef.current = res.spreadsheet.title;
-        setStatus("saved");
+    const savePromise = (async () => {
+      try {
+        const res = await api.updateSpreadsheet(currentSpreadsheet.id, {
+          title: titleRef.current.trim() || t("sheets.defaultName"),
+          data: currentWorkbook,
+        });
+        spreadsheetRef.current = res.spreadsheet;
+        lastSavedVersionRef.current = Math.max(lastSavedVersionRef.current, version);
+        if (version === changeVersionRef.current) {
+          setWorkbook(currentWorkbook);
+          setTitle(res.spreadsheet.title);
+          titleRef.current = res.spreadsheet.title;
+          setStatus("saved");
+        }
+        return true;
+      } catch (error: any) {
+        setStatus("error");
+        toast(error.message || t("sheets.saveFailed"), "error");
+        return false;
+      } finally {
+        saveInFlightRef.current = null;
       }
-    } catch (error: any) {
-      setStatus("error");
-      toast(error.message || t("sheets.saveFailed"), "error");
-    }
+    })();
+    saveInFlightRef.current = savePromise;
+    return savePromise;
   }, [t, toast]);
 
   useEffect(() => {
@@ -238,8 +252,24 @@ export function SpreadsheetEditorPage({ spreadsheetId, onBack }: SpreadsheetEdit
   useEffect(() => () => {
     if (saveTimerRef.current !== null) {
       window.clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
     }
+    void (async () => {
+      while (lastSavedVersionRef.current < changeVersionRef.current) {
+        if (!await saveWorkbookRef.current()) break;
+      }
+    })();
   }, []);
+
+  useEffect(() => {
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      if (status === "saved") return;
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [status]);
 
   useEffect(() => {
     setFormulaBarState({ cellLabel: "A1", value: "" });
@@ -261,6 +291,23 @@ export function SpreadsheetEditorPage({ spreadsheetId, onBack }: SpreadsheetEdit
     titleRef.current = nextTitle;
     setTitle(nextTitle);
     markUnsaved();
+  };
+
+  const handleBack = async () => {
+    if (saveTimerRef.current !== null) {
+      window.clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = null;
+    }
+    if (status !== "saved" || lastSavedVersionRef.current < changeVersionRef.current) {
+      toast(t("sheets.leavingAfterSave"), "info");
+      while (lastSavedVersionRef.current < changeVersionRef.current) {
+        if (!await saveWorkbookRef.current()) {
+          toast(t("sheets.saveBeforeCloseFailed"), "error");
+          return;
+        }
+      }
+    }
+    onBack();
   };
 
   const handleSelectSheet = (sheetId: string) => {
@@ -473,7 +520,7 @@ export function SpreadsheetEditorPage({ spreadsheetId, onBack }: SpreadsheetEdit
     <main className="min-h-0 flex-1 overflow-hidden bg-white dark:bg-surface-950">
       <div className="flex h-full min-h-0 flex-col">
         <header className="flex h-14 shrink-0 items-center gap-3 border-b border-surface-200 px-4 dark:border-surface-800">
-          <Button type="button" variant="ghost" size="sm" onClick={onBack} className="gap-2">
+          <Button type="button" variant="ghost" size="sm" onClick={() => void handleBack()} className="gap-2">
             <ArrowLeft className="h-4 w-4" />
             {t("common.back")}
           </Button>

@@ -78,8 +78,12 @@ function NavButton({ item, isActive, collapsed, onClick }: {
   const label = t(item.labelKey);
 
   const button = (
-    <button
+    <Button
+      type="button"
+      variant="ghost"
       onClick={onClick}
+      aria-label={label}
+      aria-current={isActive ? "page" : undefined}
       className={cn(
         "flex items-center gap-3 rounded-md text-sm font-medium cursor-pointer transition-all",
         collapsed
@@ -92,7 +96,7 @@ function NavButton({ item, isActive, collapsed, onClick }: {
     >
       <item.icon className="h-[18px] w-[18px] shrink-0" />
       {!collapsed && <span>{label}</span>}
-    </button>
+    </Button>
   );
 
   if (collapsed) {
@@ -190,22 +194,28 @@ export function SideNavBar({
         {/* Logo Area */}
         <div className={cn("relative pt-6 pb-4", collapsed ? "px-3" : "px-6")}>
           {collapsed ? (
-            <button
+            <Button
+              type="button"
+              variant="ghost"
               onClick={handleLogoClick}
-              className="relative flex w-full justify-center rounded-lg p-0 cursor-pointer"
+              aria-label={t("app.name")}
+              className="relative h-auto w-full justify-center rounded-lg p-0"
             >
               <BrandLogo size="md" />
-            </button>
+            </Button>
           ) : (
-            <button
+            <Button
+              type="button"
+              variant="ghost"
               onClick={handleLogoClick}
-              className="relative flex w-full items-center gap-2 rounded-lg p-0 text-left cursor-pointer"
+              aria-label={t("app.name")}
+              className="relative h-auto w-full justify-start gap-2 rounded-lg p-0 text-left"
             >
               <BrandLogo size="sm" />
               <span className="shrink-0 whitespace-nowrap text-lg font-bold tracking-[0.14em] text-surface-950 dark:text-surface-50 font-[var(--font-zn-display)]">
                 {t("app.name")}
               </span>
-            </button>
+            </Button>
           )}
 
           {/* GSAP click effect overlay */}
@@ -240,29 +250,35 @@ export function SideNavBar({
                       {/* Section Header */}
                       <div className="flex items-center justify-between px-2 py-1 text-[11px] font-bold text-surface-400 dark:text-surface-500 tracking-wider uppercase">
                         <span>{t("group.title")}</span>
-                        <button
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
                           onClick={(e) => {
                             e.stopPropagation();
                             onAddGroup();
                           }}
-                          className="rounded p-0.5 transition-colors hover:bg-surface-100 hover:text-surface-700 dark:hover:bg-brand-500/15 dark:hover:text-brand-200 cursor-pointer"
+                          className="rounded text-surface-400 hover:bg-surface-100 hover:text-surface-700 dark:hover:bg-brand-500/15 dark:hover:text-brand-200"
                           title={t("group.newGroup")}
+                          aria-label={t("group.newGroup")}
                         >
                           <Plus className="h-3 w-3" />
-                        </button>
+                        </Button>
                       </div>
                       
                       {/* Groups List */}
                       {groups.length === 0 ? (
-                        <button
+                        <Button
+                          type="button"
+                          variant="ghost"
                           onClick={(e) => {
                             e.stopPropagation();
                             onAddGroup();
                           }}
-                          className="w-full text-left px-2 py-1.5 text-[11px] text-brand-500 hover:text-brand-600 hover:bg-surface-100 dark:text-brand-300 dark:hover:bg-brand-500/15 dark:hover:text-brand-100 rounded-md cursor-pointer border border-dashed border-brand-200 dark:border-brand-500/25 transition-colors"
+                          className="h-auto w-full justify-start whitespace-normal rounded-md border border-dashed border-brand-200 px-2 py-1.5 text-left text-[11px] text-brand-500 hover:bg-surface-100 hover:text-brand-600 dark:border-brand-500/25 dark:text-brand-300 dark:hover:bg-brand-500/15 dark:hover:text-brand-100"
                         >
                           {t("group.noGroups")}
-                        </button>
+                        </Button>
                       ) : (
                         <div className="flex flex-col gap-0.5 max-h-[220px] overflow-y-auto custom-scrollbar">
                           {groups.map((group) => {
@@ -298,12 +314,16 @@ export function SideNavBar({
                                 <div className="opacity-0 group-hover/item:opacity-100 focus-within:opacity-100 transition-opacity duration-150 shrink-0">
                                   <DropdownMenu>
                                     <DropdownMenuTrigger asChild>
-                                      <button
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="icon-sm"
+                                        aria-label={t("group.groupActions")}
                                         onClick={(e) => e.stopPropagation()}
-                                        className="rounded p-0.5 text-surface-400 transition-all hover:bg-surface-200 hover:text-surface-700 dark:text-surface-500 dark:hover:bg-brand-500/15 dark:hover:text-brand-100 dark:hover:ring-1 dark:hover:ring-brand-400/25 cursor-pointer"
+                                        className="rounded text-surface-400 hover:bg-surface-200 hover:text-surface-700 dark:text-surface-500 dark:hover:bg-brand-500/15 dark:hover:text-brand-100 dark:hover:ring-1 dark:hover:ring-brand-400/25"
                                       >
                                         <Settings className="h-3 w-3" />
-                                      </button>
+                                      </Button>
                                     </DropdownMenuTrigger>
                                     <DropdownMenuContent align="end" className="w-[128px] dark:border-surface-700 dark:bg-surface-900 dark:shadow-[0_18px_45px_rgba(0,0,0,0.38)]">
                                       <DropdownMenuItem

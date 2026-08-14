@@ -3,6 +3,11 @@ import prisma from "../lib/prisma";
 import { AuthRequest, authMiddleware } from "../middleware/auth";
 import { t } from "../lib/i18n";
 import { getUserApiKey } from "../services/aiService";
+import { assertAiProviderHttpUrl } from "../lib/safeOutboundUrl";
+import { countDocumentWords } from "../lib/documentWordCount";
+import { netWordDelta } from "../services/writingStats";
+import { recordWritingDelta } from "../services/writingActivityService";
+import { invalidateTodayWritingCache } from "../services/chatUserContext";
 import {
   defaultTitle,
   generatePeriodSummary,
@@ -43,6 +48,7 @@ async function requestAiText(params: {
   messages: { role: "system" | "user"; content: string }[];
   maxTokens?: number;
 }) {
+  assertAiProviderHttpUrl(params.apiBaseUrl);
   const response = await fetch(buildChatCompletionsUrl(params.apiBaseUrl), {
     method: "POST",
     headers: {
@@ -131,6 +137,17 @@ router.post("/", async (req: AuthRequest, res: Response) => {
     const nextTitle = String(title || defaultTitle(period, targetDate, lang)).trim().slice(0, 120);
     const nextContent = String(content || "").trim();
 
+    const existing = await prisma.workRecord.findUnique({
+      where: {
+        userId_period_targetDate: {
+          userId: req.user!.userId,
+          period,
+          targetDate,
+        },
+      },
+      select: { content: true },
+    });
+
     const record = await prisma.workRecord.upsert({
       where: {
         userId_period_targetDate: {
@@ -151,6 +168,17 @@ router.post("/", async (req: AuthRequest, res: Response) => {
         content: nextContent,
       },
     });
+
+    if (period === "daily") {
+      const growth = netWordDelta(
+        countDocumentWords(existing?.content),
+        countDocumentWords(nextContent)
+      );
+      if (growth !== 0) {
+        await recordWritingDelta(req.user!.userId, { journalWords: growth });
+        invalidateTodayWritingCache(req.user!.userId);
+      }
+    }
 
     res.json({ record });
   } catch (error) {

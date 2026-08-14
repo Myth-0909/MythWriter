@@ -116,14 +116,6 @@ export function LoginPage({ onLogin }: LoginPageProps) {
       }
     } catch (error: any) {
       const errMsg = error.message || t("login.actionFailed");
-
-      // Not registered → switch to register mode with email pre-filled
-      if (mode === "login" && errMsg === t("login.emailNotRegistered")) {
-        toast(t("login.emailNotRegisteredCreate"), "info");
-        setMode("register");
-        return;
-      }
-
       toast(errMsg, "error");
     } finally {
       setSubmitting(false);
@@ -250,7 +242,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
         stageSide={registering ? "right" : "left"}
         className="z-0"
       />
-      <TargetCursor theme={theme} respectReducedMotion={false} />
+      <TargetCursor theme={theme} respectReducedMotion />
 
       <div className={cn("pointer-events-none absolute inset-0 z-[1]", isLight ? "bg-[linear-gradient(90deg,rgba(238,244,251,0.9)_0%,rgba(238,244,251,0.42)_44%,rgba(238,244,251,0.05)_100%)]" : "bg-[linear-gradient(90deg,rgba(3,7,18,0.92)_0%,rgba(15,23,42,0.48)_48%,rgba(3,7,18,0.12)_100%)]")} />
       <div
@@ -270,8 +262,10 @@ export function LoginPage({ onLogin }: LoginPageProps) {
             className={cn("absolute left-1 top-1 h-8 w-8 rounded-full transition-transform duration-500 ease-[cubic-bezier(0.32,0.72,0,1)]", isLight ? "bg-white shadow-sm" : "bg-white/14 shadow-[0_0_22px_rgba(129,140,248,0.26)]")}
             style={{ transform: `translateX(${themeMode === "system" ? 0 : themeMode === "light" ? 36 : 72}px)` }}
           />
-          <button
+          <Button
             type="button"
+            variant="ghost"
+            size="icon"
             onClick={() => setThemeMode("system")}
             className={cn(
               "relative z-10 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full transition-colors",
@@ -286,9 +280,11 @@ export function LoginPage({ onLogin }: LoginPageProps) {
             title={t("nav.followSystem")}
           >
             <Monitor className="h-4 w-4" />
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
+            variant="ghost"
+            size="icon"
             onClick={() => setThemeMode("light")}
             className={cn(
               "relative z-10 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full transition-colors",
@@ -301,9 +297,11 @@ export function LoginPage({ onLogin }: LoginPageProps) {
             title={t("nav.lightMode")}
           >
             <Sun className="h-4 w-4" />
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
+            variant="ghost"
+            size="icon"
             onClick={() => setThemeMode("dark")}
             className={cn(
               "relative z-10 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full transition-colors",
@@ -318,18 +316,20 @@ export function LoginPage({ onLogin }: LoginPageProps) {
             title={t("nav.darkMode")}
           >
             <Moon className="h-4 w-4" />
-          </button>
+          </Button>
         </div>
 
         {/* Language switch */}
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="sm"
           onClick={toggleLang}
           className={cn("inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium shadow-[0_0_28px_rgba(99,102,241,0.18)] backdrop-blur-md transition-all duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] active:scale-95", isLight ? "border border-white/70 bg-white/55 text-surface-700 hover:text-surface-950" : "border border-indigo-200/20 bg-slate-950/70 text-slate-100 hover:border-indigo-200/45 hover:text-white")}
         >
           <Globe className="h-3.5 w-3.5" />
           <span>{lang === "zh" ? "English" : "中文"}</span>
-        </button>
+        </Button>
       </div>
 
       <main className="relative z-10 grid min-h-[100dvh] grid-cols-1 items-center gap-6 px-5 py-24 lg:grid-cols-[440px_minmax(0,1fr)] lg:gap-10 lg:px-14 xl:px-20">
@@ -352,7 +352,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
               showCursor
               cursorClassName={titleCursorClass}
               cursorBlinkDuration={0.58}
-              respectReducedMotion={false}
+              respectReducedMotion
               className="block"
               aria-label={heroTitles[0]}
             />
@@ -369,7 +369,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
               showCursor
               cursorClassName={subtitleCursorClass}
               cursorBlinkDuration={0.7}
-              respectReducedMotion={false}
+              respectReducedMotion
               className="block"
               aria-label={heroSubtitles[0]}
             />
@@ -423,8 +423,9 @@ export function LoginPage({ onLogin }: LoginPageProps) {
             )}
             style={{ transform: mode === "register" ? "translateX(calc(100% + 4px))" : "translateX(0)" }}
           />
-          <button
+          <Button
             type="button"
+            variant="ghost"
             onPointerDown={showLogin}
             onMouseDown={showLogin}
             onClick={showLogin}
@@ -439,9 +440,10 @@ export function LoginPage({ onLogin }: LoginPageProps) {
             )}
           >
             {t("login.signIn")}
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
+            variant="ghost"
             onPointerDown={showRegister}
             onMouseDown={showRegister}
             onClick={showRegister}
@@ -456,7 +458,7 @@ export function LoginPage({ onLogin }: LoginPageProps) {
             )}
           >
             {t("login.register")}
-          </button>
+          </Button>
         </div>
 
         {/* Form */}
@@ -514,17 +516,20 @@ export function LoginPage({ onLogin }: LoginPageProps) {
               required
             />
             <span className="uiverse-auth-label">{t("login.password")}</span>
-            <button
+            <Button
               type="button"
+              variant="ghost"
+              size="icon"
+              aria-label={showPassword ? t("common.hidePassword") : t("common.showPassword")}
               onClick={() => setShowPassword(!showPassword)}
-              className={cn("absolute right-4 top-1/2 z-20 -translate-y-1/2 cursor-pointer transition-transform active:scale-90", isLight ? "text-surface-500 hover:text-[#17435f]" : "text-slate-300/60 hover:text-amber-100")}
+              className={cn("absolute right-1.5 top-1/2 z-20 h-10 w-10 -translate-y-1/2", isLight ? "text-surface-500 hover:text-[#17435f]" : "text-slate-300/60 hover:text-amber-100")}
             >
               {showPassword ? (
                 <EyeOff className="h-4 w-4" />
               ) : (
                 <Eye className="h-4 w-4" />
               )}
-            </button>
+            </Button>
           </div>
 
           {/* Forgot password link — always rendered, height animated via grid */}
@@ -536,13 +541,15 @@ export function LoginPage({ onLogin }: LoginPageProps) {
           >
             <div className="overflow-hidden">
               <div className="flex justify-end">
-                <button
+                <Button
                   type="button"
+                  variant="link"
+                  size="sm"
                   onClick={() => setForgotOpen(true)}
-                  className={cn("cursor-pointer text-xs transition-transform hover:underline active:scale-[0.97]", isLight ? "text-surface-500 hover:text-surface-800" : "text-slate-300/55 hover:text-white")}
+                  className={cn("h-auto cursor-pointer p-0 text-xs transition-transform active:scale-[0.97]", isLight ? "text-surface-500 hover:text-surface-800" : "text-slate-300/55 hover:text-white")}
                 >
                   {t("login.forgot")}
-                </button>
+                </Button>
               </div>
             </div>
           </div>
@@ -575,30 +582,34 @@ export function LoginPage({ onLogin }: LoginPageProps) {
             {mode === "login" ? (
               <>
                 {t("login.noAccount")}{" "}
-                <button
+                <Button
                   type="button"
+                  variant="link"
+                  size="sm"
                   onPointerDown={showRegister}
                   onMouseDown={showRegister}
                   onClick={showRegister}
-                  className={cn("cursor-pointer font-medium transition-transform hover:underline active:scale-[0.97]", linkTextClass)}
+                  className={cn("inline-flex h-auto cursor-pointer p-0 font-medium transition-transform active:scale-[0.97]", linkTextClass)}
                 >
                   {t("login.register")}
                   <ArrowRight className="ml-1 inline-block h-3 w-3" />
-                </button>
+                </Button>
               </>
             ) : (
               <>
                 {t("login.hasAccount")}{" "}
-                <button
+                <Button
                   type="button"
+                  variant="link"
+                  size="sm"
                   onPointerDown={showLogin}
                   onMouseDown={showLogin}
                   onClick={showLogin}
-                  className={cn("cursor-pointer font-medium transition-transform hover:underline active:scale-[0.97]", linkTextClass)}
+                  className={cn("inline-flex h-auto cursor-pointer p-0 font-medium transition-transform active:scale-[0.97]", linkTextClass)}
                 >
                   {t("login.signIn")}
                   <ArrowRight className="ml-1 inline-block h-3 w-3" />
-                </button>
+                </Button>
               </>
             )}
           </p>

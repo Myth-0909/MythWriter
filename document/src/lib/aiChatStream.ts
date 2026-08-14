@@ -92,3 +92,16 @@ export function resolveChatFinalContent({
   if (hasToolCalls && final) return finalReply;
   return streamedContent || finalReply;
 }
+
+export function sanitizeAssistantDisplayContent(content: string, streaming = false): string {
+  let safe = String(content || "")
+    .replace(/<think[^>]*>[\s\S]*?<\/think>/gi, "")
+    .replace(/<thinking[^>]*>[\s\S]*?<\/thinking>/gi, "");
+  const unfinishedThinking = safe.search(/<(?:think|thinking)(?:\s[^>]*)?>/i);
+  if (unfinishedThinking >= 0) safe = safe.slice(0, unfinishedThinking);
+
+  // Never flash internal action protocols while the model is still streaming.
+  const actionMarker = safe.indexOf("<<");
+  if (actionMarker >= 0) safe = safe.slice(0, actionMarker);
+  return streaming ? safe.trimEnd() : safe.trim();
+}

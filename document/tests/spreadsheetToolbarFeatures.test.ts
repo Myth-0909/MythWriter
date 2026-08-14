@@ -89,7 +89,7 @@ describe("spreadsheet toolbar feature coverage", () => {
     assert.match(gridSource, /registerLanguageDictionary/);
     assert.match(gridSource, /zhCN/);
     assert.match(gridSource, /enUS/);
-    assert.match(gridSource, /const \{ lang \} = useI18n\(\)/);
+    assert.match(gridSource, /const \{ lang, t \} = useI18n\(\)/);
     assert.match(gridSource, /language=\{lang === "zh" \? "zh-CN" : "en-US"\}/);
   });
 

@@ -1,5 +1,10 @@
 import type { Document } from "@prisma/client";
 import prisma from "../lib/prisma";
+import { countDocumentWords } from "../lib/documentWordCount";
+import { netWordDelta } from "./writingStats";
+import { recordWritingDelta } from "./writingActivityService";
+import { TRASH_RETENTION_DAYS } from "./trashCleanupService";
+import { invalidateTodayWritingCache } from "./chatUserContext";
 
 function buildPreview(content?: string | null) {
   const text = (content || "")
@@ -30,8 +35,9 @@ export async function listFavorites(userId: string) {
 }
 
 export async function listTrash(userId: string) {
+  const cutoff = new Date(Date.now() - TRASH_RETENTION_DAYS * 24 * 60 * 60 * 1000);
   return prisma.document.findMany({
-    where: { userId, isDeleted: true },
+    where: { userId, isDeleted: true, deletedAt: { gte: cutoff } },
     orderBy: { deletedAt: "desc" },
   });
 }
@@ -41,19 +47,26 @@ export async function getDocument(docId: string, userId: string): Promise<Docume
 }
 
 export async function createDocument(userId: string, data: {
-  title?: string; content?: string; preview?: string; category?: string; groupId?: string | null;
+  title?: string; content?: string; preview?: string; category?: string; groupId?: string | null; trackWriting?: boolean;
 }) {
   const content = data.content || "";
-  return prisma.document.create({
+  const wordCount = countDocumentWords(content);
+  const document = await prisma.document.create({
     data: {
       title: data.title || "无标题文档",
       content,
       preview: data.preview !== undefined ? data.preview : buildPreview(content),
+      wordCount,
       category: data.category || "general",
       userId,
       groupId: data.groupId || null,
     },
   });
+  if (data.trackWriting !== false) {
+    await recordWritingDelta(userId, { documentWords: wordCount });
+    invalidateTodayWritingCache(userId);
+  }
+  return document;
 }
 
 export async function updateDocument(docId: string, userId: string, data: {
@@ -62,11 +75,15 @@ export async function updateDocument(docId: string, userId: string, data: {
   const doc = await checkOwnership(docId, userId);
   if (!doc) return null;
 
-  return prisma.document.update({
+  const nextWordCount = data.content !== undefined ? countDocumentWords(data.content) : null;
+  const document = await prisma.document.update({
     where: { id: docId },
     data: {
       ...(data.title !== undefined && { title: data.title }),
-      ...(data.content !== undefined && { content: data.content }),
+      ...(data.content !== undefined && {
+        content: data.content,
+        wordCount: nextWordCount!,
+      }),
       ...(data.preview !== undefined
         ? { preview: data.preview }
         : data.content !== undefined
@@ -76,6 +93,16 @@ export async function updateDocument(docId: string, userId: string, data: {
       ...(data.groupId !== undefined && { groupId: data.groupId }),
     },
   });
+
+  if (nextWordCount !== null) {
+    const growth = netWordDelta(doc.wordCount, nextWordCount);
+    if (growth !== 0) {
+      await recordWritingDelta(userId, { documentWords: growth });
+      invalidateTodayWritingCache(userId);
+    }
+  }
+
+  return document;
 }
 
 export async function createDocumentVersion(docId: string, userId: string, source = "manual") {
@@ -114,6 +141,7 @@ export async function restoreDocumentVersion(docId: string, versionId: string, u
   });
   if (!version) return null;
 
+  const restoredWordCount = countDocumentWords(version.content);
   const [, restored] = await prisma.$transaction([
     prisma.documentVersion.create({
       data: {
@@ -130,6 +158,7 @@ export async function restoreDocumentVersion(docId: string, versionId: string, u
       data: {
         title: version.title,
         content: version.content,
+        wordCount: restoredWordCount,
         preview: version.preview !== undefined ? version.preview : buildPreview(version.content),
       },
     }),

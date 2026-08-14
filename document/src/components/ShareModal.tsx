@@ -1,6 +1,7 @@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { FileType, Code2 } from "lucide-react";
 import { useI18n } from "@/components/I18nProvider";
+import { Button } from "@/components/ui/button";
 
 interface ShareModalProps {
   open: boolean;
@@ -9,7 +10,7 @@ interface ShareModalProps {
 }
 
 const exportFormats = [
-  { id: "word", label: "Word", descKey: "share.wordDesc" as const, icon: FileType, iconColor: "text-blue-600 dark:text-blue-400", iconBg: "bg-blue-50 dark:bg-blue-950" },
+  { id: "word", label: "DOCX", descKey: "share.wordDesc" as const, icon: FileType, iconColor: "text-blue-600 dark:text-blue-400", iconBg: "bg-blue-50 dark:bg-blue-950" },
   { id: "md", label: "Markdown", descKey: "share.mdDesc" as const, icon: Code2, iconColor: "text-purple-600 dark:text-purple-400", iconBg: "bg-purple-50 dark:bg-purple-950" },
 ] as const;
 
@@ -30,13 +31,15 @@ export function ShareModal({ open, onOpenChange, onExport }: ShareModalProps) {
             </p>
             <div className="grid grid-cols-2 gap-3">
               {exportFormats.map((format) => (
-                <button
+                <Button
+                  type="button"
+                  variant="outline"
                   key={format.id}
                   onClick={() => {
                     onExport(format.id);
                     onOpenChange(false);
                   }}
-                  className="group flex flex-col items-center gap-3 rounded-xl border border-surface-200 bg-white p-4 text-center transition-all duration-200 hover:border-surface-400 hover:shadow-sm active:scale-[0.97] cursor-pointer dark:border-surface-700 dark:bg-surface-900 dark:hover:border-surface-500"
+                  className="group h-auto flex-col items-center gap-3 rounded-xl bg-white p-4 text-center dark:bg-surface-900"
                 >
                   <div className={`flex h-12 w-12 items-center justify-center rounded-xl ${format.iconBg} transition-transform duration-200 group-hover:scale-110`}>
                     <format.icon className={`h-6 w-6 ${format.iconColor}`} />
@@ -45,7 +48,7 @@ export function ShareModal({ open, onOpenChange, onExport }: ShareModalProps) {
                     <span className="text-sm font-semibold text-surface-800 dark:text-surface-200">{format.label}</span>
                     <span className="text-[10px] text-surface-400 leading-tight">{t(format.descKey)}</span>
                   </div>
-                </button>
+                </Button>
               ))}
             </div>
           </div>

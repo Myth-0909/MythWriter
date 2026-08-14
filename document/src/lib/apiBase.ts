@@ -7,13 +7,18 @@ function normalizeApiBaseUrl(value: string): string {
 }
 
 export function getApiBaseUrl(): string {
-  const configuredBase = import.meta.env.VITE_API_BASE_URL;
+  const configuredBase = import.meta.env?.VITE_API_BASE_URL;
   if (typeof configuredBase === "string" && configuredBase.trim()) {
     return normalizeApiBaseUrl(configuredBase);
   }
 
   if (typeof window !== "undefined" && window.location.hostname) {
-    return `${window.location.protocol}//${window.location.hostname}:${DEFAULT_API_PORT}${API_PREFIX}`;
+    const isTauri = "__TAURI_INTERNALS__" in window || window.location.hostname === "tauri.localhost";
+    if (isTauri) {
+      return `http://127.0.0.1:${DEFAULT_API_PORT}${API_PREFIX}`;
+    }
+    const protocol = /^https?:$/.test(window.location.protocol) ? window.location.protocol : "http:";
+    return `${protocol}//${window.location.hostname}:${DEFAULT_API_PORT}${API_PREFIX}`;
   }
 
   return `http://localhost:${DEFAULT_API_PORT}${API_PREFIX}`;

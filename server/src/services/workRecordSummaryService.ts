@@ -1,12 +1,12 @@
 import prisma from "../lib/prisma";
 import { t } from "../lib/i18n";
 import { getUserApiKey } from "./aiService";
+import { assertAiProviderHttpUrl } from "../lib/safeOutboundUrl";
 
 export const WORK_RECORD_PERIODS = ["daily", "weekly", "monthly"] as const;
 export type WorkRecordPeriod = typeof WORK_RECORD_PERIODS[number];
 
-const AUTO_SUMMARY_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
-const AUTO_SUMMARY_TIME_ZONE = "Asia/Shanghai";
+const AUTO_SUMMARY_CHECK_INTERVAL_MS = 60 * 60 * 1000;
 
 export function isWorkRecordPeriod(value: unknown): value is WorkRecordPeriod {
   return typeof value === "string" && WORK_RECORD_PERIODS.includes(value as WorkRecordPeriod);
@@ -110,20 +110,30 @@ async function requestAiText(params: {
   messages: { role: "system" | "user"; content: string }[];
   maxTokens?: number;
 }) {
-  const response = await fetch(buildChatCompletionsUrl(params.apiBaseUrl), {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${params.apiKey}`,
-    },
-    body: JSON.stringify({
-      model: params.model,
-      messages: params.messages,
-      temperature: 0.25,
-      max_tokens: params.maxTokens ?? 1800,
-      stream: false,
-    }),
-  });
+  assertAiProviderHttpUrl(params.apiBaseUrl);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30_000);
+  timeout.unref?.();
+  let response: Response;
+  try {
+    response = await fetch(buildChatCompletionsUrl(params.apiBaseUrl), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${params.apiKey}`,
+      },
+      body: JSON.stringify({
+        model: params.model,
+        messages: params.messages,
+        temperature: 0.25,
+        max_tokens: params.maxTokens ?? 1800,
+        stream: false,
+      }),
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
 
   if (!response.ok) {
     const text = await response.text();
@@ -263,24 +273,26 @@ function getZonedToday(timeZone: string) {
 }
 
 async function generateAutomaticSummaries() {
-  const today = getZonedToday(AUTO_SUMMARY_TIME_ZONE);
-  const jobs: { period: "weekly" | "monthly"; targetDate: Date }[] = [];
-
-  if (today.getUTCDay() === 1) {
-    const previousWeek = new Date(today);
-    previousWeek.setUTCDate(previousWeek.getUTCDate() - 7);
-    jobs.push({ period: "weekly", targetDate: previousWeek });
-  }
-
-  if (today.getUTCDate() === 1) {
-    const previousMonth = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() - 1, 1));
-    jobs.push({ period: "monthly", targetDate: previousMonth });
-  }
-
-  if (jobs.length === 0) return;
-
-  const users = await prisma.user.findMany({ select: { id: true } });
+  const users = await prisma.user.findMany({ select: { id: true, timeZone: true } });
   for (const user of users) {
+    let today: Date;
+    try {
+      today = getZonedToday(user.timeZone || "UTC");
+    } catch {
+      today = getZonedToday("UTC");
+    }
+    const jobs: { period: "weekly" | "monthly"; targetDate: Date }[] = [];
+    if (today.getUTCDay() === 1) {
+      const previousWeek = new Date(today);
+      previousWeek.setUTCDate(previousWeek.getUTCDate() - 7);
+      jobs.push({ period: "weekly", targetDate: previousWeek });
+    }
+    if (today.getUTCDate() === 1) {
+      jobs.push({
+        period: "monthly",
+        targetDate: new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() - 1, 1)),
+      });
+    }
     for (const job of jobs) {
       try {
         const result = await generatePeriodSummary({
@@ -304,6 +316,8 @@ let schedulerStarted = false;
 export function startWorkRecordSummaryScheduler() {
   if (schedulerStarted) return;
   schedulerStarted = true;
-  setTimeout(() => void generateAutomaticSummaries(), 30_000);
-  setInterval(() => void generateAutomaticSummaries(), AUTO_SUMMARY_CHECK_INTERVAL_MS);
+  const initial = setTimeout(() => void generateAutomaticSummaries(), 30_000);
+  const interval = setInterval(() => void generateAutomaticSummaries(), AUTO_SUMMARY_CHECK_INTERVAL_MS);
+  initial.unref?.();
+  interval.unref?.();
 }

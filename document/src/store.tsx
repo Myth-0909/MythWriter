@@ -8,9 +8,11 @@ interface DocumentStore {
   favorites: Document[];
   trash: Document[];
   loading: boolean;
+  error: string | null;
+  trashError: string | null;
   getDocument: (id: string) => Document | undefined;
   loadDocument: (id: string) => Promise<Document | undefined>;
-  createDocument: (category?: DocumentCategory, title?: string, content?: string, groupId?: string | null) => Promise<string>;
+  createDocument: (category?: DocumentCategory, title?: string, content?: string, groupId?: string | null, trackWriting?: boolean) => Promise<string>;
   updateDocument: (id: string, updates: Partial<Pick<Document, "title" | "content" | "category" | "groupId">>) => Promise<void>;
   listDocumentVersions: (id: string) => Promise<DocumentVersion[]>;
   createDocumentVersion: (id: string, source?: string) => Promise<DocumentVersion | undefined>;
@@ -29,6 +31,8 @@ const DocumentStoreContext = createContext<DocumentStore>({
   favorites: [],
   trash: [],
   loading: false,
+  error: null,
+  trashError: null,
   getDocument: () => undefined,
   loadDocument: async () => undefined,
   createDocument: async () => "",
@@ -53,6 +57,8 @@ export function DocumentStoreProvider({ children }: { children: ReactNode }) {
   const { t } = useI18n();
   const [documents, setDocuments] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [trashError, setTrashError] = useState<string | null>(null);
 
   const activeDocs = documents.filter((d) => !d.isDeleted);
   const favorites = activeDocs.filter((d) => d.isFavorite);
@@ -66,34 +72,38 @@ export function DocumentStoreProvider({ children }: { children: ReactNode }) {
   const refreshDocuments = useCallback(async () => {
     if (!isLoggedIn()) return;
     setLoading(true);
+    setError(null);
     try {
       const docsRes = await api.listDocuments();
       setDocuments((prev) => {
         const trashDocs = prev.filter((d) => d.isDeleted);
         return [...docsRes.documents, ...trashDocs];
       });
-    } catch (error) {
-      console.error("Failed to fetch documents:", error);
+    } catch (nextError) {
+      console.error("Failed to fetch documents:", nextError);
+      setError(nextError instanceof Error ? nextError.message : t("documents.loadFailed"));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   const refreshTrash = useCallback(async () => {
     if (!isLoggedIn()) return;
     setLoading(true);
+    setTrashError(null);
     try {
       const trashRes = await api.listTrash();
       setDocuments((prev) => {
         const activeDocs = prev.filter((d) => !d.isDeleted);
         return [...activeDocs, ...trashRes.documents];
       });
-    } catch (error) {
-      console.error("Failed to fetch trash:", error);
+    } catch (nextError) {
+      console.error("Failed to fetch trash:", nextError);
+      setTrashError(nextError instanceof Error ? nextError.message : t("common.loadFailed"));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   // Initial fetch (page refresh with existing token)
   useEffect(() => {
@@ -132,7 +142,7 @@ export function DocumentStoreProvider({ children }: { children: ReactNode }) {
     }
   }, [updateLocalDoc]);
 
-  const createDocument = useCallback(async (category?: DocumentCategory, title?: string, content?: string, groupId?: string | null) => {
+  const createDocument = useCallback(async (category?: DocumentCategory, title?: string, content?: string, groupId?: string | null, trackWriting = true) => {
     const plainText = content ? content.replace(/<[^>]*>/g, "") : "";
     const { document: doc } = await api.createDocument({
       title: title || t("editor.untitled"),
@@ -140,6 +150,7 @@ export function DocumentStoreProvider({ children }: { children: ReactNode }) {
       preview: plainText.slice(0, 80) + (plainText.length > 80 ? "..." : ""),
       category: category || "general",
       groupId: groupId || null,
+      trackWriting,
     });
     setDocuments((prev) => [doc, ...prev]);
     return doc.id;
@@ -228,6 +239,8 @@ export function DocumentStoreProvider({ children }: { children: ReactNode }) {
         favorites,
         trash: trashDocs,
         loading,
+        error,
+        trashError,
         getDocument,
         loadDocument,
         createDocument,
