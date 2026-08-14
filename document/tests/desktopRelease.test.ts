@@ -22,6 +22,19 @@ describe("desktop release contract", () => {
     const shell = readFileSync(new URL("../../start.sh", import.meta.url), "utf8");
     assert.match(powershell, /Get-NetTCPConnection/);
     assert.match(shell, /assert_port_free/);
+    assert.match(shell, /lsof -nP -tiTCP:"\$port" -sTCP:LISTEN/);
+    assert.match(shell, /process_belongs_to_project/);
+    assert.doesNotMatch(shell, /lsof -ti :"\$port"/);
     assert.doesNotMatch(shell, /kill -9 \$pid\b/);
+  });
+
+  it("preserves startup failures without printing a fake successful shutdown", () => {
+    const shell = readFileSync(new URL("../../start.sh", import.meta.url), "utf8");
+    const cleanup = shell.slice(shell.indexOf("cleanup()"), shell.indexOf("# 检查目录是否存在"));
+    assert.match(cleanup, /local exit_code=\$\?/);
+    assert.match(cleanup, /exit "\$exit_code"/);
+    assert.match(shell, /trap cleanup EXIT/);
+    assert.match(shell, /trap 'exit 130' SIGINT/);
+    assert.doesNotMatch(cleanup, /cleanup_project_dev_processes/);
   });
 });

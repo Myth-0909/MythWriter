@@ -30,52 +30,89 @@ kill_tree() {
   kill "$root_pid" 2>/dev/null || true
 }
 
-kill_processes_by_pattern() {
-  local label=$1
-  local pattern=$2
-  local pids
-  pids=$(ps -Ao pid=,command= | awk -v pat="$pattern" -v current="$$" '
-    index($0, pat) && $1 != current { print $1 }
-  ')
+listening_pids_for_port() {
+  local port=$1
+  lsof -nP -tiTCP:"$port" -sTCP:LISTEN 2>/dev/null || true
+}
 
-  if [ -n "$pids" ]; then
-    echo "[$label] 清理遗留进程 (PID: $(echo "$pids" | tr '\n' ' '))..."
-    kill $pids 2>/dev/null || true
+process_belongs_to_project() {
+  local process_id=$1
+  local process_command
+  local process_cwd
+
+  process_command=$(ps -p "$process_id" -o command= 2>/dev/null || true)
+  case "$process_command" in
+    *"$ROOT_DIR"*) return 0 ;;
+  esac
+
+  process_cwd=$(lsof -a -p "$process_id" -d cwd -Fn 2>/dev/null | sed -n 's/^n//p' | head -n 1)
+  case "$process_cwd" in
+    "$ROOT_DIR"|"$ROOT_DIR"/*) return 0 ;;
+  esac
+
+  return 1
+}
+
+stop_project_listeners() {
+  local label=$1
+  local port=$2
+  local listener_pids
+  local project_pids=""
+
+  listener_pids=$(listening_pids_for_port "$port")
+  for listener_pid in $listener_pids; do
+    if process_belongs_to_project "$listener_pid"; then
+      project_pids="$project_pids $listener_pid"
+      kill_tree "$listener_pid"
+    fi
+  done
+
+  project_pids=${project_pids# }
+  if [ -n "$project_pids" ]; then
+    echo "[$label] 清理本项目遗留监听进程 (PID: $project_pids)..."
     sleep 0.5
-    kill -9 $pids 2>/dev/null || true
+    for listener_pid in $project_pids; do
+      if kill -0 "$listener_pid" 2>/dev/null; then
+        kill -KILL "$listener_pid" 2>/dev/null || true
+      fi
+    done
   fi
 }
 
 cleanup_project_dev_processes() {
-  kill_processes_by_pattern "后端" "$BACKEND_DIR/node_modules/.bin/tsx watch src/index.ts"
-  kill_processes_by_pattern "前端" "$FRONTEND_DIR/node_modules/.bin/vite"
+  stop_project_listeners "后端" "$BACKEND_PORT"
+  stop_project_listeners "前端" "$FRONTEND_PORT"
 }
 
 cleanup() {
+  local exit_code=$?
   if [ "$CLEANUP_DONE" = true ]; then
-    exit 0
+    exit "$exit_code"
   fi
   CLEANUP_DONE=true
   trap - EXIT SIGINT SIGTERM
 
-  echo ""
-  echo "正在停止所有服务..."
-  kill_tree "$BACKEND_PID"
-  kill_tree "$FRONTEND_PID"
-  wait $BACKEND_PID $FRONTEND_PID 2>/dev/null
-  cleanup_project_dev_processes
+  if [ -n "$BACKEND_PID" ] || [ -n "$FRONTEND_PID" ] || [ "$REDIS_STARTED_BY_US" = true ]; then
+    echo ""
+    echo "正在停止所有服务..."
+    kill_tree "$BACKEND_PID"
+    kill_tree "$FRONTEND_PID"
+    wait $BACKEND_PID $FRONTEND_PID 2>/dev/null
 
-  if [ "$REDIS_STARTED_BY_US" = true ] && [ -n "$REDIS_PID" ]; then
-    echo "[Redis] 停止本地 Redis (PID: $REDIS_PID)..."
-    kill $REDIS_PID 2>/dev/null
-    wait $REDIS_PID 2>/dev/null
+    if [ "$REDIS_STARTED_BY_US" = true ] && [ -n "$REDIS_PID" ]; then
+      echo "[Redis] 停止本地 Redis (PID: $REDIS_PID)..."
+      kill $REDIS_PID 2>/dev/null
+      wait $REDIS_PID 2>/dev/null
+    fi
+
+    echo "服务已停止"
   fi
-
-  echo "服务已停止"
-  exit 0
+  exit "$exit_code"
 }
 
-trap cleanup EXIT SIGINT SIGTERM
+trap cleanup EXIT
+trap 'exit 130' SIGINT
+trap 'exit 143' SIGTERM
 
 # 检查目录是否存在
 if [ ! -d "$FRONTEND_DIR" ]; then
@@ -91,9 +128,10 @@ fi
 # 拒绝覆盖非本项目进程，避免误杀用户正在运行的服务。
 assert_port_free() {
   local port=$1
-  local pid=$(lsof -ti :"$port" 2>/dev/null)
-  if [ -n "$pid" ]; then
-    echo "[端口/Port] $port 已被其他进程占用 / is already in use (PID: $pid)"
+  local listener_pids
+  listener_pids=$(listening_pids_for_port "$port")
+  if [ -n "$listener_pids" ]; then
+    echo "[端口/Port] $port 已被其他进程占用 / is already in use (PID: $(echo "$listener_pids" | tr '\n' ' '))"
     echo "请先停止该进程后重试 / Stop that process and try again."
     exit 1
   fi
